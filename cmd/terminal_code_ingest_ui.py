@@ -46,9 +46,9 @@ def import_code_ingest(module_path=None):
     try:
         if module_path is None:
             # Try to find code_ingest.py in the same directory as this script
-            base_path = os.path.dirname(os.path.abspath(__file__), "..")
-            module_path = os.path.join(base_path, "code_ingest.py")
-        
+            base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            module_path = os.path.join(base_path, "code_ingest", "code_ingest.py")
+            
         # Check if file exists
         if not os.path.exists(module_path):
             console.print(f"[bold red]Error:[/] Could not find code_ingest.py at {module_path}")

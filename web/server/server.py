@@ -13,6 +13,7 @@ import os
 import json
 import http.server
 import socketserver
+import sys
 import urllib.parse
 from pathlib import Path
 import threading
@@ -20,8 +21,8 @@ import uuid
 import mimetypes
 import re
 
-# Import your existing code ingest module
-import code_ingest
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from code_ingest import code_ingest
 
 # Store for ongoing analysis jobs
 analysis_jobs = {}

@@ -1,3 +1,2 @@
 rich
 typer
-http.server
