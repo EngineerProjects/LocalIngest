@@ -1,29 +1,29 @@
 #!/usr/bin/env python3
 """
-Beautiful Terminal UI for Code Ingest (Fixed Version)
+Enhanced Terminal UI for Code Ingest
 
 A stylish, modern terminal interface for the code ingest tool with rich formatting.
-This version fixes progress bar issues and provides a more robust implementation.
+This version adds support for multiple source directories, subfolder inclusion,
+full project structure visualization, and visual indicators for ingested files.
 
 Installation:
     pip install rich typer
 
 Run:
-    python terminal_code_ingest_ui.py interactive
+    python enhanced_terminal_code_ingest_ui.py interactive
 """
 
 import os
 import sys
 import time
+import re
 import threading
 import importlib.util
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import typer
 from rich.console import Console
 from rich.panel import Panel
-from rich.live import Live
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 from rich.syntax import Syntax
 from rich.tree import Tree
@@ -46,7 +46,8 @@ def import_code_ingest(module_path=None):
     try:
         if module_path is None:
             # Try to find code_ingest.py in the same directory as this script
-            module_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "code_ingest.py")
+            base_path = os.path.dirname(os.path.abspath(__file__), "..")
+            module_path = os.path.join(base_path, "code_ingest.py")
         
         # Check if file exists
         if not os.path.exists(module_path):
@@ -70,7 +71,7 @@ def display_logo():
     [bold cyan]╚═╝╚═╝═╩╝╚═╝  ╩╝╚╝╚═╝╚═╝╚═╝ ╩ [/]
     """
     console.print(logo)
-    console.print("[dim]A beautiful terminal UI for code repository analysis[/]\n")
+    console.print("[dim]Enhanced terminal UI for code repository analysis[/]\n")
 
 # A simple progress tracking class that doesn't rely on Rich Progress internals
 class SimpleProgressTracker:
@@ -111,23 +112,44 @@ class SimpleProgressTracker:
             if current >= total:
                 console.print()
 
-def display_directory_tree(structure, title="Directory Structure"):
-    """Display directory structure as a rich tree"""
+def display_directory_tree(structure, ingested_files=None, title="Directory Structure"):
+    """
+    Display directory structure as a rich tree with visual indicators for ingested files
+    
+    Args:
+        structure: Directory structure data
+        ingested_files: List of file paths that were ingested
+        title: Title for the tree panel
+    """
     if not structure:
         console.print("[yellow]No files found in directory structure.[/]")
         return
-        
+    
+    if ingested_files is None:
+        ingested_files = []
+    
+    # Convert ingested_files to a set for faster lookups
+    ingested_set = set(ingested_files)
+    
     tree = Tree(f"[bold cyan]{title}[/]")
     
-    def add_to_tree(node, tree_node):
+    def add_to_tree(node, tree_node, current_path=""):
         for item in node:
             if item.get('type') == 'directory':
+                folder_path = os.path.join(current_path, item['name'])
                 folder = tree_node.add(f"[bold blue]{item['name']}[/] [dim](dir)[/]")
                 if 'children' in item:
-                    add_to_tree(item['children'], folder)
+                    add_to_tree(item['children'], folder, folder_path)
             else:
+                file_path = os.path.join(current_path, item.get('path', item['name']))
                 size_kb = item.get('size', 0) / 1024
-                tree_node.add(f"[green]{item['name']}[/] [dim]({size_kb:.1f} KB)[/]")
+                
+                # Check if file was ingested and add a visual indicator
+                is_included = item.get('is_included', True)
+                if file_path in ingested_set or (is_included and current_path + "/" + item['name'] in ingested_set):
+                    tree_node.add(f"[green]{item['name']}[/] [dim]({size_kb:.1f} KB)[/] [bold green]✓[/]")
+                else:
+                    tree_node.add(f"[yellow]{item['name']}[/] [dim]({size_kb:.1f} KB)[/]")
     
     add_to_tree(structure, tree)
     
@@ -141,7 +163,12 @@ def display_summary(data):
     table.add_column("Value", style="cyan")
     
     # Add rows
-    table.add_row("Repository", os.path.basename(data['repository']))
+    # Handle multiple directories
+    if isinstance(data['repository'], list):
+        table.add_row("Repositories", ", ".join([os.path.basename(repo) for repo in data['repository']]))
+    else:
+        table.add_row("Repository", os.path.basename(data['repository']))
+    
     table.add_row("Branch", data['branch'])
     table.add_row("Files Analyzed", str(data['files_analyzed']))
     table.add_row("Estimated Tokens", f"{(data['estimated_tokens'] / 1000):.1f}k")
@@ -187,43 +214,19 @@ def display_file_preview(file_contents, max_files=3, max_lines=10):
             expand=False
         ))
 
-def analyze_with_progress(code_ingest, directory, exclude_patterns, max_file_size):
-    """Run analysis with console progress tracking"""
-    # Create simple progress tracker
-    progress_tracker = SimpleProgressTracker()
-    
-    # Store original progress function
-    original_print_progress = code_ingest.print_progress
-    
-    # Replace with our simple progress tracker
-    code_ingest.print_progress = progress_tracker
-    
-    try:
-        # Run the analysis
-        with console.status("[cyan]Scanning repository...", spinner="dots"):
-            console.print(f"Analyzing directory: {directory}")
-            
-            result = code_ingest.analyze_directory(
-                directory,
-                exclude_patterns=exclude_patterns,
-                max_file_size_kb=max_file_size,
-                show_progress=True
-            )
-        
-        return result
-    finally:
-        # Restore original function
-        code_ingest.print_progress = original_print_progress
-
 @app.command()
 def analyze(
-    directory: str = typer.Argument(..., help="Directory to analyze"),
+    directory: List[str] = typer.Argument(..., help="Directories to analyze (can be multiple)"),
     exclude: str = typer.Option(None, "--exclude", "-e", help="Comma-separated patterns to exclude"),
+    include: str = typer.Option(None, "--include", "-i", help="Comma-separated patterns to include"),
+    exclude_files: str = typer.Option(None, "--exclude-files", "-f", help="Comma-separated specific files to exclude"),
+    include_subfolders: str = typer.Option(None, "--include-subfolders", "-s", help="Comma-separated subfolders to include"),
+    include_root_files: bool = typer.Option(True, "--include-root/--exclude-root", help="Whether to include files in the root directory"),
     max_size: int = typer.Option(50, "--max-size", "-m", help="Maximum file size in KB to include"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Output file name"),
     preview: bool = typer.Option(True, "--preview/--no-preview", help="Show preview of file contents"),
 ):
-    """Analyze a code repository and generate a beautiful report"""
+    """Analyze one or more code repositories and generate a beautiful report"""
     # Import code_ingest module
     code_ingest = import_code_ingest()
     if not code_ingest:
@@ -236,10 +239,36 @@ def analyze(
     # Process exclude patterns
     exclude_patterns = [p.strip() for p in exclude.split(',') if p.strip()]
     
+    # Process include patterns if provided
+    include_patterns = []
+    if include:
+        include_patterns = [p.strip() for p in include.split(',') if p.strip()]
+    
+    # Process exclude files
+    exclude_files_list = []
+    if exclude_files:
+        exclude_files_list = [f.strip() for f in exclude_files.split(',') if f.strip()]
+        # Convert exclude files to patterns
+        for file in exclude_files_list:
+            pattern = f"^{re.escape(file)}$"
+            exclude_patterns.append(pattern)
+    
+    # Process include subfolders
+    include_subfolders_list = []
+    if include_subfolders:
+        include_subfolders_list = [f.strip() for f in include_subfolders.split(',') if f.strip()]
+    
     # Set default output filename if not provided
     if not output:
-        dir_name = os.path.basename(os.path.normpath(directory))
-        output = f"{dir_name}_ingest.md"
+        # create output directory if it doesn't exist
+        output_dir = "outputs"
+        os.makedirs(output_dir, exist_ok=True)
+        # Use the last part of the directory path as the output filename
+        if len(directory) == 1:
+            dir_name = os.path.basename(os.path.normpath(directory[0]))
+        else:
+            dir_name = "multi_repository"
+        output = f"{output_dir}/{dir_name}_ingest.md"
     
     # Display logo
     display_logo()
@@ -249,8 +278,23 @@ def analyze(
     params_table.add_column("Parameter", style="bold white")
     params_table.add_column("Value", style="yellow")
     
-    params_table.add_row("Directory", directory)
+    if len(directory) == 1:
+        params_table.add_row("Directory", directory[0])
+    else:
+        params_table.add_row("Directories", ", ".join(directory))
+    
     params_table.add_row("Exclude Patterns", exclude)
+    
+    if include_patterns:
+        params_table.add_row("Include Patterns", ", ".join(include_patterns))
+    
+    if exclude_files_list:
+        params_table.add_row("Exclude Files", ", ".join(exclude_files_list))
+    
+    if include_subfolders_list:
+        params_table.add_row("Include Subfolders", ", ".join(include_subfolders_list))
+    
+    params_table.add_row("Include Root Files", "Yes" if include_root_files else "No")
     params_table.add_row("Max File Size", f"{max_size} KB")
     params_table.add_row("Output File", output)
     
@@ -263,8 +307,17 @@ def analyze(
     
     console.print()  # Add a newline
     
-    # Run the analysis
-    result = analyze_with_progress(code_ingest, directory, exclude_patterns, max_size)
+    # Run the analysis on multiple directories
+    with console.status("[cyan]Running analysis...", spinner="dots"):
+        result = code_ingest.analyze_multiple_directories(
+            directory, 
+            exclude_patterns=exclude_patterns, 
+            include_patterns=include_patterns,
+            include_subfolders=include_subfolders_list,
+            max_file_size_kb=max_size,
+            include_root_files=include_root_files,
+            show_progress=False
+        )
     
     if not result:
         console.print("[bold red]Analysis failed. Exiting.[/]")
@@ -273,6 +326,11 @@ def analyze(
     # Generate the report
     with console.status("[cyan]Generating Markdown report...", spinner="dots"):
         markdown_content = code_ingest.generate_markdown(result)
+        
+        # Create output directory if it doesn't exist
+        output_dir = os.path.dirname(output)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir)
         
         # Save to file
         with open(output, 'w', encoding='utf-8') as f:
@@ -284,8 +342,12 @@ def analyze(
     # Display summary
     display_summary(result)
     
-    # Display directory tree
-    display_directory_tree(result['directory_structure'])
+    # Display directory tree with ingested file indicators
+    display_directory_tree(
+        result['directory_structure'], 
+        result.get('ingested_files', []),
+        "Full Project Structure"
+    )
     
     # Display file preview if requested
     if preview and result['file_contents']:
@@ -306,7 +368,7 @@ def analyze(
 
 @app.command()
 def interactive():
-    """Start an interactive analysis session"""
+    """Start an interactive analysis session with enhanced features"""
     # Import code_ingest module
     code_ingest = import_code_ingest()
     if not code_ingest:
@@ -315,8 +377,11 @@ def interactive():
     # Display logo
     display_logo()
     
-    # Get directory path
-    directory = Prompt.ask("[bold cyan]Enter directory to analyze[/]")
+    # Get directories to analyze
+    directories_input = Prompt.ask(
+        "[bold cyan]Enter directories to analyze[/] [dim](comma-separated)[/]"
+    )
+    directories = [d.strip() for d in directories_input.split(',') if d.strip()]
     
     # Get exclude patterns
     default_excludes = ",".join(code_ingest.DEFAULT_EXCLUDES)
@@ -326,6 +391,38 @@ def interactive():
     )
     exclude_patterns = [p.strip() for p in exclude.split(',') if p.strip()]
     
+    # Get include patterns
+    include = Prompt.ask(
+        "[bold cyan]Enter include patterns[/] [dim](comma-separated, leave empty if none)[/]",
+        default=""
+    )
+    include_patterns = [p.strip() for p in include.split(',') if p.strip()]
+    
+    # Get specific files to exclude
+    exclude_files = Prompt.ask(
+        "[bold cyan]Enter specific files to exclude[/] [dim](comma-separated, leave empty if none)[/]",
+        default=""
+    )
+    exclude_files_list = [f.strip() for f in exclude_files.split(',') if f.strip()]
+    # Convert exclude files to patterns
+    for file in exclude_files_list:
+        if file:
+            pattern = f"^{re.escape(file)}$"
+            exclude_patterns.append(pattern)
+    
+    # Get specific subfolders to include
+    include_subfolders = Prompt.ask(
+        "[bold cyan]Enter specific subfolders to include[/] [dim](comma-separated, leave empty if none)[/]",
+        default=""
+    )
+    include_subfolders_list = [f.strip() for f in include_subfolders.split(',') if f.strip()]
+    
+    # Ask if root files should be included
+    include_root_files = Confirm.ask(
+        "[bold cyan]Include files in the root directory?[/]",
+        default=True
+    )
+    
     # Get max file size
     max_size = int(Prompt.ask(
         "[bold cyan]Maximum file size in KB[/]",
@@ -333,8 +430,16 @@ def interactive():
     ))
     
     # Get output file name
-    dir_name = os.path.basename(os.path.normpath(directory))
-    default_output = f"{dir_name}_ingest.md"
+    if len(directories) == 1:
+        dir_name = os.path.basename(os.path.normpath(directories[0]))
+    else:
+        dir_name = "multi_repository"
+    
+    # Create output directory if it doesn't exist
+    output_dir = "outputs"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    default_output = f"{output_dir}/{dir_name}_ingest.md"
     output = Prompt.ask(
         "[bold cyan]Output file name[/]",
         default=default_output
@@ -342,8 +447,19 @@ def interactive():
     
     # Confirm analysis
     console.print("\n[bold]Analysis parameters:[/]")
-    console.print(f"  [dim]Directory:[/] [yellow]{directory}[/]")
+    console.print(f"  [dim]Directories:[/] [yellow]{', '.join(directories)}[/]")
     console.print(f"  [dim]Exclude patterns:[/] [yellow]{exclude}[/]")
+    
+    if include_patterns:
+        console.print(f"  [dim]Include patterns:[/] [yellow]{include}[/]")
+    
+    if exclude_files_list:
+        console.print(f"  [dim]Exclude files:[/] [yellow]{exclude_files}[/]")
+    
+    if include_subfolders_list:
+        console.print(f"  [dim]Include subfolders:[/] [yellow]{include_subfolders}[/]")
+    
+    console.print(f"  [dim]Include root files:[/] [yellow]{'Yes' if include_root_files else 'No'}[/]")
     console.print(f"  [dim]Max file size:[/] [yellow]{max_size} KB[/]")
     console.print(f"  [dim]Output file:[/] [yellow]{output}[/]")
     
@@ -354,7 +470,16 @@ def interactive():
     console.print()  # Add a newline
     
     # Run the analysis
-    result = analyze_with_progress(code_ingest, directory, exclude_patterns, max_size)
+    with console.status("[cyan]Running analysis...", spinner="dots"):
+        result = code_ingest.analyze_multiple_directories(
+            directories, 
+            exclude_patterns=exclude_patterns, 
+            include_patterns=include_patterns,
+            include_subfolders=include_subfolders_list,
+            max_file_size_kb=max_size,
+            include_root_files=include_root_files,
+            show_progress=False
+        )
     
     if not result:
         console.print("[bold red]Analysis failed. Exiting.[/]")
@@ -363,6 +488,11 @@ def interactive():
     # Generate the report
     with console.status("[cyan]Generating Markdown report...", spinner="dots"):
         markdown_content = code_ingest.generate_markdown(result)
+        
+        # Create output directory if it doesn't exist
+        output_dir = os.path.dirname(output)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir)
         
         # Save to file
         with open(output, 'w', encoding='utf-8') as f:
@@ -374,8 +504,12 @@ def interactive():
     # Display summary
     display_summary(result)
     
-    # Display directory tree
-    display_directory_tree(result['directory_structure'])
+    # Display directory tree with ingested file indicators
+    display_directory_tree(
+        result['directory_structure'], 
+        result.get('ingested_files', []),
+        "Full Project Structure"
+    )
     
     # Ask if user wants to preview file contents
     if Confirm.ask("\n[bold cyan]Show file content preview?[/]"):
@@ -393,6 +527,40 @@ def interactive():
         # Display the report using Markdown renderer
         md = Markdown(report_content)
         console.print(Panel(md, title=f"[bold green]{output}[/]", border_style="green", expand=True))
+
+@app.command()
+def examples():
+    """Show usage examples"""
+    display_logo()
+    
+    examples_md = """
+    ## Basic Usage
+    ```bash
+    # Analyze a single directory
+    python enhanced_terminal_code_ingest_ui.py analyze /path/to/project
+    
+    # Analyze multiple directories
+    python enhanced_terminal_code_ingest_ui.py analyze /path/to/project1 /path/to/project2
+    
+    # Start interactive mode
+    python enhanced_terminal_code_ingest_ui.py interactive
+    ```
+    
+    ## Advanced Usage
+    ```bash
+    # Include only specific subfolders
+    python enhanced_terminal_code_ingest_ui.py analyze /path/to/project --include-subfolders "llm,tool,agent"
+    
+    # Include specific patterns and exclude others
+    python enhanced_terminal_code_ingest_ui.py analyze /path/to/project --include "*.py,*.md" --exclude "test_*.py"
+    
+    # Exclude root files and only include subfolders
+    python enhanced_terminal_code_ingest_ui.py analyze /path/to/project --exclude-root --include-subfolders "src,docs"
+    ```
+    """
+    
+    md = Markdown(examples_md)
+    console.print(Panel(md, title="Examples", border_style="cyan", expand=False))
 
 if __name__ == "__main__":
     try:

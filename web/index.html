@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Ingest Tool</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>Code Ingest</h1>
+                <div class="sidebar-icon">
+                    <i class="fas fa-code"></i>
+                </div>
+            </div>
+            <div class="sidebar-content">
+                <div class="sidebar-section">
+                    <h3>Repository</h3>
+                    <div class="input-group">
+                        <input type="text" id="repo-path" placeholder="Enter repository path...">
+                        <button id="validate-btn" class="btn btn-primary">Validate</button>
+                    </div>
+                    <div id="repo-info" class="repo-info hidden"></div>
+                </div>
+                
+                <div class="sidebar-section" id="options-section">
+                    <h3>Options</h3>
+                    <div class="input-group">
+                        <div class="select-wrapper">
+                            <select id="pattern-type">
+                                <option value="exclude">Exclude</option>
+                                <option value="include">Include</option>
+                            </select>
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                        <input type="text" id="pattern-input" placeholder="Enter pattern (e.g., *.md, src/)">
+                        <button id="add-pattern-btn" class="btn btn-secondary">Add</button>
+                    </div>
+                    
+                    <div class="patterns-container">
+                        <div class="pattern-list-header">
+                            <h4>Exclude Patterns</h4>
+                            <button id="reset-exclude-btn" class="btn btn-text">Reset to Default</button>
+                        </div>
+                        <ul id="exclude-patterns" class="pattern-list"></ul>
+                        
+                        <div class="pattern-list-header">
+                            <h4>Include Patterns</h4>
+                            <button id="clear-include-btn" class="btn btn-text">Clear All</button>
+                        </div>
+                        <ul id="include-patterns" class="pattern-list"></ul>
+                        
+                        <div class="pattern-list-header">
+                            <h4>Include Subfolders</h4>
+                        </div>
+                        <ul id="include-subfolders" class="pattern-list"></ul>
+                    </div>
+                    
+                    <div class="options-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="exclude-root-files">
+                            <label for="exclude-root-files">Exclude Root Files</label>
+                        </div>
+                        
+                        <div class="range-group">
+                            <label for="max-file-size">Include files under: <span id="max-file-size-value">50kb</span></label>
+                            <input type="range" id="max-file-size" min="10" max="500" value="50" step="10">
+                        </div>
+                    </div>
+                    
+                    <div class="action-buttons">
+                        <button id="ingest-btn" class="btn btn-primary btn-large">Ingest</button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="content-header">
+                <div class="tab-container">
+                    <button class="tab-btn active" data-tab="summary">Summary</button>
+                    <button class="tab-btn" data-tab="structure">Directory Structure</button>
+                    <button class="tab-btn" data-tab="files">Files Content</button>
+                </div>
+                <div class="header-actions">
+                    <button id="download-btn" class="btn btn-secondary" disabled>
+                        <i class="fas fa-download"></i> Download
+                    </button>
+                    <button id="copy-btn" class="btn btn-secondary" disabled>
+                        <i class="fas fa-copy"></i> Copy
+                    </button>
+                </div>
+            </div>
+            
+            <div class="tab-content">
+                <!-- Summary Tab -->
+                <div id="summary-tab" class="tab-pane active">
+                    <div id="summary-placeholder" class="placeholder-message">
+                        <i class="fas fa-file-alt"></i>
+                        <p>Repository analysis will appear here</p>
+                    </div>
+                    <div id="summary-content" class="summary-content hidden"></div>
+                </div>
+                
+                <!-- Directory Structure Tab -->
+                <div id="structure-tab" class="tab-pane">
+                    <div id="structure-placeholder" class="placeholder-message">
+                        <i class="fas fa-folder-tree"></i>
+                        <p>Directory structure will appear here</p>
+                    </div>
+                    <div id="structure-content" class="structure-content hidden"></div>
+                </div>
+                
+                <!-- Files Content Tab -->
+                <div id="files-tab" class="tab-pane">
+                    <div id="files-placeholder" class="placeholder-message">
+                        <i class="fas fa-code"></i>
+                        <p>File contents will appear here</p>
+                    </div>
+                    <div id="files-content" class="files-content hidden"></div>
+                </div>
+            </div>
+            
+            <!-- Progress overlay for long operations -->
+            <div id="progress-overlay" class="progress-overlay hidden">
+                <div class="progress-container">
+                    <div class="progress-spinner"></div>
+                    <h3 id="progress-message">Analyzing repository...</h3>
+                    <div class="progress-bar-container">
+                        <div id="progress-bar" class="progress-bar"></div>
+                    </div>
+                    <p id="progress-details">This may take a few minutes for large repositories</p>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
