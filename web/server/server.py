@@ -21,7 +21,7 @@ import uuid
 import mimetypes
 import re
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from code_ingest import code_ingest
 
 # Store for ongoing analysis jobs
@@ -49,16 +49,21 @@ class CodeIngestHandler(http.server.SimpleHTTPRequestHandler):
         self._send_cors_headers()
         self.end_headers()
     
-    def _handle_api_validate_directory(self):
-        """Validate if a directory exists"""
+def _handle_api_validate_directory(self):
+    """Validate if a directory exists"""
+    try:
         content_length = int(self.headers["Content-Length"])
         post_data = self.rfile.read(content_length).decode("utf-8")
         data = json.loads(post_data)
         
         path = Path(data.get("path", ""))
         
+        # Add debug print
+        print(f"Validating path: {path}")
+        
         if not path.exists():
             self.send_response(404)
+            self.send_header("Content-type", "application/json")
             self._send_cors_headers()
             self.end_headers()
             self.wfile.write(json.dumps({"error": "Directory not found"}).encode())
@@ -97,6 +102,14 @@ class CodeIngestHandler(http.server.SimpleHTTPRequestHandler):
         }
         
         self.wfile.write(json.dumps(response).encode())
+    except Exception as e:
+        # Add better error handling
+        print(f"Error in validate_directory: {str(e)}")
+        self.send_response(500)
+        self.send_header("Content-type", "application/json")
+        self._send_cors_headers()
+        self.end_headers()
+        self.wfile.write(json.dumps({"error": f"Server error: {str(e)}"}).encode())
     
     def _handle_api_default_excludes(self):
         """Return the default exclude patterns"""
