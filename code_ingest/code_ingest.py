@@ -164,6 +164,47 @@ def get_git_branch(directory):
     
     return "main"  # Default value
 
+def get_full_directory_structure(directories):
+    """Get directory structure without analyzing file contents"""
+    structures = []
+    
+    for directory in directories:
+        path = Path(directory)
+        
+        def build_tree(dir_path, parent_path=""):
+            nodes = []
+            try:
+                items = sorted(dir_path.iterdir(), key=lambda x: (not x.is_dir(), x.name))
+            except PermissionError:
+                return []
+            
+            for item in items:
+                relative_path = os.path.join(parent_path, item.name)
+                
+                if item.is_dir():
+                    children = build_tree(item, relative_path)
+                    nodes.append({
+                        "name": item.name,
+                        "path": relative_path,
+                        "type": "directory",
+                        "children": children,
+                        "is_included": True
+                    })
+                else:
+                    nodes.append({
+                        "name": item.name,
+                        "path": relative_path,
+                        "type": "file",
+                        "size": item.stat().st_size if os.access(item, os.R_OK) else 0,
+                        "is_included": True
+                    })
+            
+            return nodes
+        
+        structures.extend(build_tree(path))
+    
+    return structures
+
 def analyze_directory(root_path, exclude_patterns=None, include_patterns=None, max_file_size_kb=50, show_progress=True):
     """
     Analyze a directory and return its structure and file contents

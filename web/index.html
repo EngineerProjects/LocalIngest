@@ -5,80 +5,77 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Code Ingest | Repository Analysis Tool</title>
     <link rel="stylesheet" href="css/styles.css">
-    <!-- Google Fonts - Inter -->
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Font Awesome for icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-    <div class="app-wrapper">
+    <div class="app-container">
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-header">
-                <div class="logo-container">
-                    <i class="fa-solid fa-code-branch logo-icon"></i>
-                    <h1 class="logo-text">Code Ingest</h1>
+                <div class="logo">
+                    <div class="logo-icon">
+                        <i class="fas fa-code"></i>
+                    </div>
+                    <h1>Code Ingest</h1>
                 </div>
-                <button class="sidebar-toggle" id="sidebar-toggle">
+                <button id="sidebar-toggle" class="toggle-btn">
                     <i class="fas fa-bars"></i>
                 </button>
             </div>
 
             <div class="sidebar-content">
                 <!-- Repository Section -->
-                <div class="sidebar-section">
+                <section class="section">
                     <h2 class="section-title">Repository</h2>
-                    <div class="form-group">
-                        <div class="input-icon-wrapper">
+                    <div class="input-group">
+                        <div class="input-wrapper">
                             <i class="fas fa-folder"></i>
-                            <input type="text" id="repo-path" class="form-control" placeholder="Enter repository path">
+                            <input type="text" id="repo-path" class="input" placeholder="Enter repository path">
                         </div>
-                        <button id="validate-btn" class="btn btn-primary">
-                            <i class="fas fa-check"></i>
-                            <span>Validate</span>
-                        </button>
+                        <button id="validateBtn" class="btn btn-primary">Validate</button>
                     </div>
                     
-                    <div id="repo-info" class="repo-info hidden">
-                        <!-- This will be populated with JS -->
+                    <div id="repoInfo" class="repo-info hidden">
+                        <!-- Will be populated by JS -->
                     </div>
-                </div>
+                </section>
 
                 <!-- Configuration Section -->
-                <div class="sidebar-section" id="options-section">
+                <section class="section">
                     <h2 class="section-title">Configuration</h2>
                     
                     <!-- Pattern Management -->
-                    <div class="form-group">
-                        <div class="input-group">
-                            <div class="select-wrapper">
-                                <select id="pattern-type" class="form-control">
-                                    <option value="exclude">Exclude</option>
-                                    <option value="include">Include</option>
-                                </select>
-                                <i class="fas fa-chevron-down"></i>
-                            </div>
-                            <div class="input-icon-wrapper flex-grow">
-                                <i class="fas fa-filter"></i>
-                                <input type="text" id="pattern-input" class="form-control" placeholder="Add pattern (e.g., *.py, src/)">
-                            </div>
-                            <button id="add-pattern-btn" class="btn btn-outline">
-                                <i class="fas fa-plus"></i>
-                            </button>
+                    <div class="input-group pattern-group">
+                        <div class="select-wrapper">
+                            <select id="pattern-type" class="select">
+                                <option value="exclude">Exclude</option>
+                                <option value="include">Include</option>
+                            </select>
+                            <i class="fas fa-chevron-down"></i>
                         </div>
+                        <div class="input-wrapper">
+                            <i class="fas fa-filter"></i>
+                            <input type="text" id="patternInput" class="input" placeholder="Add pattern (e.g., *.py, src/)">
+                        </div>
+                        <button id="addPatternBtn" class="btn btn-outline">
+                            <i class="fas fa-plus"></i>
+                        </button>
                     </div>
-                    
+
                     <!-- Pattern Lists -->
-                    <div class="pattern-container">
+                    <div class="patterns-container">
                         <div class="pattern-section">
                             <div class="pattern-header">
-                                <h3>Exclude Patterns</h3>
-                                <button id="reset-exclude-btn" class="btn btn-text">Reset to Default</button>
+                                <h3 class="pattern-title">Exclude Patterns</h3>
+                                <button id="resetExcludeBtn" class="text-btn">Reset to Default</button>
                             </div>
-                            <div class="pattern-list-wrapper">
-                                <ul id="exclude-patterns" class="pattern-list">
+                            <div class="pattern-list-container">
+                                <ul id="excludePatterns" class="pattern-list">
                                     <!-- Will be populated by JS -->
                                 </ul>
                             </div>
@@ -86,11 +83,11 @@
                         
                         <div class="pattern-section">
                             <div class="pattern-header">
-                                <h3>Include Patterns</h3>
-                                <button id="clear-include-btn" class="btn btn-text">Clear All</button>
+                                <h3 class="pattern-title">Include Patterns</h3>
+                                <button id="clearIncludeBtn" class="text-btn">Clear All</button>
                             </div>
-                            <div class="pattern-list-wrapper">
-                                <ul id="include-patterns" class="pattern-list">
+                            <div class="pattern-list-container">
+                                <ul id="includePatterns" class="pattern-list">
                                     <!-- Will be populated by JS -->
                                 </ul>
                             </div>
@@ -98,34 +95,33 @@
                         
                         <div class="pattern-section">
                             <div class="pattern-header">
-                                <h3>Include Subfolders</h3>
+                                <h3 class="pattern-title">Include Subfolders</h3>
                             </div>
-                            <div class="pattern-list-wrapper">
-                                <ul id="include-subfolders" class="pattern-list">
+                            <div class="pattern-list-container">
+                                <ul id="includeSubfolders" class="pattern-list">
                                     <!-- Will be populated by JS -->
                                 </ul>
                             </div>
                         </div>
                     </div>
-                    
-                    <!-- Analysis Options -->
-                    <div class="form-options">
-                        <div class="form-option">
+
+                    <!-- Options -->
+                    <div class="options">
+                        <div class="option">
                             <label class="switch">
-                                <input type="checkbox" id="exclude-root-files">
-                                <span class="slider round"></span>
+                                <input type="checkbox" id="excludeRootFiles">
+                                <span class="slider"></span>
                             </label>
                             <span class="option-label">Exclude Root Files</span>
                         </div>
                         
-                        <div class="form-option">
-                            <label for="max-file-size" class="range-label">
-                                Max File Size: <span id="max-file-size-value">50KB</span>
+                        <div class="file-size-option">
+                            <label for="maxFileSize" class="size-label">
+                                Max File Size: <span id="maxFileSizeValue">50KB</span>
                             </label>
-
-                            <div class="range-container">
-                                <input type="range" id="max-file-size" min="10" max="500" value="50" step="10">
-                                <div class="range-markers">
+                            <div class="slider-container">
+                                <input type="range" id="maxFileSize" min="10" max="500" step="10" value="50" class="range-slider">
+                                <div class="size-markers">
                                     <span>10KB</span>
                                     <span>250KB</span>
                                     <span>500KB</span>
@@ -134,85 +130,85 @@
                         </div>
                     </div>
                     
-                    <!-- Action Button -->
+                    <!-- Analysis Button -->
                     <div class="action-container">
-                        <button id="ingest-btn" class="btn btn-primary btn-lg">
+                        <button id="ingestBtn" class="btn btn-primary btn-lg">
                             <i class="fas fa-play"></i>
                             <span>Start Analysis</span>
                         </button>
                     </div>
-                </div>
+                </section>
             </div>
         </aside>
 
         <!-- Main Content -->
         <main class="main-content">
-            <div class="top-bar">
-                <div class="tab-container">
+            <header class="main-header">
+                <nav class="tabs">
                     <button class="tab-btn active" data-tab="summary">
                         <i class="fas fa-chart-pie"></i>
                         <span>Summary</span>
                     </button>
                     <button class="tab-btn" data-tab="structure">
-                        <i class="fas fa-folder-tree"></i>
+                        <i class="fas fa-sitemap"></i>
                         <span>Directory Structure</span>
                     </button>
                     <button class="tab-btn" data-tab="files">
                         <i class="fas fa-file-code"></i>
                         <span>Files Content</span>
                     </button>
-                </div>
-                <div class="action-group">
-                    <button id="download-btn" class="btn btn-outline" disabled>
+                </nav>
+                <div class="actions">
+                    <button id="downloadBtn" class="btn btn-outline" disabled>
                         <i class="fas fa-download"></i>
                         <span>Download</span>
                     </button>
-                    <button id="copy-btn" class="btn btn-outline" disabled>
+                    <button id="copyBtn" class="btn btn-outline" disabled>
                         <i class="fas fa-copy"></i>
                         <span>Copy</span>
                     </button>
                 </div>
-            </div>
-
-            <div class="content-container">
+            </header>
+            
+            <div class="content-area">
                 <!-- Summary Tab -->
                 <div id="summary-tab" class="tab-content active">
-                    <div id="summary-placeholder" class="placeholder">
+                    <div id="summaryPlaceholder" class="placeholder">
                         <div class="placeholder-icon">
                             <i class="fas fa-chart-pie"></i>
                         </div>
                         <h2 class="placeholder-title">Repository Analysis</h2>
-                        <p class="placeholder-text">Validate a repository and start analysis to see summary information here</p>
+                        <p class="placeholder-text">Validate a repository and run analysis to view summary information</p>
                     </div>
-                    <div id="summary-content" class="content-panel hidden">
+                    <div id="summaryContent" class="content-panel hidden">
                         <!-- Will be populated by JS -->
                     </div>
                 </div>
 
                 <!-- Directory Structure Tab -->
                 <div id="structure-tab" class="tab-content">
-                    <div id="structure-placeholder" class="placeholder">
+                    <div id="structurePlaceholder" class="placeholder">
                         <div class="placeholder-icon">
-                            <i class="fas fa-folder-tree"></i>
+                            <i class="fas fa-sitemap"></i>
                         </div>
                         <h2 class="placeholder-title">Directory Structure</h2>
-                        <p class="placeholder-text">Files and folders will appear here after analysis</p>
+                        <p class="placeholder-text">Repository files and folders will appear here after analysis</p>
                     </div>
-                    <div id="structure-content" class="content-panel hidden">
+                    <div id="structureContent" class="content-panel hidden">
                         <!-- Will be populated by JS -->
                     </div>
                 </div>
 
                 <!-- Files Content Tab -->
                 <div id="files-tab" class="tab-content">
-                    <div id="files-placeholder" class="placeholder">
+                    <div id="filesPlaceholder" class="placeholder">
                         <div class="placeholder-icon">
                             <i class="fas fa-file-code"></i>
                         </div>
                         <h2 class="placeholder-title">Files Content</h2>
                         <p class="placeholder-text">File contents will appear here after analysis</p>
                     </div>
-                    <div id="files-content" class="content-panel hidden">
+                    <div id="filesContent" class="content-panel hidden">
                         <!-- Will be populated by JS -->
                     </div>
                 </div>
@@ -220,16 +216,18 @@
         </main>
 
         <!-- Progress Overlay -->
-        <div id="progress-overlay" class="progress-overlay hidden">
+        <div id="progressOverlay" class="progress-overlay hidden">
             <div class="progress-card">
-                <div class="progress-icon">
-                    <i class="fas fa-code"></i>
+                <div class="loader">
+                    <svg class="circular" viewBox="25 25 50 50">
+                        <circle class="path" cx="50" cy="50" r="20" fill="none" stroke-width="3" stroke-miterlimit="10"/>
+                    </svg>
                 </div>
-                <h2 id="progress-message" class="progress-title">Analyzing Repository...</h2>
-                <div class="progress-bar-container">
-                    <div id="progress-bar" class="progress-bar"></div>
+                <h2 id="progressMessage" class="progress-title">Analyzing Repository...</h2>
+                <div class="progress-container">
+                    <div id="progressBar" class="progress-bar"></div>
                 </div>
-                <p id="progress-details" class="progress-text">This may take a few minutes for larger repositories</p>
+                <p id="progressDetails" class="progress-text">Scanning repository structure</p>
             </div>
         </div>
 
@@ -239,14 +237,15 @@
                 <i class="fas fa-check-circle"></i>
             </div>
             <div class="toast-content">
-                <div id="toast-message" class="toast-message">Operation successful</div>
+                <p id="toastMessage">Operation successful</p>
             </div>
-            <button id="toast-close" class="toast-close">
+            <button id="toastClose" class="toast-close">
                 <i class="fas fa-times"></i>
             </button>
         </div>
     </div>
 
+    <!-- JavaScript -->
     <script src="js/script.js"></script>
 </body>
 </html>

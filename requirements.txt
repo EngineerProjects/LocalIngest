@@ -1,2 +1,6 @@
 rich
 typer
+fastapi
+uvicorn
+httpx
+pydantic

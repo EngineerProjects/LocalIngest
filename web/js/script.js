@@ -45,10 +45,26 @@ let includeSubfolders = [];
 let currentAnalysisJob = null;
 let analysisResult = null;
 
+// API Base URL
+const API_BASE_URL = 'http://127.0.0.1:8000';
+
 // Initialize
 document.addEventListener('DOMContentLoaded', init);
 
 function init() {
+    // Check server connectivity
+    fetch(`${API_BASE_URL}/api/default-excludes`)
+        .then(response => {
+            if (!response.ok) {
+                console.warn('Server connection issue. Make sure server is running and CORS is properly configured.');
+                showToast('Warning: Server connection issue. Make sure the API server is running.', 'warning');
+            }
+        })
+        .catch(error => {
+            console.error('Server connection failed:', error);
+            showToast('Error: Cannot connect to server. Please ensure the API server is running.', 'error');
+        });
+        
     // Load default exclude patterns
     fetchDefaultExcludes();
     
@@ -329,7 +345,7 @@ function renderPatternLists() {
 // API Functions
 async function fetchDefaultExcludes() {
     try {
-        const response = await fetch('/api/default-excludes');
+        const response = await fetch(`${API_BASE_URL}/api/default-excludes`);
         
         if (!response.ok) {
             throw new Error('Failed to fetch default exclude patterns');
@@ -341,6 +357,10 @@ async function fetchDefaultExcludes() {
     } catch (error) {
         console.error('Error fetching default excludes:', error);
         showToast('Failed to fetch default exclude patterns', 'error');
+        
+        // Fallback to some common patterns
+        excludePatterns = ['.git', 'node_modules', '__pycache__', '.venv'];
+        renderPatternLists();
     }
 }
 
@@ -355,7 +375,7 @@ async function validateRepository() {
         showProgressOverlay('Validating repository...', 'Checking if the directory exists and is accessible');
         updateProgress(0.2);
         
-        const response = await fetch('/api/validate-directory', {
+        const response = await fetch(`${API_BASE_URL}/api/validate-directory`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path })
@@ -365,7 +385,7 @@ async function validateRepository() {
         
         if (!response.ok) {
             const errorData = await response.json();
-            throw new Error(errorData.error || 'Invalid directory');
+            throw new Error(errorData.detail || 'Invalid directory');
         }
         
         const data = await response.json();
@@ -408,7 +428,7 @@ async function validateRepository() {
 
 async function fetchDirectoryStructure(path) {
     try {
-        const response = await fetch('/api/scan-structure', {
+        const response = await fetch(`${API_BASE_URL}/api/scan-structure`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path })
@@ -416,7 +436,7 @@ async function fetchDirectoryStructure(path) {
         
         if (!response.ok) {
             const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to scan directory structure');
+            throw new Error(errorData.detail || 'Failed to scan directory structure');
         }
         
         const data = await response.json();
@@ -449,7 +469,7 @@ async function startAnalysis() {
     
     try {
         // Start analysis job
-        const response = await fetch('/api/analyze', {
+        const response = await fetch(`${API_BASE_URL}/api/analyze`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(options)
@@ -457,7 +477,7 @@ async function startAnalysis() {
         
         if (!response.ok) {
             const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to start analysis');
+            throw new Error(errorData.detail || 'Failed to start analysis');
         }
         
         const data = await response.json();
@@ -476,7 +496,7 @@ async function pollAnalysisStatus() {
     if (!currentAnalysisJob) return;
     
     try {
-        const response = await fetch(`/api/analysis/${currentAnalysisJob}`);
+        const response = await fetch(`${API_BASE_URL}/api/analysis/${currentAnalysisJob}`);
         
         if (!response.ok) {
             throw new Error('Failed to get analysis status');
@@ -507,7 +527,7 @@ async function fetchAnalysisResult() {
     if (!currentAnalysisJob) return;
     
     try {
-        const response = await fetch(`/api/analysis/${currentAnalysisJob}/full`);
+        const response = await fetch(`${API_BASE_URL}/api/analysis/${currentAnalysisJob}/full`);
         
         if (!response.ok) {
             throw new Error('Failed to get analysis result');
@@ -543,7 +563,7 @@ async function downloadMarkdown() {
     }
     
     try {
-        const response = await fetch(`/api/analysis/${currentAnalysisJob}/markdown`);
+        const response = await fetch(`${API_BASE_URL}/api/analysis/${currentAnalysisJob}/markdown`);
         
         if (!response.ok) {
             throw new Error('Failed to get markdown content');
@@ -598,7 +618,7 @@ async function copyMarkdown() {
     }
     
     try {
-        const response = await fetch(`/api/analysis/${currentAnalysisJob}/markdown`);
+        const response = await fetch(`${API_BASE_URL}/api/analysis/${currentAnalysisJob}/markdown`);
         
         if (!response.ok) {
             throw new Error('Failed to get markdown content');
