@@ -1,0 +1,497 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "AZ transformation configurations - extracted from variables.py",
+  "column_selection": {
+    "description": "Columns to select from AZ bronze data - SAS: PTF_MVTS_AZ_MACRO.sas L30-80",
+    "passthrough": [
+      "cdprod",
+      "nopol",
+      "noclt",
+      "nmclt",
+      "noint",
+      "dtcrepol",
+      "cdnatp",
+      "txcede",
+      "ptgst",
+      "dteffan",
+      "dttraan",
+      "dtresilp",
+      "dttraar",
+      "cdtypli1",
+      "cdtypli2",
+      "cdtypli3",
+      "dttypli1",
+      "dttypli2",
+      "dttypli3",
+      "cmarch",
+      "cdsitp",
+      "mtprprto",
+      "prdccie",
+      "cdri",
+      "cdgecent",
+      "cdmotres",
+      "cdpolrvi",
+      "nopoli1",
+      "cdcasres",
+      "dtechamm",
+      "cdfract",
+      "quarisq",
+      "nmrisq",
+      "nmsrisq",
+      "resrisq",
+      "ruerisq",
+      "lidirisq",
+      "posrisq",
+      "vilrisq",
+      "cdreg",
+      "ctdefttra",
+      "ctprvtrv",
+      "dtouchm",
+      "dtrcppr",
+      "dtrectrx",
+      "dtrcppre",
+      "lbnattrv",
+      "dstcsc",
+      "lbolisou",
+      "actprim",
+      "mtsmpr",
+      "cdnaf",
+      "cdtre",
+      "cdactpro",
+      "fncmaca",
+      "mtcaf",
+      "tydris1",
+      "opapoffr",
+      "lbcapi1",
+      "lbcapi2",
+      "lbcapi3",
+      "lbcapi4",
+      "lbcapi5",
+      "lbcapi6",
+      "lbcapi7",
+      "lbcapi8",
+      "lbcapi9",
+      "lbcapi10",
+      "lbcapi11",
+      "lbcapi12",
+      "lbcapi13",
+      "lbcapi14",
+      "mtcapi1",
+      "mtcapi2",
+      "mtcapi3",
+      "mtcapi4",
+      "mtcapi5",
+      "mtcapi6",
+      "mtcapi7",
+      "mtcapi8",
+      "mtcapi9",
+      "mtcapi10",
+      "mtcapi11",
+      "mtcapi12",
+      "mtcapi13",
+      "mtcapi14",
+      "cdpolgp1",
+      "prcdci",
+      "cdgrev"
+    ],
+    "rename": {
+      "posacta": "posacta_ri",
+      "rueacta": "rueacta_ri",
+      "cediacta": "cediacta_ri",
+      "nmacta": "nmacta",
+      "csegt": "cseg",
+      "cssegt": "cssseg",
+      "cdtpcoa": "cdcoas",
+      "prdccie": "prcie",
+      "fncmaca": "mtca"
+    },
+    "computed": {
+      "tx": {
+        "type": "coalesce_default",
+        "source_col": "txcede",
+        "default": 0
+      },
+      "top_coass": {
+        "type": "flag_equality",
+        "source_col": "cdpolgp1",
+        "value": "1"
+      }
+    },
+    "metadata": {
+      "dircom": "AZ",
+      "add_vision": true,
+      "add_year_month": true
+    }
+  },
+  "capital_extraction": {
+    "description": "Extract capital amounts from lbcapi/mtcapi fields (SAS: PTF_MVTS_AZ_MACRO.sas L195-231)",
+    "smp_100": {
+      "keywords": [
+        "SMP GLOBAL DU CONTRAT",
+        "SMP RETENU",
+        "SINISTRE MAXIMUM POSSIBLE"
+      ],
+      "exclude_keywords": [
+        "RISQUE DIRECT",
+        "PERTE EXPLOIT"
+      ],
+      "label_prefix": "lbcapi",
+      "amount_prefix": "mtcapi",
+      "num_indices": 14,
+      "comment": "SAS L195-199: SMP extraction without RISQUE DIRECT or PERTE EXPLOIT variants"
+    },
+    "lci_100": {
+      "keywords": [
+        "LCI GLOBAL DU CONTRAT",
+        "CAPITAL REFERENCE OU LCI",
+        "LCI IRD (DOM. DIRECTS+P.EXPLOIT)",
+        "LIMITE CONTRACTUELLE INDEMNITE",
+        "LCI GLOBALE",
+        "LCI TOTAL"
+      ],
+      "exclude_keywords": [],
+      "label_prefix": "lbcapi",
+      "amount_prefix": "mtcapi",
+      "num_indices": 14
+    },
+    "smp_cie": {
+      "keywords": [
+        "SMP COMPAGNIE",
+        "SMP CIE",
+        "SINIS MAX POSSIBLE COMPAGNIE"
+      ],
+      "exclude_keywords": [
+        "RISQUE DIRECT"
+      ],
+      "label_prefix": "lbcapi",
+      "amount_prefix": "mtcapi",
+      "num_indices": 14
+    },
+    "lci_cie": {
+      "keywords": [
+        "LCI COMPAGNIE",
+        "LCI CIE",
+        "LIMITE CONTRACTUELLE CIE"
+      ],
+      "exclude_keywords": [],
+      "label_prefix": "lbcapi",
+      "amount_prefix": "mtcapi",
+      "num_indices": 14
+    },
+    "perte_exp": {
+      "keywords": [
+        "PERTE EXPLOITATION (MARGE BRUTE)",
+        "PERTE D EXPLOITATION",
+        "PERTE D'EXPLOITATION",
+        "CAPITAL PERTES EXPLOITATION",
+        "CAPITAUX TOTAUX P.E.",
+        "PERTE EXPLOITATION/AUT. DOM. MAT",
+        "PERTES D'EXPLOITATION",
+        "PERTES EXPLOITATION",
+        "PE TOTALE",
+        "CAPITAUX PE"
+      ],
+      "exclude_keywords": [],
+      "label_prefix": "lbcapi",
+      "amount_prefix": "mtcapi",
+      "num_indices": 14,
+      "comment": "SAS L220-230: All PERTE EXPLOITATION variants including /AUT. DOM. MAT (added 2020.02.18)"
+    },
+    "risque_direct": {
+      "keywords": [
+        "RISQUE DIRECT",
+        "CAPITAUX DOMMAGES DIR",
+        "DOMMAGES DIRECTS",
+        "RD TOTAL",
+        "CAPITAUX RD"
+      ],
+      "exclude_keywords": [
+        "SINIS MAX POSSIBLE RISQUE DIRECT"
+      ],
+      "label_prefix": "lbcapi",
+      "amount_prefix": "mtcapi",
+      "num_indices": 14
+    },
+    "valeur_a_neuf": {
+      "keywords": [
+        "VALEUR A NEUF",
+        "VAN",
+        "VALEUR NEUF",
+        "VAL A NEUF"
+      ],
+      "exclude_keywords": [],
+      "label_prefix": "lbcapi",
+      "amount_prefix": "mtcapi",
+      "num_indices": 14
+    },
+    "valeur_vena": {
+      "keywords": [
+        "VALEUR VENA",
+        "VENA",
+        "VALEUR ECONOMIQUE NEUF",
+        "VAL ECO NEUF"
+      ],
+      "exclude_keywords": [],
+      "label_prefix": "lbcapi",
+      "amount_prefix": "mtcapi",
+      "num_indices": 14
+    },
+    "capital_rcpro": {
+      "keywords": [
+        "RC PRO",
+        "RCPRO",
+        "RESPONSABILITE CIVILE PROFESSIONNELLE",
+        "RC PROFESSIONNELLE"
+      ],
+      "exclude_keywords": [],
+      "label_prefix": "lbcapi",
+      "amount_prefix": "mtcapi",
+      "num_indices": 14
+    },
+    "capital_rcexp": {
+      "keywords": [
+        "RC EXPLOITATION",
+        "RCEXP",
+        "RC EXPLOITAT"
+      ],
+      "exclude_keywords": [],
+      "label_prefix": "lbcapi",
+      "amount_prefix": "mtcapi",
+      "num_indices": 14
+    },
+    "capital_rcd": {
+      "keywords": [
+        "RC DECENNALE",
+        "RCD",
+        "RESPONSABILITE DECENNALE"
+      ],
+      "exclude_keywords": [],
+      "label_prefix": "lbcapi",
+      "amount_prefix": "mtcapi",
+      "num_indices": 14
+    },
+    "capital_do": {
+      "keywords": [
+        "DOMMAGES OUVRAGE",
+        "DO",
+        "D.O.",
+        "DOMM OUVRAGE"
+      ],
+      "exclude_keywords": [],
+      "label_prefix": "lbcapi",
+      "amount_prefix": "mtcapi",
+      "num_indices": 14
+    },
+    "capital_trc": {
+      "keywords": [
+        "TOUS RISQUES CHANTIER",
+        "TRC",
+        "T.R.C."
+      ],
+      "exclude_keywords": [],
+      "label_prefix": "lbcapi",
+      "amount_prefix": "mtcapi",
+      "num_indices": 14
+    },
+    "capital_montage": {
+      "keywords": [
+        "MONTAGE",
+        "TOUS RISQUES MONTAGE",
+        "TRM"
+      ],
+      "exclude_keywords": [],
+      "label_prefix": "lbcapi",
+      "amount_prefix": "mtcapi",
+      "num_indices": 14
+    }
+  },
+  "business_filters": {
+    "description": "Filters to apply on AZ data",
+    "filters": [
+      {
+        "type": "not_in",
+        "column": "cdri",
+        "values": [
+          "X"
+        ],
+        "description": "Exclude cdri = X"
+      },
+      {
+        "type": "not_in",
+        "column": "cdsitp",
+        "values": [
+          "4",
+          "5"
+        ],
+        "description": "Exclude cdsitp 4 and 5"
+      },
+      {
+        "type": "not_in",
+        "column": "noint",
+        "values": [
+          "H90061",
+          "482001",
+          "489090",
+          "102030",
+          "H90036",
+          "H90059",
+          "H99045",
+          "H99059",
+          "5B2000",
+          "446000",
+          "5R0001",
+          "446118",
+          "4F1004",
+          "4A1400",
+          "4A1500",
+          "4A1600",
+          "4A1700",
+          "4A1800",
+          "4A1900",
+          "4L1010"
+        ],
+        "description": "Exclude specific intermediaries (SAS L42-44) - 20 unique values"
+      },
+      {
+        "type": "not_in",
+        "column": "cdprod",
+        "values": [
+          "01073"
+        ],
+        "description": "Exclude product 01073"
+      },
+      {
+        "type": "in",
+        "column": "cdnatp",
+        "values": [
+          "R",
+          "O",
+          "T",
+          "C"
+        ],
+        "description": "Keep only valid nature types"
+      },
+      {
+        "type": "equals",
+        "column": "cmarch",
+        "value": "6",
+        "description": "Construction market only"
+      },
+      {
+        "type": "equals",
+        "column": "csegt",
+        "value": "2",
+        "description": "Segment 2 only"
+      }
+    ]
+  },
+  "coassurance": {
+    "description": "Coassurance type and part company calculation",
+    "column": "coass",
+    "conditions": [
+      {
+        "check": "cdpolgp1 == '1' and cdtpcoa in ['3', '6']",
+        "result": "APERITION"
+      },
+      {
+        "check": "cdpolgp1 == '1' and cdtpcoa in ['4', '5']",
+        "result": "COASS. ACCEPTEE"
+      },
+      {
+        "check": "cdpolgp1 == '1' and cdtpcoa == '8'",
+        "result": "ACCEPTATION INTERNATIONALE"
+      },
+      {
+        "check": "cdpolgp1 == '1' and cdtpcoa not in ['3', '4', '5', '6', '8']",
+        "result": "AUTRES"
+      },
+      {
+        "check": "cdpolgp1 != '1'",
+        "result": "SANS COASSURANCE"
+      }
+    ],
+    "default": "SANS COASSURANCE",
+    "part_cie": {
+      "column": "partcie",
+      "logic": "when cdpolgp1 != '1' then 1 else prcdci / 100"
+    }
+  },
+  "revision_criteria": {
+    "description": "Revision criteria mapping from CDGREV",
+    "source_col": "cdgrev",
+    "mapping": {
+      "20": "20_SANS_PROV_MANUEL ",
+      "21": "21_PROV_FIXE_MANUEL ",
+      "22": "22_PROV_VAR_MANUEL  ",
+      "23": "23_SANS_REVISION    ",
+      "24": "24_REV_FIN_CHANTIER ",
+      "30": "30_SANS_PROV_MANUEL ",
+      "31": "31_PROV_FIXE_MANUEL ",
+      "32": "32_PROV_VAR_MANUEL  ",
+      "40": "40_SANS_PROV_AUTOMAT",
+      "41": "41_PROV_FIXE_AUTOMAT",
+      "42": "42_PROV_VAR_AUTOMAT ",
+      "43": "43_SANS_REV_AUTOMAT ",
+      "80": "80_REVISION_SPECIALE",
+      "90": "90_SANS_PROV_AUTOMAT",
+      "91": "91_PROV_FIXE_AUTOMAT",
+      "92": "92_PROV_VAR_AUTOMAT "
+    },
+    "default": ""
+  },
+  "movements": {
+    "description": "Movement calculations (AFN, RES, RPT, RPC, NBPTF)",
+    "column_mapping": {
+      "creation_date": "dtcrepol",
+      "effective_date": "dteffan",
+      "termination_date": "dtresilp",
+      "transfer_start": "dttraan",
+      "transfer_end": "dttraar",
+      "type_col1": "cdtypli1",
+      "type_col2": "cdtypli2",
+      "type_col3": "cdtypli3",
+      "type_date1": "dttypli1",
+      "type_date2": "dttypli2",
+      "type_date3": "dttypli3"
+    }
+  },
+  "exposures": {
+    "description": "Exposure calculations (expo_ytd, expo_gli)",
+    "column_mapping": {
+      "creation_date": "dtcrepol",
+      "termination_date": "dtresilp"
+    }
+  },
+  "initialization": {
+    "description": "Initialize columns with default values",
+    "columns": {
+      "primeto": 0,
+      "primes_ptf": 0,
+      "primes_afn": 0,
+      "primes_res": 0,
+      "primes_rpt": 0,
+      "primes_rpc": 0,
+      "nbptf": 0,
+      "nbafn": 0,
+      "nbres": 0,
+      "nbrpt": 0,
+      "nbrpc": 0,
+      "top_temp": 0,
+      "expo_ytd": 0,
+      "expo_gli": 0,
+      "cotis_100": 0,
+      "mtca_": 0,
+      "top_lta": 0,
+      "perte_exp": 0,
+      "risque_direct": 0,
+      "value_insured": 0,
+      "smp_100": 0,
+      "lci_100": 0,
+      "top_aop": 0,
+      "nbafn_anticipe": 0,
+      "nbres_anticipe": 0,
+      "dt_deb_expo": null,
+      "dt_fin_expo": null
+    }
+  }
+}

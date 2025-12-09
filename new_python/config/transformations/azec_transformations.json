@@ -1,0 +1,359 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "AZEC transformation configurations - extracted from variables.py",
+  "column_selection": {
+    "description": "Columns to select from AZEC bronze data",
+    "passthrough": [
+      "police",
+      "produit",
+      "intermed",
+      "poingest",
+      "nomcli",
+      "effetpol",
+      "datfin",
+      "datresil",
+      "datafn",
+      "datexpir",
+      "finpol",
+      "datterme",
+      "etatpol",
+      "duree",
+      "codecoas",
+      "prime",
+      "partbrut",
+      "cmarch",
+      "cseg",
+      "cssseg",
+      "code_naf",
+      "code_tre",
+      "lidirisq",
+      "motifres",
+      "origres",
+      "typcontr",
+      "rmplcant",
+      "gestsit",
+      "echeanmm",
+      "echeanjj",
+      "cdnatp",
+      "indregul",
+      "cpcua"
+    ],
+    "rename": {},
+    "computed": {
+      "partcie": {
+        "type": "coalesce_default",
+        "source_col": "partbrut",
+        "default": 1.0
+      }
+    },
+    "metadata": {
+      "dircom": "AZEC",
+      "add_vision": true,
+      "add_year_month": true
+    }
+  },
+  "date_state_updates": {
+    "description": "Date and state corrections for AZEC contracts",
+    "updates": [
+      {
+        "column": "datexpir",
+        "type": "conditional",
+        "conditions": [
+          {
+            "check": "(datfin > datexpir) and (etatpol in ['X', 'R'])",
+            "result_col": "datterme"
+          }
+        ],
+        "default": null
+      },
+      {
+        "column": "etatpol",
+        "type": "conditional",
+        "conditions": [
+          {
+            "check": "(duree == '01') and (finpol is null) and (datterme is not null) and (datterme < DATE_ONE_YEAR_AGO)",
+            "result": "R",
+            "description": "Tacit renewal contracts not invoiced for >1 year → mark as terminated"
+          },
+          {
+            "check": "(finpol is not null) and (datfin is null)",
+            "result": "R",
+            "description": "Temporary contracts - set ETATPOL = R"
+          }
+        ],
+        "default": null
+      },
+      {
+        "column": "datfin",
+        "type": "conditional",
+        "conditions": [
+          {
+            "check": "(duree == '01') and (finpol is null) and (datterme is not null) and (datterme < DATE_ONE_YEAR_AGO)",
+            "result_col": "datterme"
+          },
+          {
+            "check": "(finpol is not null) and (datfin is null)",
+            "result_col": "finpol"
+          }
+        ],
+        "default": null
+      },
+      {
+        "column": "datresil",
+        "type": "conditional",
+        "conditions": [
+          {
+            "check": "(duree == '01') and (finpol is null) and (datterme is not null) and (datterme < DATE_ONE_YEAR_AGO)",
+            "result_col": "datterme"
+          },
+          {
+            "check": "(finpol is not null) and (datfin is null)",
+            "result_col": "finpol"
+          }
+        ],
+        "default": null
+      }
+    ]
+  },
+  "migration_handling": {
+    "description": "AZEC migration from AZ - applied only for vision > 202009",
+    "vision_threshold": 202009,
+    "transformations": [
+      {
+        "column": "nbptf_non_migres_azec",
+        "type": "flag",
+        "condition": "typcontr == 'CPORTEFEUILLE' and rmplcant is null and gestsit is null"
+      }
+    ]
+  },
+  "capital_mapping": {
+    "description": "AZEC capital extraction from branch-specific data",
+    "mappings": [
+      {
+        "target": "lci_pe_100",
+        "smp_sre": "LCI",
+        "brch_rea": "IP0",
+        "source": "capx_100",
+        "description": "LCI Perte Exploitation 100%"
+      },
+      {
+        "target": "lci_pe_cie",
+        "smp_sre": "LCI",
+        "brch_rea": "IP0",
+        "source": "capx_cua",
+        "description": "LCI Perte Exploitation CIE%"
+      },
+      {
+        "target": "lci_dd_100",
+        "smp_sre": "LCI",
+        "brch_rea": "ID0",
+        "source": "capx_100",
+        "description": "LCI Dommages Directs 100%"
+      },
+      {
+        "target": "lci_dd_cie",
+        "smp_sre": "LCI",
+        "brch_rea": "ID0",
+        "source": "capx_cua",
+        "description": "LCI Dommages Directs CIE%"
+      },
+      {
+        "target": "smp_pe_100",
+        "smp_sre": "SMP",
+        "brch_rea": "IP0",
+        "source": "capx_100",
+        "description": "SMP Perte Exploitation 100%"
+      },
+      {
+        "target": "smp_pe_cie",
+        "smp_sre": "SMP",
+        "brch_rea": "IP0",
+        "source": "capx_cua",
+        "description": "SMP Perte Exploitation CIE%"
+      },
+      {
+        "target": "smp_dd_100",
+        "smp_sre": "SMP",
+        "brch_rea": "ID0",
+        "source": "capx_100",
+        "description": "SMP Dommages Directs 100%"
+      },
+      {
+        "target": "smp_dd_cie",
+        "smp_sre": "SMP",
+        "brch_rea": "ID0",
+        "source": "capx_cua",
+        "description": "SMP Dommages Directs CIE%"
+      }
+    ]
+  },
+  "product_list": {
+    "description": "AZEC-specific product codes for movement calculations (SAS L43: %let produit)",
+    "products": [
+      "A00",
+      "A01",
+      "AA1",
+      "AB1",
+      "AG1",
+      "AG8",
+      "AR1",
+      "ING",
+      "PG1",
+      "AA6",
+      "AG6",
+      "AR2",
+      "AU1",
+      "AA4",
+      "A03",
+      "AA3",
+      "AG3",
+      "AM3",
+      "MAI",
+      "MA0",
+      "MA1",
+      "MA2",
+      "MA3",
+      "MA4",
+      "MA5",
+      "MT0",
+      "MR0",
+      "AAC",
+      "GAV",
+      "GMC",
+      "MB1",
+      "MB2",
+      "MB3",
+      "MED",
+      "MH0",
+      "MP0",
+      "MP1",
+      "MP2",
+      "MP3",
+      "MP4",
+      "MPG",
+      "MPP",
+      "MI0",
+      "MI1",
+      "MI2",
+      "MI3",
+      "PI2"
+    ]
+  },
+  "movement_calculation": {
+    "description": "AZEC movement logic (AFN, RES, PTF) - product-specific rules",
+    "nbafn": {
+      "base_conditions": [
+        "etatpol == 'R'",
+        "produit not in ['CNR', 'DO0']",
+        "nbptf_non_migres_azec == 1"
+      ],
+      "produit_specific": {
+        "in_produit_list": "month(datafn) <= MOIS and year(datafn) == ANNEE",
+        "not_in_produit_list": "((DTDEB_AN <= effetpol <= DTFINMN) and (datafn <= DTFINMN)) OR ((effetpol < DTDEB_AN) and (DTDEB_AN <= datafn <= DTFINMN))"
+      }
+    },
+    "nbres": {
+      "base_conditions": [
+        "etatpol == 'R'",
+        "produit not in ['CNR', 'DO0']",
+        "nbptf_non_migres_azec == 1"
+      ],
+      "produit_specific": {
+        "in_produit_list": "month(datresil) <= MOIS and year(datresil) == ANNEE",
+        "not_in_produit_list": "((DTDEB_AN <= datfin <= DTFINMN) and (datresil <= DTFINMN)) OR ((datfin <= DTFINMN) and (DTDEB_AN <= datresil <= DTFINMN))"
+      }
+    },
+    "nbptf": {
+      "conditions": [
+        "nbptf_non_migres_azec == 1",
+        "effetpol <= DTFINMN",
+        "datafn <= DTFINMN",
+        "(datfin is null) OR (datfin > DTFINMN) OR (datresil > DTFINMN)",
+        "(etatpol == 'E') OR ((etatpol == 'R') and (datfin >= DTFINMN))",
+        "produit not in ['DO0', 'TRC', 'CTR', 'CNR']"
+      ]
+    }
+  },
+  "suspension_calculation": {
+    "description": "Number of days suspended during year-to-date period",
+    "column": "nbj_susp_ytd",
+    "type": "conditional",
+    "conditions": [
+      {
+        "check": "((DTDEBN <= datresil <= DTFINMN) OR (DTDEBN <= datfin <= DTFINMN))",
+        "result_expr": "min(datfin, DTFINMN, datexpir) - max(DTDEBN-1, datresil-1)"
+      },
+      {
+        "check": "(datresil >= '1900-01-01') AND (datresil <= DTDEBN) AND (datfin >= DTFINMN)",
+        "result_expr": "(DTFINMN - DTDEBN + 1)"
+      }
+    ],
+    "default": 0
+  },
+  "business_filters": {
+    "description": "Filters to apply on AZEC data - from SAS PTF_MVTS_AZEC_MACRO.sas L81-85",
+    "filters": [
+      {
+        "type": "not_in",
+        "column": "intermed",
+        "values": ["24050", "40490"],
+        "description": "Exclude specific intermediaries (SAS: Not in ('24050' '40490'))"
+      },
+      {
+        "type": "not_in",
+        "column": "police",
+        "values": ["012684940"],
+        "description": "Exclude specific policies (SAS: Not In ('012684940'))"
+      },
+      {
+        "type": "complex",
+        "expression": "~((duree == '00') & ~produit.isin(['DO0', 'TRC', 'CTR', 'CNR']))",
+        "description": "Exclude temporaries except specific products"
+      },
+      {
+        "type": "not_equals_column",
+        "column": "datfin",
+        "compare_column": "effetpol",
+        "description": "Exclude contracts without effect"
+      },
+      {
+        "type": "complex",
+        "expression": "(gestsit != 'MIGRAZ') | ((gestsit == 'MIGRAZ') & (etatpol == 'R'))",
+        "description": "Gestsit migration logic"
+      }
+    ]
+  },
+  "initialization": {
+    "description": "Initialize columns with default values",
+    "columns": {
+      "nbptf": 0,
+      "nbafn": 0,
+      "nbres": 0,
+      "nbafn_anticipe": 0,
+      "nbres_anticipe": 0,
+      "nbptf_non_migres_azec": 0,
+      "top_lta": 0,
+      "top_revisable": 0,
+      "expo_ytd": 0,
+      "expo_gli": 0,
+      "nbj_tot_ytd": 0,
+      "nbj_susp_ytd": 0,
+      "smp_100": 0,
+      "smp_cie": 0,
+      "lci_100": 0,
+      "lci_cie": 0,
+      "perte_exp": 0,
+      "risque_direct": 0,
+      "value_insured": 0,
+      "primeto": 0,
+      "cotis_100": 0,
+      "primes_ptf": 0,
+      "primes_afn": 0,
+      "primes_res": 0,
+      "mtca": 0,
+      "dt_deb_expo": null,
+      "dt_fin_expo": null,
+      "dtechanm": null
+    }
+  }
+}

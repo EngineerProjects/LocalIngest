@@ -1,0 +1,74 @@
+# Construction Data Pipeline - Configuration
+# Bronze → Silver → Gold Architecture
+
+# Pipeline metadata
+pipeline:
+  name: "Construction Data Pipeline"
+  version: "1.0"
+  description: "PTF_MVT Portfolio Movements Pipeline"
+
+# Vision configuration
+vision:
+  format: "YYYYMM"
+  validation:
+    min_year: 2000
+    max_year: 2100
+
+# Runtime parameters (overridable via CLI/environment)
+runtime:
+  # Default vision for development/testing
+  vision_: "202509"
+
+# Azure Data Lake Storage configuration
+datalake:
+  # Base path (override via environment: DATALAKE_BASE_PATH)
+  base_path: "abfss://datamart@yourdatalake.dfs.core.windows.net/construction"
+
+  # Path template for all layers : {base_path}, {layer}, {year}, {month}
+  path_template: "{base_path}/{layer}/{year}/{month}"
+
+# Output configuration (silver and gold layers)
+output:
+  # Format for all outputs (parquet for type safety)
+  format: "parquet"
+  compression: "snappy"
+  mode: "overwrite"
+
+# Component toggles
+components:
+  ptf_mvt:
+    enabled: true
+    description: "Portfolio Movements (AZ + AZEC)"
+
+  capitaux:
+    enabled: true
+    description: "Capitaux domain (SMP/LCI extraction)"
+
+  emissions:
+    enabled: false
+    description: "Emissions domain (future)"
+
+# Spark configuration
+spark:
+  app_name: "Construction_Pipeline"
+  config:
+    # Adaptive query execution
+    "spark.sql.adaptive.enabled": "true"
+    "spark.sql.adaptive.coalescePartitions.enabled": "true"
+    "spark.sql.files.maxPartitionBytes": "134217728" # 128MB
+    # Memory settings (adjust based on cluster)
+    "spark.driver.memory": "4g"
+    "spark.executor.memory": "8g"
+
+# Configuration file paths
+config_files:
+  reading_config: "config/reading_config.json"
+  # schema_definitions removed - obsolete after refactoring
+
+# Logging configuration
+logging:
+  level: "INFO" # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  date_format: "%Y-%m-%d %H:%M:%S"
+  local_dir: "logs"
+  filename_template: "pipeline_{vision}.log"

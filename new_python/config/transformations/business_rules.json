@@ -1,0 +1,372 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Business rules and filters for AZ and AZEC data processing",
+  "coassurance_config": {
+    "description": "Coassurance calculation rules",
+    "top_coass": {
+      "description": "Flag to indicate if contract is in coassurance",
+      "conditions": [
+        {
+          "col": "cdpolgp1",
+          "op": "==",
+          "value": "1",
+          "result": 1
+        }
+      ],
+      "default": 0
+    },
+    "coass": {
+      "description": "Coassurance type categorization",
+      "conditions": [
+        {
+          "col": "cdpolgp1",
+          "op": "==",
+          "value": "1",
+          "and_col": "cdcoas",
+          "and_in": [
+            "3",
+            "6"
+          ],
+          "result": "APERITION"
+        },
+        {
+          "col": "cdpolgp1",
+          "op": "==",
+          "value": "1",
+          "and_col": "cdcoas",
+          "and_in": [
+            "4",
+            "5"
+          ],
+          "result": "COASS. ACCEPTEE"
+        },
+        {
+          "col": "cdpolgp1",
+          "op": "==",
+          "value": "1",
+          "and_col": "cdcoas",
+          "and_in": [
+            "8"
+          ],
+          "result": "ACCEPTATION INTERNATIONALE"
+        },
+        {
+          "col": "cdpolgp1",
+          "op": "==",
+          "value": "1",
+          "and_col": "cdcoas",
+          "and_not_in": [
+            "3",
+            "4",
+            "5",
+            "6",
+            "8"
+          ],
+          "result": "AUTRES"
+        }
+      ],
+      "default": "SANS COASSURANCE"
+    },
+    "partcie": {
+      "description": "Company participation percentage calculation",
+      "conditions": [
+        {
+          "col": "cdpolgp1",
+          "op": "!=",
+          "value": "1",
+          "result": 1.0
+        },
+        {
+          "col": "cdpolgp1",
+          "op": "==",
+          "value": "1",
+          "result_expr": "prcdci / 100.0"
+        }
+      ],
+      "default": 1.0
+    },
+    "top_revisable": {
+      "description": "Flag to indicate if contract has revision clause",
+      "conditions": [
+        {
+          "col": "cdpolrvi",
+          "op": "==",
+          "value": "1",
+          "result": 1
+        }
+      ],
+      "default": 0
+    }
+  },
+  "business_filters": {
+    "description": "Business filters to apply on AZ and AZEC data",
+    "az": {
+      "description": "AZ (Agent + Courtage) business filters - Construction market",
+      "filters": [
+        {
+          "type": "not_equals",
+          "column": "cdri",
+          "value": "X",
+          "description": "Exclude risk indicator X"
+        },
+        {
+          "type": "not_in",
+          "column": "cdsitp",
+          "values": [
+            "4",
+            "5"
+          ],
+          "description": "Exclude policy status 4 and 5"
+        },
+        {
+          "type": "not_in",
+          "column": "noint",
+          "values": [
+            "H90061",
+            "482001",
+            "489090",
+            "102030",
+            "H90036",
+            "H90059",
+            "H99045",
+            "H99059",
+            "5B2000",
+            "446000",
+            "5R0001",
+            "446118",
+            "4F1004",
+            "4A1400",
+            "4A1500",
+            "4A1600",
+            "4A1700",
+            "4A1800",
+            "4A1900",
+            "4L1010"
+          ],
+          "description": "Exclude specific intermediaries (SAS L42-44)"
+        },
+        {
+          "type": "not_equals",
+          "column": "cdprod",
+          "value": "01073",
+          "description": "Exclude product 01073"
+        },
+        {
+          "type": "in",
+          "column": "cdnatp",
+          "values": [
+            "R",
+            "O",
+            "T",
+            "C"
+          ],
+          "description": "Valid policy natures only"
+        },
+        {
+          "type": "equals",
+          "column": "cmarch",
+          "value": "6",
+          "description": "Construction market only"
+        },
+        {
+          "type": "equals",
+          "column": "csegt",
+          "value": "2",
+          "description": "Construction segment only"
+        }
+      ]
+    },
+    "azec": {
+      "description": "AZEC business filters - from SAS PTF_MVTS_AZEC_MACRO.sas L81-85",
+      "excluded_intermediaries": [
+        "24050",
+        "40490"
+      ],
+      "excluded_policies": [
+        "012684940"
+      ],
+      "filters": [
+        {
+          "type": "not_in",
+          "column": "intermed",
+          "values_ref": "excluded_intermediaries",
+          "description": "Exclude fictitious intermediaries"
+        },
+        {
+          "type": "not_in",
+          "column": "police",
+          "values_ref": "excluded_policies",
+          "description": "Exclude fictitious policies"
+        },
+        {
+          "type": "complex",
+          "expression": "~((duree == '00') & ~produit.isin(['DO0', 'TRC', 'CTR', 'CNR']))",
+          "description": "Exclude temporaries except specific products"
+        },
+        {
+          "type": "not_equals_column",
+          "column": "datfin",
+          "compare_column": "effetpol",
+          "description": "Exclude contracts without effect"
+        },
+        {
+          "type": "complex",
+          "expression": "(gestsit != 'MIGRAZ') | ((gestsit == 'MIGRAZ') & (etatpol == 'R'))",
+          "description": "Gestsit migration logic"
+        }
+      ]
+    }
+  },
+  "az_transform_steps": {
+    "description": "Generic transformation steps for AZ processor",
+    "steps": [
+      {
+        "column": "primeto",
+        "type": "arithmetic",
+        "expression": "mtprprto * (1 - tx / 100.0)",
+        "description": "Calculate net premium"
+      },
+      {
+        "column": "top_lta",
+        "type": "flag",
+        "condition": "ctduree > 1 and tydrisi in LTA_TYPES",
+        "description": "Long term agreement flag"
+      },
+      {
+        "column": "mtca",
+        "type": "coalesce_default",
+        "source": "mtca",
+        "default": 0,
+        "description": "Coalesce CA to 0 if null"
+      },
+      {
+        "column": "mtcaf",
+        "type": "coalesce_default",
+        "source": "mtcaf",
+        "default": 0,
+        "description": "Coalesce CAF to 0 if null"
+      },
+      {
+        "column": "mtca_",
+        "type": "arithmetic",
+        "expression": "mtcaf + mtca",
+        "description": "Total CA calculation"
+      },
+      {
+        "column": "top_aop",
+        "type": "flag",
+        "condition": "opapoffr == 'O'",
+        "description": "AOP flag (Offre Apporteur)"
+      },
+      {
+        "column": "top_temp",
+        "type": "flag",
+        "condition": "cdnatp == 'T'",
+        "description": "Temporary policy flag (SAS L288-291)"
+      },
+      {
+        "column": "nbafn_anticipe",
+        "type": "flag",
+        "condition": "(dteffan > FINMOIS or dtcrepol > FINMOIS) and not (cdtypli1 == 'RE' or cdtypli2 == 'RE' or cdtypli3 == 'RE')",
+        "description": "Anticipated new business flag"
+      },
+      {
+        "column": "nbres_anticipe",
+        "type": "flag",
+        "condition": "dtresilp > FINMOIS and not (cdtypli1 == 'RP' or cdtypli2 == 'RP' or cdtypli3 == 'RP' or cdmotres == 'R' or cdcasres == '2R')",
+        "description": "Anticipated termination flag - excludes replacements and specific resolution codes (SAS L352-355)"
+      },
+      {
+        "column": "nmclt",
+        "type": "cleanup",
+        "source": "nmclt",
+        "null_values": [
+          null,
+          " "
+        ],
+        "replacement": "nmacta",
+        "description": "Client name cleanup - use actor name if client name is null"
+      },
+      {
+        "column": "prcdcie",
+        "type": "conditional",
+        "conditions": [
+          {
+            "check": "prcdcie is null or prcdcie == 0",
+            "result": 100.0
+          }
+        ],
+        "default": null,
+        "description": "Default company percentage to 100 when null/0"
+      },
+      {
+        "column": "cotis_100",
+        "type": "conditional",
+        "conditions": [
+          {
+            "check": "top_coass == 1 and cdcoas in ['4', '5']",
+            "result_expr": "(mtprprto * 100.0) / coalesce(prcdcie, 100.0)"
+          }
+        ],
+        "default_expr": "mtprprto",
+        "description": "100% premium calculation for accepted coassurance (safe division with coalesce)"
+      }
+    ]
+  },
+  "lta_types": {
+    "description": "Long term agreement risk types - SAS L243: tydris1 in (QAW, QBJ, QBK, QBB, QBM)",
+    "types": [
+      "QAW",
+      "QBJ",
+      "QBK",
+      "QBB",
+      "QBM"
+    ]
+  },
+  "constants": {
+    "description": "Business constants used across transformations",
+    "excluded_noint": [
+      "H90061",
+      "4B2001",
+      "4B0000",
+      "102030",
+      "H90036",
+      "H90059",
+      "H99045",
+      "H99059",
+      "5B2000",
+      "446000",
+      "5R0001",
+      "446118",
+      "4F1004",
+      "4A1400",
+      "4A1500",
+      "4A1600",
+      "4A1700",
+      "4A1860",
+      "4A1900",
+      "4B2001",
+      "4B9090",
+      "4F1004",
+      "4L1010"
+    ],
+    "excluded_azec_intermed": [
+      "100000",
+      "100001",
+      "100002",
+      "100003",
+      "100004",
+      "100005",
+      "100006",
+      "100007",
+      "100008",
+      "100009",
+      "100010",
+      "100011"
+    ],
+    "excluded_azec_police": [
+      "0000000000",
+      "9999999999"
+    ]
+  }
+}

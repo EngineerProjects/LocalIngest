@@ -1,0 +1,52 @@
+{
+    "_comment": "Emissions extraction configuration - Business filters and exclusions",
+    "_based_on": "EMISSIONS_RUN.sas L145-198",
+    "excluded_intermediaries": [
+        "102030",
+        "446000",
+        "446118",
+        "446218",
+        "482001",
+        "489090",
+        "500150",
+        "4A1400",
+        "4A1500",
+        "4A1600",
+        "4A1700",
+        "4A1800",
+        "4A1900",
+        "4F1004",
+        "5B2000",
+        "5R0001",
+        "H90036",
+        "H90037",
+        "H90059",
+        "H90061",
+        "H99045",
+        "H99059"
+    ],
+    "excluded_guarantees": [
+        "180",
+        "183",
+        "184",
+        "185"
+    ],
+    "excluded_categories": [
+        "792",
+        "793"
+    ],
+    "excluded_guarantee_category": "00400",
+    "product_guarantee_exclusions": [
+        {
+            "product_prefix": "19",
+            "guarantee": "220",
+            "description": "Product 19* with guarantee 220"
+        },
+        {
+            "intermediary": "567ME0",
+            "product": "00200",
+            "description": "Intermediary 567ME0 with product 00200"
+        }
+    ],
+    "excluded_product": "01073"
+}

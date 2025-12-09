@@ -1,0 +1,693 @@
+{
+    "_comment": "Bronze layer file group configurations with explicit schemas",
+    "_note": "Columns must match exactly what exists in CSV files (case-sensitive)",
+    "_naming_convention": "File naming: IPFE16=Agent(1)+Construction(6), IPFE36=Courtier(3)+Construction(6). To change market: update file patterns (e.g., IPFE17/IPFE37) and constants.MARKET_CONSTRUCTION",
+    "_cleanup_note": "Removed 14 file groups for unavailable data. See docs/MISSING_DATA_SOURCES.md to restore them when data becomes available",
+    "file_groups": {
+        "rf_fr1_prm_dtl_midcorp_m": {
+            "description": "One BI Premium Detail - Construction market emissions data",
+            "file_patterns": [
+                "rf_fr1_prm_dtl_midcorp_m_*.csv"
+            ],
+            "schema": "rf_fr1_prm_dtl_midcorp_m",
+            "read_options": {
+                "format": "csv",
+                "sep": ",",
+                "header": true,
+                "encoding": "UTF-8",
+                "dateFormat": "yyyy-MM-dd"
+            },
+            "filters": [],
+            "location_type": "monthly"
+        },
+        "ipf_az": {
+            "description": "IMS AZ files - PTF16 (Agent) and PTF36 (Courtage) - Updated to uncompressed files",
+            "file_patterns": [
+                "ipf16.csv",
+                "ipf36.csv"
+            ],
+            "schema": "ipf_az",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9",
+                "dateFormat": "yyyy-MM-dd"
+            },
+            "filters": [],
+            "location_type": "monthly"
+        },
+        "ipfm99_az": {
+            "description": "IMS AZ IPFM99 files - Product 01099 CA amounts",
+            "file_patterns": [
+                "*3SPEIPFM99_IPF_*.csv.gz",
+                "*E1SPEIPFM99_IPF_*.csv.gz"
+            ],
+            "schema": "ipfm99_az",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "monthly"
+        },
+        "ird_risk_q45": {
+            "description": "IRD Risk Q45 files",
+            "file_patterns": [
+                "ird_risk_q45_*.csv"
+            ],
+            "schema": "ird_risk_q45",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9",
+                "dateFormat": "yyyy-MM-dd"
+            },
+            "filters": [],
+            "location_type": "monthly"
+        },
+        "ird_risk_q46": {
+            "description": "IRD Risk Q46 files",
+            "file_patterns": [
+                "ird_risk_q46_*.csv"
+            ],
+            "schema": "ird_risk_q46",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9",
+                "dateFormat": "yyyy-MM-dd"
+            },
+            "filters": [],
+            "location_type": "monthly"
+        },
+        "ird_risk_qan": {
+            "description": "IRD Risk QAN files (for visions < 202210)",
+            "file_patterns": [
+                "ird_risk_qan_*.csv"
+            ],
+            "schema": "ird_risk_qan",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9",
+                "dateFormat": "yyyy-MM-dd"
+            },
+            "filters": [],
+            "location_type": "monthly"
+        },
+        "incendcu_azec": {
+            "description": "AZEC INCENDCU - NAF codes, PE/RD capitals, activity days",
+            "file_patterns": [
+                "incendcu.csv"
+            ],
+            "schema": "incendcu_azec",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "constrcu_azec": {
+            "description": "AZEC CONSTRCU - Product formulas and construction site details",
+            "file_patterns": [
+                "constrcu.csv"
+            ],
+            "schema": "constrcu_azec",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9",
+                "dateFormat": "yyyy-MM-dd"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "segmprdt_prdpfa1": {
+            "description": "SEGMPRDT PRDPFA1 - Product segmentation (Pole 1 - Agent)",
+            "file_patterns": [
+                "prdpfa1.csv"
+            ],
+            "schema": "segmprdt_prdpfa1",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "segmprdt_prdpfa3": {
+            "description": "SEGMPRDT PRDPFA3 - Product segmentation (Pole 3 - Courtage)",
+            "file_patterns": [
+                "prdpfa3.csv"
+            ],
+            "schema": "segmprdt_prdpfa3",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "table_pt_gest": {
+            "description": "Management points (versioned) - Upper_MID classification",
+            "file_patterns": [
+                "ptgst_*.csv"
+            ],
+            "schema": "table_pt_gest",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "ptgst_static": {
+            "description": "Management points (static) - REGION and P_Num reference",
+            "file_patterns": [
+                "ptgst.csv"
+            ],
+            "schema": "ptgst_static",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "cproduit": {
+            "description": "CPRODUIT - Product reference data",
+            "file_patterns": [
+                "cproduit.csv"
+            ],
+            "schema": "cproduit",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "garantcu": {
+            "description": "GARANTCU - Guarantee reference data",
+            "file_patterns": [
+                "garantcu.csv"
+            ],
+            "schema": "garantcu",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "lob": {
+            "description": "LOB - Line of Business reference",
+            "file_patterns": [
+                "lob.csv"
+            ],
+            "schema": "lob",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "prdcap": {
+            "description": "PRDCAP - Product capital reference",
+            "file_patterns": [
+                "prdcap.csv"
+            ],
+            "schema": "prdcap",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "catmin": {
+            "description": "IMPORT_CATMIN - Category minimum reference",
+            "file_patterns": [
+                "import_catmin.csv"
+            ],
+            "schema": "catmin",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "polic_cu_azec": {
+            "description": "AZEC POLIC_CU - AZEC policy master data",
+            "file_patterns": [
+                "polic_cu.csv"
+            ],
+            "schema": "polic_cu_azec",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9",
+                "dateFormat": "yyyy-MM-dd"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "capitxcu_azec": {
+            "description": "AZEC CAPITXCU - AZEC capital data (SMP/LCI)",
+            "file_patterns": [
+                "capitxcu.csv"
+            ],
+            "schema": "capitxcu_azec",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "rcentcu_azec": {
+            "description": "AZEC RCENTCU - RC Enterprise data",
+            "file_patterns": [
+                "rcentcu.csv"
+            ],
+            "schema": "rcentcu_azec",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "risteccu_azec": {
+            "description": "AZEC RISTECCU - Professional risk data",
+            "file_patterns": [
+                "risteccu.csv"
+            ],
+            "schema": "risteccu_azec",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "mulprocu_azec": {
+            "description": "AZEC MULPROCU - Multi-risk professional data",
+            "file_patterns": [
+                "mulprocu.csv"
+            ],
+            "schema": "mulprocu_azec",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "mpacu_azec": {
+            "description": "AZEC MPACU - MPA policy data",
+            "file_patterns": [
+                "mpacu.csv"
+            ],
+            "schema": "mpacu_azec",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "client1": {
+            "description": "CLIENT1 - Client account data for Agent channel",
+            "file_patterns": [
+                "clacent1.csv"
+            ],
+            "schema": "client1",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "client3": {
+            "description": "CLIENT3 - Client account data for Courtage channel",
+            "file_patterns": [
+                "clacent3.csv"
+            ],
+            "schema": "client3",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "binsee_histo_note_risque": {
+            "description": "BINSEE - Euler Hermes risk rating history",
+            "file_patterns": [
+                "histo_note_risque.csv"
+            ],
+            "schema": "binsee_histo_note_risque",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9",
+                "dateFormat": "yyyy-MM-dd"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "ipfspe_ipfm0024": {
+            "description": "IPFSPE IPFM0024 - Special product activities data",
+            "file_patterns": [
+                "*IPFM0024_*.csv"
+            ],
+            "schema": "ipfspe_ipfm0024",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "monthly"
+        },
+        "ipfspe_ipfm63": {
+            "description": "IPFSPE IPFM63 - Special product professional activities",
+            "file_patterns": [
+                "*IPFM63_*.csv"
+            ],
+            "schema": "ipfspe_ipfm63",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "monthly"
+        },
+        "ipfspe_ipfm99": {
+            "description": "IPFSPE IPFM99 - Special product generic activities",
+            "file_patterns": [
+                "*IPFM99_*.csv"
+            ],
+            "schema": "ipfspe_ipfm99",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "monthly"
+        },
+        "w6_basecli_inv": {
+            "description": "W6 BASECLI_INV - Client base cumulative data",
+            "file_patterns": [
+                "basecli_inv.csv"
+            ],
+            "schema": "w6_basecli_inv",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "segmentprdt": {
+            "description": "Product segmentation reference table (all poles)",
+            "file_patterns": [
+                "segmentprdt_*.csv"
+            ],
+            "schema": "segmentprdt",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "ref_mig_azec_vs_ims": {
+            "description": "AZEC to IMS migration reference - SAS PTF_MVTS_AZEC_MACRO.sas L94-106",
+            "file_patterns": [
+                "ref_mig_azec_vs_ims.csv"
+            ],
+            "schema": "ref_mig_azec_vs_ims",
+            "read_options": {
+                "format": "csv",
+                "sep": ",",
+                "header": true,
+                "encoding": "UTF-8"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "indices": {
+            "description": "Construction cost index table - SAS $INDICE format for capital indexation",
+            "file_patterns": [
+                "indices.csv"
+            ],
+            "schema": "indices",
+            "read_options": {
+                "format": "csv",
+                "sep": ",",
+                "header": true,
+                "encoding": "UTF-8"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "mapping_isic_const_act": {
+            "description": "ISIC mapping for construction activities - CODIFICATION_ISIC_CONSTRUCTION.sas",
+            "file_patterns": [
+                "mapping_isic_const_act_202305.csv"
+            ],
+            "schema": "mapping_isic_const_act",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "mapping_isic_const_cht": {
+            "description": "ISIC mapping for construction site destination - CODIFICATION_ISIC_CONSTRUCTION.sas",
+            "file_patterns": [
+                "mapping_isic_const_cht_202305.csv"
+            ],
+            "schema": "mapping_isic_const_cht",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "mapping_cdnaf2003_isic": {
+            "description": "NAF 2003 to ISIC code mapping",
+            "file_patterns": [
+                "mapping_cdnaf2003_isic_202305.csv"
+            ],
+            "schema": "mapping_cdnaf2003_isic",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "mapping_cdnaf2008_isic": {
+            "description": "NAF 2008 to ISIC code mapping",
+            "file_patterns": [
+                "mapping_cdnaf2008_isic_202305.csv"
+            ],
+            "schema": "mapping_cdnaf2008_isic",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "table_isic_tre_naf": {
+            "description": "ISIC reference table with hazard grades",
+            "file_patterns": [
+                "table_isic_tre_naf_202305.csv"
+            ],
+            "schema": "table_isic_tre_naf",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "ird_suivi_engagements": {
+            "description": "IRD Suivi Engagements - NAF 2008 tracking (using 202511, 202509 is empty)",
+            "file_patterns": [
+                "ird_suivi_engagements_202511.csv"
+            ],
+            "schema": "ird_suivi_engagements",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "isic_lg": {
+            "description": "ISIC Local-to-Global mapping - SAS ISIC.ISIC_LG_202306 for ISIC_CODE_GBL",
+            "file_patterns": [
+                "isic_lg_202306.csv"
+            ],
+            "schema": "isic_lg",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "do_dest": {
+            "description": "DO_DEST - Construction site destination reference - SAS DEST.DO_DEST202110",
+            "file_patterns": [
+                "do_dest_*.csv",
+                "do_dest.csv"
+            ],
+            "schema": "do_dest",
+            "read_options": {
+                "format": "csv",
+                "sep": ",",
+                "header": true,
+                "encoding": "UTF-8"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "table_segmentation_azec_mml": {
+            "description": "TABLE_SEGMENTATION_AZEC_MML - AZEC product segmentation reference",
+            "file_patterns": [
+                "table_segmentation_azec_mml.csv",
+                "segmentation_azec.csv"
+            ],
+            "schema": "table_segmentation_azec_mml",
+            "read_options": {
+                "format": "csv",
+                "sep": ",",
+                "header": true,
+                "encoding": "UTF-8"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "constrcu_azec_segment": {
+            "description": "CONSTRCU_AZEC - Construction site segment reference for type_produit_2",
+            "file_patterns": [
+                "constrcu_azec_segment.csv"
+            ],
+            "schema": "constrcu_azec_segment",
+            "read_options": {
+                "format": "csv",
+                "sep": ",",
+                "header": true,
+                "encoding": "UTF-8"
+            },
+            "filters": [],
+            "location_type": "reference"
+        }
+    },
+    "components": {
+        "ptf_mvt": {
+            "description": "Portfolio Movements domain",
+            "required_file_groups": [
+                "ipf_az",
+                "ipfm99_az",
+                "ird_risk_q45",
+                "ird_risk_q46",
+                "ird_risk_qan"
+            ]
+        },
+        "capitaux": {
+            "description": "Capitaux domain",
+            "required_file_groups": [
+                "ipf_az",
+                "capitxcu_azec",
+                "incendcu_azec",
+                "segmentprdt"
+            ]
+        },
+        "emissions": {
+            "description": "Emissions domain - One BI premium data processing",
+            "required_file_groups": [
+                "rf_fr1_prm_dtl_midcorp_m",
+                "segmentprdt"
+            ]
+        }
+    }
+}

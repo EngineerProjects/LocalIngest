@@ -1,0 +1,272 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Consolidation schema harmonization mappings - AZ and AZEC to common schema",
+
+  "az_harmonization": {
+    "description": "AZ data is already in target schema - minimal mapping needed",
+    "rename": {
+      "nopol": "nopol",
+      "noint": "noint",
+      "cdprod": "cdprod",
+      "cseg": "cseg",
+      "cssseg": "cssseg"
+    },
+    "computed": {}
+  },
+
+  "azec_harmonization": {
+    "description": "Map AZEC columns to match AZ schema for consolidation",
+    "rename": {
+      "police": "nopol",
+      "produit": "cdprod",
+      "intermed": "noint",
+      "effectrol": "dtechdm",
+      "datepin": "dtreslip",
+      "datresli": "dttramm",
+      "poidgest": "ptgst",
+      "mtca": "mtca",
+      "code_naf": "cdnaf",
+      "code_tre": "cdtre",
+      "cdcoas": "cdcoass",
+      "cmarch": "cdmach",
+      "motifres": "cdcasres",
+      "nomcli": "noclt",
+      "lidirisq": "lidirisq",
+      "effetpcl": "dttermi"
+    },
+    "computed": {
+      "nopol11b": {
+        "type": "alias",
+        "source": "police",
+        "description": "AZEC uses same field for both nopol and nopol11b"
+      },
+      "dtfeapn": {
+        "type": "alias",
+        "source": "effectrol",
+        "description": "Also used for effective date"
+      },
+      "mois_echeance": {
+        "type": "month_extract",
+        "source": "dtechamm",
+        "description": "Extract month from anniversary date"
+      },
+      "jour_echeance": {
+        "type": "day_extract",
+        "source": "dtechamm",
+        "description": "Extract day from anniversary date"
+      },
+      "type_affaire": {
+        "type": "constant",
+        "value": "0",
+        "description": "AZEC type_affaire is always 0"
+      },
+      "cdpolvit": {
+        "type": "constant",
+        "value": "",
+        "description": "Empty for AZEC"
+      },
+      "cdfactpt": {
+        "type": "constant",
+        "value": "",
+        "description": "Empty for AZEC"
+      },
+      "quarisq": {
+        "type": "constant",
+        "value": "",
+        "description": "Empty risk address fields for AZEC"
+      },
+      "nmmrisq": {
+        "type": "constant",
+        "value": ""
+      },
+      "nmrisq": {
+        "type": "constant",
+        "value": ""
+      },
+      "resrisq": {
+        "type": "constant",
+        "value": ""
+      },
+      "ruerisq": {
+        "type": "constant",
+        "value": ""
+      },
+      "posrisq": {
+        "type": "constant",
+        "value": ""
+      },
+      "vilrisq": {
+        "type": "constant",
+        "value": ""
+      },
+      "datdmch": {
+        "type": "alias",
+        "source": "datdmch",
+        "description": "Maps to DTOUCHM"
+      },
+      "datrecep": {
+        "type": "alias",
+        "source": "datrecep",
+        "description": "Maps to DTRECTRX"
+      },
+      "datfinch": {
+        "type": "alias",
+        "source": "datfinch",
+        "description": "Maps to DTRCPPR"
+      },
+      "liqualite": {
+        "type": "alias",
+        "source": "liqualite",
+        "description": "Maps to DTRISQU"
+      },
+      "actpdim": {
+        "type": "constant",
+        "value": "",
+        "description": "AZ-specific field, empty for AZEC"
+      },
+      "ctprvtry": {
+        "type": "constant",
+        "value": null,
+        "description": "AZ-specific field, null for AZEC"
+      },
+      "mtsmpr": {
+        "type": "constant",
+        "value": null,
+        "description": "AZ-specific field, null for AZEC"
+      },
+      "lbnattrv": {
+        "type": "constant",
+        "value": "",
+        "description": "AZ-specific field, empty for AZEC"
+      },
+      "nbrpt": {
+        "type": "constant",
+        "value": 0,
+        "description": "AZEC doesn't have RPT (replacement) logic"
+      },
+      "nbrpc": {
+        "type": "constant",
+        "value": 0,
+        "description": "AZEC doesn't have RPC (replacement) logic"
+      },
+      "primes_bpc": {
+        "type": "constant",
+        "value": 0,
+        "description": "AZEC doesn't have RPC primes"
+      },
+      "primes_bpt": {
+        "type": "constant",
+        "value": 0,
+        "description": "AZEC doesn't have RPT primes"
+      },
+      "mtceamp": {
+        "type": "constant",
+        "value": 0,
+        "description": "Capital field not in AZEC"
+      },
+      "mtcasst": {
+        "type": "constant",
+        "value": 0,
+        "description": "Capital field not in AZEC"
+      },
+      "mtcavnt": {
+        "type": "constant",
+        "value": 0,
+        "description": "Capital field not in AZEC"
+      }
+    }
+  },
+
+  "common_transformations": {
+    "description": "Transformations applied to both AZ and AZEC after harmonization - SAS PTF_MVTS_CONSOLIDATION_MACRO.sas",
+    "cdtre_cleanup": {
+      "description": "Remove '*' prefix from CDTRE if present",
+      "column": "cdtre",
+      "type": "regex_replace",
+      "pattern": "^\\*(.{3})",
+      "replacement": "$1"
+    },
+    "partnership_flags": {
+      "description": "Partnership and special program flags - SAS L595-600",
+      "transformations": [
+        {
+          "column": "top_partenariat",
+          "type": "flag",
+          "condition": "noint.isin(['AA6160', '4A6160', '4A6947', 'AA6956', '4A6956'])"
+        },
+        {
+          "column": "top_berlitz",
+          "type": "flag",
+          "condition": "noint.isin(['AA6160', '4A6947'])"
+        }
+      ]
+    }
+  },
+
+  "azec_specific_transformations": {
+    "description": "AZEC-specific transformations before consolidation",
+    "cdmotres_mapping": {
+      "column": "cdmotres",
+      "type": "mapping",
+      "source": "origres",
+      "mapping": {
+        "CL": "A",
+        "AP": "C",
+        "CI": "Z",
+        "": ""
+      },
+      "default": "X"
+    }
+  },
+
+  "fallback_logic": {
+    "description": "Fallback coalescing for missing columns",
+    "dtrcppr_fallback": {
+      "column": "dtrcppr",
+      "type": "coalesce",
+      "sources": ["dtrcppr", "dtreffin"]
+    }
+  },
+
+  "movement_column_mapping": {
+    "description": "Column mapping for movement calculations (AFN, RES, RPT, RPC)",
+    "az": {
+      "creation_date": "dtcrepol",
+      "effective_date": "dteffan",
+      "termination_date": "dtresilp",
+      "transfer_start": "dttraan",
+      "transfer_end": "dttraar",
+      "type_col1": "cdtypli1",
+      "type_col2": "cdtypli2",
+      "type_col3": "cdtypli3",
+      "type_date1": "dttypl11",
+      "type_date2": "dttypl12",
+      "type_date3": "dttypl13"
+    },
+    "azec": {
+      "creation_date": "poingest",
+      "effective_date": "effetpol",
+      "termination_date": "datresil",
+      "transfer_start": null,
+      "transfer_end": null,
+      "type_col1": null,
+      "type_col2": null,
+      "type_col3": null,
+      "type_date1": null,
+      "type_date2": null,
+      "type_date3": null
+    }
+  },
+
+  "exposure_column_mapping": {
+    "description": "Column mapping for exposure calculations (expo_ytd, expo_gli)",
+    "az": {
+      "creation_date": "dtcrepol",
+      "termination_date": "dtresilp"
+    },
+    "azec": {
+      "creation_date": "effetpol",
+      "termination_date": "datfin"
+    }
+  }
+}

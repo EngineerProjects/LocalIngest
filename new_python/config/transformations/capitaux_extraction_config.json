@@ -1,0 +1,83 @@
+{
+    "_comment": "Capitaux extraction configuration - Keywords for capital type identification",
+    "_based_on": "CAPITAUX_AZ_MACRO.sas L134-193",
+    "smp_100": {
+        "keywords": [
+            "SMP GLOBAL DU CONTRAT",
+            "SMP RETENU",
+            "SINISTRE MAXIMUM POSSIBLE"
+        ],
+        "exclude_keywords": []
+    },
+    "lci_100": {
+        "keywords": [
+            "LCI GLOBAL DU CONTRAT",
+            "CAPITAL REFERENCE OU LCI",
+            "LCI IRD (DOM. DIRECTS+P.EXPLOIT)",
+            "LIMITE CONTRACTUELLE INDEMNITE"
+        ],
+        "exclude_keywords": []
+    },
+    "perte_exp_100": {
+        "keywords": [
+            "PERTE EXPLOITATION (MARGE BRUTE)",
+            "PERTE D EXPLOITATION",
+            "PERTE D'EXPLOITATION",
+            "CAPITAL PERTES EXPLOITATION",
+            "CAPITAUX TOTAUX P.E.",
+            "PERTE EXPLOITATION/AUT. DOM. MAT",
+            "PERTES D'EXPLOITATION",
+            "PERTES EXPLOITATION"
+        ],
+        "exclude_keywords": []
+    },
+    "risque_direct_100": {
+        "keywords": [
+            "RISQUE DIRECT",
+            "CAPITAUX DOMMAGES DIR"
+        ],
+        "exclude_keywords": [
+            "SINIS MAX POSSIBLE RISQUE DIRECT"
+        ]
+    },
+    "limite_rc_100_par_sin": {
+        "_comment": "SAS L146-150: RC par sinistre - TOUS DOMMAGES CONFONDUS matches without (AL) or / ANN)",
+        "keywords": [
+            "DOMMAGES CORPORELS",
+            "DOMM. MAT/IMMAT CONSEC EN COURS"
+        ],
+        "exclude_keywords": []
+    },
+    "limite_rc_100_par_sin_tous_dom": {
+        "_comment": "SAS L148: TOUS DOMMAGES CONFONDUS only if NOT annual variant",
+        "keywords": [
+            "TOUS DOMMAGES CONFONDUS"
+        ],
+        "exclude_keywords": [
+            "(AL)",
+            "/ ANN)"
+        ]
+    },
+    "limite_rc_100_par_an": {
+        "_comment": "SAS L153-156: RC par an - includes (AL) and / ANN) variants",
+        "keywords": [
+            "TOUS DOMMAGES CONFONDUS (AL)",
+            "TOUS DOMMAGES CONFONDUS / ANN)",
+            "DOM MAT/IMMAT CONSEC (RC AL)",
+            "RCP TOUS DOM.CONFONDUS"
+        ],
+        "exclude_keywords": []
+    },
+    "smp_pe_100": {
+        "keywords": [
+            "LCI/SMP PERTE EXPLOITATION"
+        ],
+        "exclude_keywords": []
+    },
+    "smp_rd_100": {
+        "keywords": [
+            "SINIS MAX POSSIBLE RISQUE DIRECT"
+        ],
+        "exclude_keywords": []
+    }
+}
