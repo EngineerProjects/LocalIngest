@@ -115,8 +115,9 @@ class AZProcessor(BaseProcessor):
             df = df.withColumn(col_name, lit(0))
         
         # Initialize date columns
-        df = df.withColumn('dt_deb_expo', lit(None).cast('date'))
-        df = df.withColumn('dt_fin_expo', lit(None).cast('date'))
+        from pyspark.sql.types import DateType
+        df = df.withColumn('dt_deb_expo', lit(None).cast(DateType()))
+        df = df.withColumn('dt_fin_expo', lit(None).cast(DateType()))
         
         # Initialize other columns needed for calculations (SAS L132-133: CTDUREE = .)
         df = df.withColumn('ctduree', lit(None).cast('double'))
@@ -285,11 +286,14 @@ class AZProcessor(BaseProcessor):
         self.logger.step(12, "Data cleanup")
         
         # Reset expo dates if expo_ytd = 0 (SAS L364-367)
+        from pyspark.sql.functions import lit as spark_lit # type: ignore
+        from pyspark.sql.types import DateType # type: ignore
+        
         df = df.withColumn('dt_deb_expo',
-            when(col('expo_ytd') == 0, lit(None).cast('date')).otherwise(col('dt_deb_expo'))
+            when(col('expo_ytd') == 0, spark_lit(None).cast(DateType())).otherwise(col('dt_deb_expo'))
         )
         df = df.withColumn('dt_fin_expo',
-            when(col('expo_ytd') == 0, lit(None).cast('date')).otherwise(col('dt_fin_expo'))
+            when(col('expo_ytd') == 0, spark_lit(None).cast(DateType())).otherwise(col('dt_fin_expo'))
         )
         
         # If NMCLT is blank, use NMACTA (SAS L368-369)
