@@ -252,27 +252,32 @@ def calculate_movements(
         nbrpt_expr = when(rpt_cond, lit(1)).otherwise(lit(0))
         
         # Create temp columns to hold current nbafn/nbres/primes values
+        # CRITICAL: Materialize these BEFORE dropping the source columns
         nbafn_current = when(nbrpt_expr == 1, lit(0)).otherwise(col("nbafn"))
         nbres_current = when(nbrpc_expr == 1, lit(0)).otherwise(col("nbres"))
         primes_afn_current = when(nbrpt_expr == 1, lit(0)).otherwise(col("primes_afn"))
         primes_res_current = when(nbrpc_expr == 1, lit(0)).otherwise(col("primes_res"))
 
-        # Drop ALL columns we're about to recreate to avoid duplicates
-        # This includes both the old ones (nbafn, nbres) and the ones we're creating (nbrpc, nbrpt)
+        # Materialize temp columns with _temp suffix BEFORE dropping originals
+        df = df.withColumn("nbres_temp", nbres_current) \
+               .withColumn("nbafn_temp", nbafn_current) \
+               .withColumn("primes_res_temp", primes_res_current) \
+               .withColumn("primes_afn_temp", primes_afn_current)
+        
+        # Now drop old columns (safe because we have _temp versions)
         df = df.drop("nbres", "nbafn", "primes_res", "primes_afn", "nbrpc", "nbrpt", "primes_rpc", "primes_rpt")
         
-        # Now create all movement columns fresh (SAS L273-286: UPDATE sets NBRPC/NBRPT, then resets NBRES/NBAFN to 0)
+        # Create new movement columns (SAS L273-286: UPDATE sets NBRPC/NBRPT, then resets NBRES/NBAFN to 0)
         df = df.select(
             "*",
             nbrpc_expr.alias("nbrpc"),
             nbrpt_expr.alias("nbrpt"),
             when(nbrpc_expr == 1, col("primeto")).otherwise(lit(0)).alias("primes_rpc"),
-            when(nbrpt_expr == 1, col("primeto")).otherwise(lit(0)).alias("primes_rpt"),
-            nbres_current.alias("nbres"),
-            nbafn_current.alias("nbafn"),
-            primes_res_current.alias("primes_res"),
-            primes_afn_current.alias("primes_afn")
-        )
+            when(nbrpt_expr == 1, col("primeto")).otherwise(lit(0)).alias("primes_rpt")
+        ).withColumnRenamed("nbres_temp", "nbres") \
+         .withColumnRenamed("nbafn_temp", "nbafn") \
+         .withColumnRenamed("primes_res_temp", "primes_res") \
+         .withColumnRenamed("primes_afn_temp", "primes_afn")
     else:
         # If no type columns, ensure nbrpt/nbrpc are 0 (drop and recreate to match if branch behavior)
         df = df.drop("nbrpt", "nbrpc", "primes_rpt", "primes_rpc") \
