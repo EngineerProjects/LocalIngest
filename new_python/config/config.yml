@@ -59,6 +59,7 @@ spark:
     # Memory settings (adjust based on cluster)
     "spark.driver.memory": "4g"
     "spark.executor.memory": "8g"
+    "spark.sql.parquet.datetimeRebaseModeInWrite": "CORRECTED"
 
 # Configuration file paths
 config_files:

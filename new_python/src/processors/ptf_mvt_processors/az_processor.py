@@ -115,7 +115,7 @@ class AZProcessor(BaseProcessor):
             df = df.withColumn(col_name, lit(0))
         
         # Initialize date columns
-        from pyspark.sql.types import DateType # type: ignore
+        from pyspark.sql.types import DateType
         df = df.withColumn('dt_deb_expo', lit(None).cast(DateType()))
         df = df.withColumn('dt_fin_expo', lit(None).cast(DateType()))
         
@@ -286,8 +286,8 @@ class AZProcessor(BaseProcessor):
         self.logger.step(12, "Data cleanup")
         
         # Reset expo dates if expo_ytd = 0 (SAS L364-367)
-        from pyspark.sql.functions import lit as spark_lit # type: ignore
-        from pyspark.sql.types import DateType # type: ignore
+        from pyspark.sql.functions import lit as spark_lit
+        from pyspark.sql.types import DateType
         
         df = df.withColumn('dt_deb_expo',
             when(col('expo_ytd') == 0, spark_lit(None).cast(DateType())).otherwise(col('dt_deb_expo'))
@@ -326,34 +326,9 @@ class AZProcessor(BaseProcessor):
             df: Transformed DataFrame (lowercase columns)
             vision: Vision in YYYYMM format
         """
-        # Check for duplicate columns before writing
-        from collections import Counter
-        col_counts = Counter(df.columns)
-        duplicates = {col: count for col, count in col_counts.items() if count > 1}
-        
-        if duplicates:
-            self.logger.error(f"❌ DUPLICATE COLUMNS DETECTED: {duplicates}")
-            self.logger.error(f"Total columns: {len(df.columns)}")
-            self.logger.error(f"Unique columns: {len(set(df.columns))}")
-            raise ValueError(f"Cannot write DataFrame with duplicate columns: {list(duplicates.keys())}")
-        
-        self.logger.info(f"✓ No duplicate columns ({len(df.columns)} unique columns)")
-        
-        # Print schema for debugging
-        self.logger.info("DataFrame Schema:")
-        df.printSchema()
-        
-        # Show sample of first row to verify data
-        self.logger.info("Sample data (first row):")
-        try:
-            first_row = df.first()
-            if first_row:
-                self.logger.info(f"First row keys: {first_row.asDict().keys()}")
-        except Exception as e:
-            self.logger.warning(f"Could not fetch first row: {e}")
-        
         from utils.helpers import write_to_layer
         write_to_layer(df, self.config, 'silver', 'mvt_const_ptf', vision, self.logger)
+
 
     def _join_ipfm99(self, df: DataFrame, vision: str) -> DataFrame:
         """
