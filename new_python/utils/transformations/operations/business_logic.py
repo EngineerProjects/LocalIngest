@@ -355,20 +355,30 @@ def calculate_exposures(
     # dtfinmn = last day of current month, dtfinmm1 = last day of previous month
     dtfinmn = dates['dtfinmn']
     dtfinmm1 = dates['dtfinmm1']
+    
+    # Import to_date to convert string dates to date type
+    from pyspark.sql.functions import to_date # type: ignore
+    
+    # Convert string dates to date type to preserve date columns
+    dtfin_date = to_date(lit(dtfin), 'yyyy-MM-dd')
+    dtdeb_an_date = to_date(lit(dtdeb_an), 'yyyy-MM-dd')
+    dtdeb_mm_date = to_date(lit(dtdeb_mm), 'yyyy-MM-dd')
+    dtfinmn_date = to_date(lit(dtfinmn), 'yyyy-MM-dd')
+    dtfinmm1_date = to_date(lit(dtfinmm1), 'yyyy-MM-dd')
 
     # Calculate exposure start date
     df = df.withColumn(
         "dt_deb_expo",
-        when(col(creation_date) < lit(dtdeb_an), lit(dtdeb_an)).otherwise(col(creation_date))
+        when(col(creation_date) < dtdeb_an_date, dtdeb_an_date).otherwise(col(creation_date))
     )
 
     # Calculate exposure end date
     df = df.withColumn(
         "dt_fin_expo",
         when(
-            col(termination_date).isNotNull() & (col(termination_date) < lit(dtfin)),
+            col(termination_date).isNotNull() & (col(termination_date) < dtfin_date),
             col(termination_date)
-        ).otherwise(lit(dtfin))
+        ).otherwise(dtfin_date)
     )
 
     # Apply business filter for exposure calculation
@@ -380,8 +390,8 @@ def calculate_exposures(
         branch1 = (
             (col('cdnatp').isin(['R', 'O'])) &
             (
-                ((col('cdsitp') == '1') & (col(creation_date) <= lit(dtfinmn))) |
-                ((col('cdsitp') == '3') & (col(termination_date) > lit(dtfinmn)))
+                ((col('cdsitp') == '1') & (col(creation_date) <= dtfinmn_date)) |
+                ((col('cdsitp') == '3') & (col(termination_date) > dtfinmn_date))
             )
         )
         
@@ -392,14 +402,14 @@ def calculate_exposures(
             (col('cdnatp') != 'F') &
             (
                 # Case 1: dtcrepol <= dtfinmn and (dtresilp is null OR dtfinmn1 <= dtresilp < dtfinmn)
-                ((col(creation_date) <= lit(dtfinmn)) & 
+                ((col(creation_date) <= dtfinmn_date) & 
                  (col(termination_date).isNull() | 
-                  ((col(termination_date) >= lit(dtfinmm1)) & (col(termination_date) < lit(dtfinmn))))) |
+                  ((col(termination_date) >= dtfinmm1_date) & (col(termination_date) < dtfinmn_date)))) |
                 # Case 2: dtcrepol <= dtfinmn and dtresilp > dtfinmn
-                ((col(creation_date) <= lit(dtfinmn)) & (col(termination_date) > lit(dtfinmn))) |
+                ((col(creation_date) <= dtfinmn_date) & (col(termination_date) > dtfinmn_date)) |
                 # Case 3: dtfinmn1 < dtcrepol <= dtfinmn and dtfinmn1 <= dtresilp
-                ((col(creation_date) > lit(dtfinmm1)) & (col(creation_date) <= lit(dtfinmn)) &
-                 (col(termination_date) >= lit(dtfinmm1)))
+                ((col(creation_date) > dtfinmm1_date) & (col(creation_date) <= dtfinmn_date) &
+                 (col(termination_date) >= dtfinmm1_date))
             )
         )
         
@@ -410,20 +420,20 @@ def calculate_exposures(
         "expo_ytd",
         when(
             expo_where_cond &
-            (col("dt_deb_expo") <= lit(dtfin)) & (col("dt_fin_expo") >= lit(dtdeb_an)),
-            (datediff(least(col("dt_fin_expo"), lit(dtfin)), greatest(col("dt_deb_expo"), lit(dtdeb_an))) + 1) / 365.0
+            (col("dt_deb_expo") <= dtfin_date) & (col("dt_fin_expo") >= dtdeb_an_date),
+            (datediff(least(col("dt_fin_expo"), dtfin_date), greatest(col("dt_deb_expo"), dtdeb_an_date)) + 1) / 365.0
         ).otherwise(lit(0))
     )
 
     # Calculate expo_gli with actual month days (SAS L131: "&dtfinmn"d - "&dtfinmm1"d)
-    month_days = datediff(lit(dtfinmn), lit(dtfinmm1))
+    month_days = datediff(dtfinmn_date, dtfinmm1_date)
     
     df = df.withColumn(
         "expo_gli",
         when(
             expo_where_cond &
-            (col("dt_deb_expo") <= lit(dtfin)) & (col("dt_fin_expo") >= lit(dtdeb_mm)),
-            (datediff(least(col("dt_fin_expo"), lit(dtfin)), greatest(col("dt_deb_expo"), lit(dtdeb_mm))) + 1) / month_days
+            (col("dt_deb_expo") <= dtfin_date) & (col("dt_fin_expo") >= dtdeb_mm_date),
+            (datediff(least(col("dt_fin_expo"), dtfin_date), greatest(col("dt_deb_expo"), dtdeb_mm_date)) + 1) / month_days
         ).otherwise(lit(0))
     )
 

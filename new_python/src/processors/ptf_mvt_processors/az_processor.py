@@ -115,7 +115,7 @@ class AZProcessor(BaseProcessor):
             df = df.withColumn(col_name, lit(0))
         
         # Initialize date columns
-        from pyspark.sql.types import DateType
+        from pyspark.sql.types import DateType # type: ignore
         df = df.withColumn('dt_deb_expo', lit(None).cast(DateType()))
         df = df.withColumn('dt_fin_expo', lit(None).cast(DateType()))
         
