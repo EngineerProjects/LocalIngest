@@ -102,11 +102,11 @@ class AZECProcessor(BaseProcessor):
 
         # Step 5: Update dates and policy states
         self.logger.step(4, "Updating dates and policy states")
-        df = self._update_dates_and_states(df, dates, year_int, month_int, azec_config)
+        df = self._update_dates_and_states(df, dates, year_int, month_int)
 
         # Step 6: Calculate movements (AZEC-specific)
         self.logger.step(5, "Calculating movements")
-        df = self._calculate_movements(df, dates, year_int, month_int, azec_config)
+        df = self._calculate_movements(df, dates, year_int, month_int)
 
         # Step 7: Calculate suspension periods (SAS L118-126)
         self.logger.step(6, "Calculating suspension periods (nbj_susp_ytd)")
@@ -119,7 +119,7 @@ class AZECProcessor(BaseProcessor):
 
         # Step 9: Join capitals from CAPITXCU
         self.logger.step(8, "Joining capital data (CAPITXCU)")
-        df = self._join_capitals(df, vision, azec_config)
+        df = self._join_capitals(df, vision)
 
         # Step 10: Calculate coassurance (dictionary-driven)
         self.logger.step(9, "Calculating coassurance")
