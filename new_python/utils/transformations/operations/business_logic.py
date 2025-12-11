@@ -231,39 +231,48 @@ def calculate_movements(
             when(nbres_expr == 1, col("primeto")).otherwise(lit(0)).alias("primes_res")
         )
 
-    # RPT/RPC: Replacements (AZ only) - Optimized: consolidated into single select
+    # RPT/RPC: Replacements (AZ only) - Must reference nbafn/nbres BEFORE dropping them
     if type_col1 and type_date1:
+        # Build RPC condition (references nbres which exists from previous step)
         rpc_cond = (col("nbres") == 1) & (
             ((col(type_col1) == "RP") & (year_func(col(type_date1)) == year_func(lit(dtfin)))) |
             ((col(type_col2) == "RP") & (year_func(col(type_date2)) == year_func(lit(dtfin)))) |
             ((col(type_col3) == "RP") & (year_func(col(type_date3)) == year_func(lit(dtfin))))
         )
 
+        # Build RPT condition (references nbafn which exists from previous step)
         rpt_cond = (col("nbafn") == 1) & (
             ((col(type_col1) == "RE") & (year_func(col(type_date1)) == year_func(lit(dtfin)))) |
             ((col(type_col2) == "RE") & (year_func(col(type_date2)) == year_func(lit(dtfin)))) |
             ((col(type_col3) == "RE") & (year_func(col(type_date3)) == year_func(lit(dtfin))))
         )
 
-        # Build all expressions
+        # Build all expressions BEFORE dropping columns
         nbrpc_expr = when(rpc_cond, lit(1)).otherwise(lit(0))
         nbrpt_expr = when(rpt_cond, lit(1)).otherwise(lit(0))
-
-        # Drop columns that will be redefined to avoid ambiguous reference
-        df = df.drop("nbafn", "nbres", "primes_afn", "primes_res")
         
-        # Apply all in single select (was 8 withColumns)
+        # Create temp columns to hold current nbafn/nbres/primes values
+        nbafn_current = when(nbrpt_expr == 1, lit(0)).otherwise(col("nbafn"))
+        nbres_current = when(nbrpc_expr == 1, lit(0)).otherwise(col("nbres"))
+        primes_afn_current = when(nbrpt_expr == 1, lit(0)).otherwise(col("primes_afn"))
+        primes_res_current = when(nbrpc_expr == 1, lit(0)).otherwise(col("primes_res"))
+
+        # Now apply all in single select (SAS L273-286: UPDATE sets NBRPC/NBRPT, then resets NBRES/NBAFN to 0)
         df = df.select(
             "*",
             nbrpc_expr.alias("nbrpc"),
             nbrpt_expr.alias("nbrpt"),
             when(nbrpc_expr == 1, col("primeto")).otherwise(lit(0)).alias("primes_rpc"),
             when(nbrpt_expr == 1, col("primeto")).otherwise(lit(0)).alias("primes_rpt"),
-            when(nbrpc_expr == 1, lit(0)).otherwise(col("nbres")).alias("nbres"),
-            when(nbrpt_expr == 1, lit(0)).otherwise(col("nbafn")).alias("nbafn"),
-            when(nbrpc_expr == 1, lit(0)).otherwise(col("primes_res")).alias("primes_res"),
-            when(nbrpt_expr == 1, lit(0)).otherwise(col("primes_afn")).alias("primes_afn")
-        )
+            nbres_current.alias("nbres_new"),
+            nbafn_current.alias("nbafn_new"),
+            primes_res_current.alias("primes_res_new"),
+            primes_afn_current.alias("primes_afn_new")
+        ).drop("nbres", "nbafn", "primes_res", "primes_afn") \
+         .withColumnRenamed("nbres_new", "nbres") \
+         .withColumnRenamed("nbafn_new", "nbafn") \
+         .withColumnRenamed("primes_res_new", "primes_res") \
+         .withColumnRenamed("primes_afn_new", "primes_afn")
     else:
         # Optimized: single select instead of 4 withColumns
         df = df.select(

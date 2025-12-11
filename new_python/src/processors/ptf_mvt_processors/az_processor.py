@@ -117,6 +117,9 @@ class AZProcessor(BaseProcessor):
         # Initialize date columns
         df = df.withColumn('dt_deb_expo', lit(None).cast('date'))
         df = df.withColumn('dt_fin_expo', lit(None).cast('date'))
+        
+        # Initialize other columns needed for calculations (SAS L132-133: CTDUREE = .)
+        df = df.withColumn('ctduree', lit(None).cast('double'))
 
         # =======================================================================
         # STEP 3: Add computed columns (SAS: L60-97)
