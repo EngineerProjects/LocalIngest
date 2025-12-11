@@ -268,7 +268,7 @@ def calculate_movements(
             nbafn_current.alias("nbafn_new"),
             primes_res_current.alias("primes_res_new"),
             primes_afn_current.alias("primes_afn_new")
-        ).drop("nbres", "nbafn", "primes_res", "primes_afn", "nbrpc", "nbrpt", "primes_rpc", "primes_rpt") \
+        ).drop("nbres", "nbafn", "primes_res", "primes_afn") \
          .withColumnRenamed("nbres_new", "nbres") \
          .withColumnRenamed("nbafn_new", "nbafn") \
          .withColumnRenamed("primes_res_new", "primes_res") \
