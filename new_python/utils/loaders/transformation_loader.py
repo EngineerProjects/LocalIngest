@@ -32,8 +32,9 @@ class TransformationLoader:
                        If None, uses default location relative to this file.
         """
         if config_dir is None:
-            # Default: /home/amiche/Downloads/codes/new_python/config/transformations
-            self.config_dir = Path(__file__).parent.parent / "config"/ "transformations"
+            # Default: /home/amiche/Downloads/code/new_python/config/transformations
+            # From utils/loaders/transformation_loader.py: need 3 .parent calls
+            self.config_dir = Path(__file__).parent.parent.parent / "config" / "transformations"
         else:
             self.config_dir = Path(config_dir)
 

@@ -27,7 +27,7 @@ try:
 
     # Legacy variable names pointing to JSON configs
     AZ_COLUMN_CONFIG = _loader.get_az_config()['column_selection']
-    CAPITAL_EXTRACTION_CONFIG = _loader.get_az_config()['capital_extraction']['targets']
+    CAPITAL_EXTRACTION_CONFIG = _loader.get_az_config()['capital_extraction']
     COASSURANCE_CONFIG = _loader.get_business_rules()['coassurance_config']
     REVISION_CRITERIA_CONFIG = {'critere_revision': _loader.get_az_config()['revision_criteria']}
     BUSINESS_FILTERS_CONFIG = _loader.get_business_rules()['business_filters']

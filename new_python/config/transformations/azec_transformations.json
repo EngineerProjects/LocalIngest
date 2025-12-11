@@ -60,7 +60,7 @@
         "type": "conditional",
         "conditions": [
           {
-            "check": "(datfin > datexpir) and (etatpol in ['X', 'R'])",
+            "check": "(datfin > datexpir) & (etatpol.isin(['X', 'R']))",
             "result_col": "datterme"
           }
         ],
@@ -296,13 +296,18 @@
       {
         "type": "not_in",
         "column": "intermed",
-        "values": ["24050", "40490"],
+        "values": [
+          "24050",
+          "40490"
+        ],
         "description": "Exclude specific intermediaries (SAS: Not in ('24050' '40490'))"
       },
       {
         "type": "not_in",
         "column": "police",
-        "values": ["012684940"],
+        "values": [
+          "012684940"
+        ],
         "description": "Exclude specific policies (SAS: Not In ('012684940'))"
       },
       {

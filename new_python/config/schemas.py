@@ -701,7 +701,7 @@ SCHEMA_REGISTRY = {
     "ipfspe_ipfm99": IPFSPE_IPFM99_SCHEMA,
     
     # AZEC Reference Files (bronze/ref/)
-    "polic_cu_azec": POLIC_CU_SCHEMA,
+    "polic_cu_azec": POLIC_CU_SCHEMA,  # FIXED: Now using POLIC_CU_SCHEMA which includes DATEXPIR
     "capitxcu_azec": CAPITXCU_SCHEMA,
     "incendcu_azec": INCENDCU_SCHEMA,
     "constrcu_azec": CONSTRCU_SCHEMA,
