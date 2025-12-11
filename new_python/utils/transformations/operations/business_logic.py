@@ -231,63 +231,40 @@ def calculate_movements(
             when(nbres_expr == 1, col("primeto")).otherwise(lit(0)).alias("primes_res")
         )
 
-    # RPT/RPC: Replacements (AZ only) - Must reference nbafn/nbres BEFORE dropping them
+    # RPT/RPC: Replacements (AZ only)
+    # SAS L272-286: If policy is AFN/RES with replacement type, mark as RPT/RPC and reset AFN/RES to 0
     if type_col1 and type_date1:
-        # Build RPC condition (references nbres which exists from previous step)
+        # Build RPC condition: NBRES=1 and has RP type in current year
         rpc_cond = (col("nbres") == 1) & (
             ((col(type_col1) == "RP") & (year_func(col(type_date1)) == year_func(lit(dtfin)))) |
             ((col(type_col2) == "RP") & (year_func(col(type_date2)) == year_func(lit(dtfin)))) |
             ((col(type_col3) == "RP") & (year_func(col(type_date3)) == year_func(lit(dtfin))))
         )
 
-        # Build RPT condition (references nbafn which exists from previous step)
+        # Build RPT condition: NBAFN=1 and has RE type in current year
         rpt_cond = (col("nbafn") == 1) & (
             ((col(type_col1) == "RE") & (year_func(col(type_date1)) == year_func(lit(dtfin)))) |
             ((col(type_col2) == "RE") & (year_func(col(type_date2)) == year_func(lit(dtfin)))) |
             ((col(type_col3) == "RE") & (year_func(col(type_date3)) == year_func(lit(dtfin))))
         )
 
-        # Build all expressions BEFORE dropping columns
-        nbrpc_expr = when(rpc_cond, lit(1)).otherwise(lit(0))
-        nbrpt_expr = when(rpt_cond, lit(1)).otherwise(lit(0))
+        # Step 1: Add nbrpc and nbrpt columns (these may already exist from initialization, so use withColumn to replace)
+        df = df.withColumn("nbrpc", when(rpc_cond, lit(1)).otherwise(lit(0))) \
+               .withColumn("nbrpt", when(rpt_cond, lit(1)).otherwise(lit(0))) \
+               .withColumn("primes_rpc", when(col("nbrpc") == 1, col("primeto")).otherwise(lit(0))) \
+               .withColumn("primes_rpt", when(col("nbrpt") == 1, col("primeto")).otherwise(lit(0)))
         
-        # Create temp columns to hold current nbafn/nbres/primes values
-        # CRITICAL: Materialize these BEFORE dropping the source columns
-        nbafn_current = when(nbrpt_expr == 1, lit(0)).otherwise(col("nbafn"))
-        nbres_current = when(nbrpc_expr == 1, lit(0)).otherwise(col("nbres"))
-        primes_afn_current = when(nbrpt_expr == 1, lit(0)).otherwise(col("primes_afn"))
-        primes_res_current = when(nbrpc_expr == 1, lit(0)).otherwise(col("primes_res"))
-
-        # Materialize temp columns with _temp suffix BEFORE dropping originals
-        df = df.withColumn("nbres_temp", nbres_current) \
-               .withColumn("nbafn_temp", nbafn_current) \
-               .withColumn("primes_res_temp", primes_res_current) \
-               .withColumn("primes_afn_temp", primes_afn_current)
-        
-        # Now drop old columns (safe because we have _temp versions)
-        df = df.drop("nbres", "nbafn", "primes_res", "primes_afn", "nbrpc", "nbrpt", "primes_rpc", "primes_rpt")
-        
-        # Create new movement columns (SAS L273-286: UPDATE sets NBRPC/NBRPT, then resets NBRES/NBAFN to 0)
-        df = df.select(
-            "*",
-            nbrpc_expr.alias("nbrpc"),
-            nbrpt_expr.alias("nbrpt"),
-            when(nbrpc_expr == 1, col("primeto")).otherwise(lit(0)).alias("primes_rpc"),
-            when(nbrpt_expr == 1, col("primeto")).otherwise(lit(0)).alias("primes_rpt")
-        ).withColumnRenamed("nbres_temp", "nbres") \
-         .withColumnRenamed("nbafn_temp", "nbafn") \
-         .withColumnRenamed("primes_res_temp", "primes_res") \
-         .withColumnRenamed("primes_afn_temp", "primes_afn")
+        # Step 2: Reset nbafn/nbres to 0 if they became replacements (SAS: UPDATE sets to 0)
+        df = df.withColumn("nbafn", when(col("nbrpt") == 1, lit(0)).otherwise(col("nbafn"))) \
+               .withColumn("nbres", when(col("nbrpc") == 1, lit(0)).otherwise(col("nbres"))) \
+               .withColumn("primes_afn", when(col("nbrpt") == 1, lit(0)).otherwise(col("primes_afn"))) \
+               .withColumn("primes_res", when(col("nbrpc") == 1, lit(0)).otherwise(col("primes_res")))
     else:
-        # If no type columns, ensure nbrpt/nbrpc are 0 (drop and recreate to match if branch behavior)
-        df = df.drop("nbrpt", "nbrpc", "primes_rpt", "primes_rpc") \
-               .select(
-                    "*",
-                    lit(0).alias("nbrpt"),
-                    lit(0).alias("nbrpc"),
-                    lit(0).alias("primes_rpt"),
-                    lit(0).alias("primes_rpc")
-                )
+        # If no type columns, ensure nbrpt/nbrpc exist and are 0
+        df = df.withColumn("nbrpt", lit(0)) \
+               .withColumn("nbrpc", lit(0)) \
+               .withColumn("primes_rpt", lit(0)) \
+               .withColumn("primes_rpc", lit(0))
 
     # NBPTF: Portfolio count
     nbptf_cond = lit(False)
