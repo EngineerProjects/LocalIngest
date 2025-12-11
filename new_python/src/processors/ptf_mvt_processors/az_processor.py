@@ -390,26 +390,44 @@ class AZProcessor(BaseProcessor):
         self.logger.info("Enriching segment and product type...")
         reader = BronzeReader(self.spark, self.config)
         
-        # Use safe_multi_reference_join to replace 154 lines of duplicate code
-        df = safe_multi_reference_join(df, reader, [
-            {
-                'file_group': 'cproduit',
-                'vision': 'ref',
-                'join_keys': 'cdprod',
-                'select_columns': ['type_produit_2', 'segment2', 'segment_3'],
-                'null_columns': {
+        # Join cproduit - handle column mismatch (df has 'cdprod', cproduit has 'cprod')
+        try:
+            df_cproduit = reader.read_file_group('cproduit', 'ref')
+            if df_cproduit is not None:
+                # Select and rename to match expected columns
+                df_cproduit = df_cproduit.select(
+                    col('cprod').alias('cdprod'),  # Rename cprod to cdprod for join
+                    col('Type_Produit_2').alias('type_produit_2'),
+                    col('segment').alias('segment2'),  # Rename segment to segment2
+                    col('Segment_3').alias('segment_3')
+                )
+                df = df.join(broadcast(df_cproduit), on='cdprod', how='left')
+                self.logger.info("Successfully joined cproduit reference data")
+            else:
+                self.logger.warning("cproduit not available - adding NULL columns")
+                df = add_null_columns(df, {
                     'type_produit_2': StringType,
                     'segment2': StringType,
                     'segment_3': StringType
-                }
-            },
-            {
-                'file_group': 'table_pt_gest',
-                'vision': 'ref',
-                'join_keys': 'ptgst',
-                'select_columns': ['upper_mid'],
-                'null_columns': {'upper_mid': StringType}
-            }
-        ], logger=self.logger)
+                })
+        except Exception as e:
+            self.logger.warning(f"cproduit join failed: {e}. Adding NULL columns.")
+            df = add_null_columns(df, {
+                'type_produit_2': StringType,
+                'segment2': StringType,
+                'segment_3': StringType
+            })
+        
+        # Join table_pt_gest - this one works fine
+        df = safe_reference_join(
+            df, reader,
+            file_group='table_pt_gest',
+            vision='ref',
+            join_keys='ptgst',
+            select_columns=['upper_mid'],
+            null_columns={'upper_mid': StringType},
+            use_broadcast=True,
+            logger=self.logger
+        )
         
         return df
