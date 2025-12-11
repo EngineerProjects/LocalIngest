@@ -274,14 +274,15 @@ def calculate_movements(
          .withColumnRenamed("primes_res_new", "primes_res") \
          .withColumnRenamed("primes_afn_new", "primes_afn")
     else:
-        # Optimized: single select instead of 4 withColumns
-        df = df.select(
-            "*",
-            lit(0).alias("nbrpt"),
-            lit(0).alias("nbrpc"),
-            lit(0).alias("primes_rpt"),
-            lit(0).alias("primes_rpc")
-        )
+        # If no type columns, ensure nbrpt/nbrpc are 0 (drop and recreate to match if branch behavior)
+        df = df.drop("nbrpt", "nbrpc", "primes_rpt", "primes_rpc") \
+               .select(
+                    "*",
+                    lit(0).alias("nbrpt"),
+                    lit(0).alias("nbrpc"),
+                    lit(0).alias("primes_rpt"),
+                    lit(0).alias("primes_rpc")
+                )
 
     # NBPTF: Portfolio count
     nbptf_cond = lit(False)
