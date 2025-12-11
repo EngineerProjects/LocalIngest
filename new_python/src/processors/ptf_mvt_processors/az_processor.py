@@ -265,14 +265,14 @@ class AZProcessor(BaseProcessor):
         
         # AFN/RES anticipés (SAS L347-355)
         df = df.withColumn('nbafn_anticipe',
-            when((col('dteffan') > dates['finmois_date']) | (col('dtcrepol') > dates['finmois_date']),
+            when((col('dteffan') > lit(dates['finmois'])) | (col('dtcrepol') > lit(dates['finmois'])),
                  when(~(col('cdtypli1').isin('RE') | col('cdtypli2').isin('RE') | col('cdtypli3').isin('RE')), lit(1))
                  .otherwise(lit(0)))
             .otherwise(lit(0))
         )
         
         df = df.withColumn('nbres_anticipe',
-            when(col('dtresilp') > dates['finmois_date'],
+            when(col('dtresilp') > lit(dates['finmois']),
                  when(~((col('cdtypli1').isin('RP')) | (col('cdtypli2').isin('RP')) | 
                        (col('cdtypli3').isin('RP')) | (col('cdmotres') == 'R') | (col('cdcasres') == '2R')), lit(1))
                  .otherwise(lit(0)))
