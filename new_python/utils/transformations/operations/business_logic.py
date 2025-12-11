@@ -257,22 +257,22 @@ def calculate_movements(
         primes_afn_current = when(nbrpt_expr == 1, lit(0)).otherwise(col("primes_afn"))
         primes_res_current = when(nbrpc_expr == 1, lit(0)).otherwise(col("primes_res"))
 
-        # Now apply all in single select (SAS L273-286: UPDATE sets NBRPC/NBRPT, then resets NBRES/NBAFN to 0)
+        # Drop ALL columns we're about to recreate to avoid duplicates
+        # This includes both the old ones (nbafn, nbres) and the ones we're creating (nbrpc, nbrpt)
+        df = df.drop("nbres", "nbafn", "primes_res", "primes_afn", "nbrpc", "nbrpt", "primes_rpc", "primes_rpt")
+        
+        # Now create all movement columns fresh (SAS L273-286: UPDATE sets NBRPC/NBRPT, then resets NBRES/NBAFN to 0)
         df = df.select(
             "*",
             nbrpc_expr.alias("nbrpc"),
             nbrpt_expr.alias("nbrpt"),
             when(nbrpc_expr == 1, col("primeto")).otherwise(lit(0)).alias("primes_rpc"),
             when(nbrpt_expr == 1, col("primeto")).otherwise(lit(0)).alias("primes_rpt"),
-            nbres_current.alias("nbres_new"),
-            nbafn_current.alias("nbafn_new"),
-            primes_res_current.alias("primes_res_new"),
-            primes_afn_current.alias("primes_afn_new")
-        ).drop("nbres", "nbafn", "primes_res", "primes_afn") \
-         .withColumnRenamed("nbres_new", "nbres") \
-         .withColumnRenamed("nbafn_new", "nbafn") \
-         .withColumnRenamed("primes_res_new", "primes_res") \
-         .withColumnRenamed("primes_afn_new", "primes_afn")
+            nbres_current.alias("nbres"),
+            nbafn_current.alias("nbafn"),
+            primes_res_current.alias("primes_res"),
+            primes_afn_current.alias("primes_afn")
+        )
     else:
         # If no type columns, ensure nbrpt/nbrpc are 0 (drop and recreate to match if branch behavior)
         df = df.drop("nbrpt", "nbrpc", "primes_rpt", "primes_rpc") \
