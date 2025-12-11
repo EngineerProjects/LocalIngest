@@ -331,11 +331,22 @@ class AZProcessor(BaseProcessor):
             self.logger.error(f"❌ DUPLICATE COLUMNS DETECTED: {duplicates}")
             self.logger.error(f"Total columns: {len(df.columns)}")
             self.logger.error(f"Unique columns: {len(set(df.columns))}")
-            # List all columns for debugging
-            self.logger.debug(f"All columns: {df.columns}")
             raise ValueError(f"Cannot write DataFrame with duplicate columns: {list(duplicates.keys())}")
         
         self.logger.info(f"✓ No duplicate columns ({len(df.columns)} unique columns)")
+        
+        # Print schema for debugging
+        self.logger.info("DataFrame Schema:")
+        df.printSchema()
+        
+        # Show sample of first row to verify data
+        self.logger.info("Sample data (first row):")
+        try:
+            first_row = df.first()
+            if first_row:
+                self.logger.info(f"First row keys: {first_row.asDict().keys()}")
+        except Exception as e:
+            self.logger.warning(f"Could not fetch first row: {e}")
         
         from utils.helpers import write_to_layer
         write_to_layer(df, self.config, 'silver', 'mvt_const_ptf', vision, self.logger)
