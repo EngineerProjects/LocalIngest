@@ -17,13 +17,11 @@ from utils.loaders import get_default_loader
 from config.constants import DIRCOM, POLE, LTA_TYPES
 from utils.helpers import extract_year_month_int, compute_date_ranges
 from utils.transformations import (
-    apply_column_config,
+    apply_business_filters,
     extract_capitals,
     calculate_movements,
     calculate_exposures,
-    apply_conditional_transform,
-    apply_transformations,
-    apply_business_filters,
+    rename_columns,
 )
 from utils.processor_helpers import safe_reference_join, safe_multi_reference_join, add_null_columns
 
@@ -56,7 +54,7 @@ class AZProcessor(BaseProcessor):
 
     def transform(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Apply AZ business transformations (dictionary-driven from JSON configs).
+        Apply AZ business transformations following SAS order.
 
         Args:
             df: Input DataFrame from read() (lowercase columns)
@@ -73,82 +71,240 @@ class AZProcessor(BaseProcessor):
         az_config = loader.get_az_config()
         business_rules = loader.get_business_rules()
 
-        # Step 0: Apply business filters (SAS WHERE clause equivalent)
+        # =======================================================================
+        # STEP 0: Apply business filters FIRST (before any transformations)
+        # SAS: WHERE clause in SELECT (L135, L149)
+        # =======================================================================
         self.logger.step(0, "Applying business filters (construction market)")
-        az_filters = az_config.get('business_filters', {}).get('filters', [])
+        az_filters = business_rules.get('business_filters', {}).get('az', {}).get('filters', [])
         df = apply_business_filters(df, {'filters': az_filters}, self.logger)
 
-        # Step 1: Apply column configuration
-        self.logger.step(1, "Applying column configuration")
-        column_config = az_config['column_selection']
-        df = apply_column_config(df, column_config, vision, year_int, month_int)
+        # =======================================================================
+        # STEP 1: Rename columns (SAS: AS clauses in SELECT, L55-115)
+        # =======================================================================
+        self.logger.step(1, "Renaming columns") 
+        from utils.transformations import rename_columns
+        
+        rename_map = {
+            'posacta': 'posacta_ri',
+            'rueacta': 'rueacta_ri',
+            'cediacta': 'cediacta_ri',
+            'csegt': 'cseg',
+            'cssegt': 'cssseg',
+            'cdtpcoa': 'cdcoas',
+            'prcdcie': 'prcie',
+            'fncmaca': 'mtca'
+        }
+        df = rename_columns(df, rename_map)
 
-        # Step 2: Add DIRCOM constant
+        # =======================================================================
+        # STEP 2: Initialize columns to 0 (SAS: L106-115)
+        # =======================================================================
+        self.logger.step(2, "Initializing columns to 0")
+        
+        # Initialize numeric columns
+        for col_name in ['primeto', 'primes_ptf', 'primes_afn', 'primes_res', 
+                          'primes_rpt', 'primes_rpc', 'expo_ytd', 'expo_gli',
+                          'cotis_100', 'mtca_', 'perte_exp', 'risque_direct',
+                          'value_insured', 'smp_100', 'lci_100']:
+            df = df.withColumn(col_name, lit(0.0))
+        
+        # Initialize integer flags
+        for col_name in ['nbptf', 'nbafn', 'nbres', 'nbrpt', 'nbrpc', 'top_temp',
+                          'top_lta', 'top_aop', 'nbafn_anticipe', 'nbres_anticipe']:
+            df = df.withColumn(col_name, lit(0))
+        
+        # Initialize date columns
+        df = df.withColumn('dt_deb_expo', lit(None).cast('date'))
+        df = df.withColumn('dt_fin_expo', lit(None).cast('date'))
+
+        # =======================================================================
+        # STEP 3: Add computed columns (SAS: L60-97)
+        # =======================================================================
+        self.logger.step(3, "Adding computed columns (tx, top_coass, coass, partcie)")
+        
+        # TX: coalesce txcede to 0 (SAS L60)
+        df = df.withColumn('tx', coalesce(col('txcede'), lit(0)))
+        
+        # TOP_COASS: flag if cdpolqpl = '1' (SAS L63)
+        df = df.withColumn('top_coass', when(col('cdpolqpl') == '1', lit(1)).otherwise(lit(0)))
+        
+        # COASS: coassurance type (SAS L64-70)
+        df = df.withColumn('coass',
+            when((col('cdpolqpl') == '1') & col('cdcoas').isin('3', '6'), lit('APERITION'))
+            .when((col('cdpolqpl') == '1') & col('cdcoas').isin('4', '5'), lit('COASS. ACCEPTEE'))
+            .when((col('cdpolqpl') == '1') & (col('cdcoas') == '8'), lit('ACCEPTATION INTERNATIONALE'))
+            .when((col('cdpolqpl') == '1') & ~col('cdcoas').isin('3', '4', '5', '6', '8'), lit('AUTRES'))
+            .otherwise(lit('SANS COASSURANCE'))
+        )
+        
+        # PARTCIE: company share (SAS L71-74)
+        df = df.withColumn('partcie',
+            when(col('cdpolqpl') != '1', lit(1.0))
+            .otherwise(col('prcie') / 100.0)
+        )
+        
+        # TOP_REVISABLE: revision flag (SAS L77)
+        df = df.withColumn('top_revisable', when(col('cdpolrvi') == '1', lit(1)).otherwise(lit(0)))
+        
+        # CRITERE_REVISION: revision criteria mapping (SAS L78-96)
+        revision_config = az_config['revision_criteria']
+        revision_expr = col('cdgrev')
+        for code, label in revision_config['mapping'].items():
+            revision_expr = when(col('cdgrev') == code, lit(label)).otherwise(revision_expr)
+        df = df.withColumn('critere_revision', revision_expr)
+
+        # =======================================================================
+        # STEP 4: Add metadata columns (SAS: L128-133, L142-147)
+        # =======================================================================
+        self.logger.step(4, "Adding metadata columns (vision, dircom, cdpole)")
+        
         df = df.withColumn('dircom', lit(DIRCOM.AZ))
+        df = df.withColumn('vision', lit(vision))
+        df = df.withColumn('exevue', lit(year_int))
+        df = df.withColumn('moisvue', lit(month_int))
+        
+        # Determine CDPOLE from input file name (SAS uses different libraries PTF16 vs PTF36)
+        # Note: BronzeReader adds _source_file column for this purpose
+        if '_source_file' in df.columns:
+            df = df.withColumn(
+                'cdpole',
+                when(col('_source_file').contains('ipf16'), lit(POLE.AGENT))
+                .when(col('_source_file').contains('ipf36'), lit(POLE.COURTAGE))
+                .otherwise(lit(POLE.AGENT))
+            ).drop('_source_file')
+        else:
+            # Fallback: assume Agent if source file info missing
+            df = df.withColumn('cdpole', lit(POLE.AGENT))
 
-        # Step 3: Determine CDPOLE from source file (business logic)
-        self.logger.step(2, "Determining CDPOLE from source files")
-        df = df.withColumn(
-            'cdpole',
-            when(col('_source_file').contains('ipfe16'), lit(POLE.AGENT))
-            .when(col('_source_file').contains('ipfe36'), lit(POLE.COURTAGE))
-            .otherwise(lit(POLE.AGENT))
-        ).drop('_source_file')
-
-        # Step 3: Join IPFM99 for product 01099
-        self.logger.step(3, "Joining IPFM99 for product 01099")
+        # =======================================================================
+        # STEP 5: Join IPFM99 for product 01099 (SAS: L157-187)
+        # =======================================================================
+        self.logger.step(5, "Joining IPFM99 for product 01099")
         df = self._join_ipfm99(df, vision)
 
-        # Step 4: Extract SMP/LCI capitals (dictionary-driven)
-        self.logger.step(4, "Extracting capitals (SMP, LCI, PERTE_EXP, RISQUE_DIRECT)")
+        # =======================================================================
+        # STEP 6: Extract capitals (SAS: L195-231)
+        # =======================================================================
+        self.logger.step(6, "Extracting capitals (SMP, LCI, PERTE_EXP, RISQUE_DIRECT)")
         capital_config = az_config['capital_extraction']
-        df = extract_capitals(df, capital_config)
+        
+        # Only extract the 4 main capital types (matching SAS)
+        capital_targets = {
+            'smp_100': capital_config['smp_100'],
+            'lci_100': capital_config['lci_100'],
+            'perte_exp': capital_config['perte_exp'],
+            'risque_direct': capital_config['risque_direct']
+        }
+        df = extract_capitals(df, capital_targets)
 
-        # Step 5: Calculate movements (AFN/RES/RPT/RPC/NBPTF)
-        self.logger.step(5, "Calculating movement indicators (NBAFN, NBRES, NBRPT, NBRPC, NBPTF)")
+        # =======================================================================
+        # STEP 7: Calculate premium indicators (SAS: L238-243)
+        # =======================================================================
+        self.logger.step(7, "Calculating premium indicators")
+        
+        # PRIMETO: mtprprto * (1 - tx/100) (SAS L238-239)
+        df = df.withColumn('primeto', col('mtprprto') * (lit(1) - col('tx') / lit(100)))
+        
+        # TOP_LTA: long-term contracts (SAS L241-243)
+        df = df.withColumn('top_lta',
+            when((col('ctduree') > 1) & col('tydris1').isin(LTA_TYPES), lit(1))
+            .otherwise(lit(0))
+        )
+
+        # =======================================================================
+        # STEP 8: Calculate movements (AFN/RES/RPT/RPC/NBPTF) (SAS: L250-291)
+        # =======================================================================
+        self.logger.step(8, "Calculating movement indicators")
         movement_cols = az_config['movements']['column_mapping']
         df = calculate_movements(df, dates, year_int, movement_cols)
 
-        # Step 6: Calculate exposures (expo_ytd, expo_gli)
-        self.logger.step(6, "Calculating exposures (expo_ytd, expo_gli)")
+        # =======================================================================
+        # STEP 9: Calculate exposures (expo_ytd, expo_gli) (SAS: L298-311)
+        # =======================================================================
+        self.logger.step(9, "Calculating exposures")
         exposure_cols = az_config['exposures']['column_mapping']
         df = calculate_exposures(df, dates, year_int, exposure_cols)
 
-        # Step 7: Calculate coassurance (dictionary-driven)
-        self.logger.step(7, "Calculating coassurance indicators")
-        coassurance_config = business_rules['coassurance_config']
-        for col_name, config in coassurance_config.items():
-            df = apply_conditional_transform(df, col_name, config)
+        # =======================================================================
+        # STEP 10: Calculate cotisation and CA (SAS: L317-332)
+        # =======================================================================
+        self.logger.step(10, "Calculating cotisation 100% and CA")
+        
+        # Set PRCIE to 100 if missing (SAS L318-319)
+        df = df.withColumn('prcie', 
+            when((col('prcie').isNull()) | (col('prcie') == 0), lit(100.0))
+            .otherwise(col('prcie'))
+        )
+        
+        # Cotis_100: Technical premium at 100% (SAS L322-327)
+        df = df.withColumn('cotis_100', col('mtprprto'))
+        df = df.withColumn('cotis_100',
+            when((col('top_coass') == 1) & col('cdcoas').isin('4', '5'),
+                 col('mtprprto') * 100 / col('prcie'))
+            .otherwise(col('cotis_100'))
+        )
+        
+        # MTCA: Centralize CA in one column (SAS L330-332)
+        df = df.withColumn('mtca', coalesce(col('mtca'), lit(0)))
+        df = df.withColumn('mtcaf', coalesce(col('mtcaf'), lit(0)))
+        df = df.withColumn('mtca_', col('mtcaf') + col('mtca'))
 
-        # Step 8: Apply revision criteria mapping (dictionary-driven)
-        self.logger.step(8, "Applying revision criteria mapping")
-        revision_config = az_config['revision_criteria']
-        df = apply_transformations(df, [{
-            'type': 'mapping',
-            'column': 'critere_revision',
-            'source': revision_config['source_col'],
-            'mapping': revision_config['mapping'],
-            'default': revision_config.get('default', '')
-        }])
+        # =======================================================================
+        # STEP 11: Apply business rules (SAS: L339-355)
+        # =======================================================================
+        self.logger.step(11, "Applying business rules")
+        
+        # TOP_AOP (SAS L339-341)
+        df = df.withColumn('top_aop', 
+            when(col('opapoffr') == 'O', lit(1)).otherwise(lit(0))
+        )
+        
+        # AFN/RES anticipés (SAS L347-355)
+        df = df.withColumn('nbafn_anticipe',
+            when((col('dteffan') > dates['finmois_date']) | (col('dtcrepol') > dates['finmois_date']),
+                 when(~(col('cdtypli1').isin('RE') | col('cdtypli2').isin('RE') | col('cdtypli3').isin('RE')), lit(1))
+                 .otherwise(lit(0)))
+            .otherwise(lit(0))
+        )
+        
+        df = df.withColumn('nbres_anticipe',
+            when(col('dtresilp') > dates['finmois_date'],
+                 when(~((col('cdtypli1').isin('RP')) | (col('cdtypli2').isin('RP')) | 
+                       (col('cdtypli3').isin('RP')) | (col('cdmotres') == 'R') | (col('cdcasres') == '2R')), lit(1))
+                 .otherwise(lit(0)))
+            .otherwise(lit(0))
+        )
 
-        # Step 9: Apply remaining transformations (primeto, mtca_, top_aop, etc.)
-        self.logger.step(9, "Applying remaining transformations")
-        transform_steps = business_rules['az_transform_steps']['steps']
+        # =======================================================================
+        # STEP 12: Data cleanup (SAS: L362-370)
+        # =======================================================================
+        self.logger.step(12, "Data cleanup")
+        
+        # Reset expo dates if expo_ytd = 0 (SAS L364-367)
+        df = df.withColumn('dt_deb_expo',
+            when(col('expo_ytd') == 0, lit(None).cast('date')).otherwise(col('dt_deb_expo'))
+        )
+        df = df.withColumn('dt_fin_expo',
+            when(col('expo_ytd') == 0, lit(None).cast('date')).otherwise(col('dt_fin_expo'))
+        )
+        
+        # If NMCLT is blank, use NMACTA (SAS L368-369)
+        df = df.withColumn('nmclt',
+            when((col('nmclt').isNull()) | (col('nmclt') == ' '), col('nmacta'))
+            .otherwise(col('nmclt'))
+        )
 
-        # All simple withColumn operations (config-driven)
-        context = {
-            'LTA_TYPES': LTA_TYPES,
-            'FINMOIS': dates['finmois']
-        }
-        df = apply_transformations(df, transform_steps, context)
-
-        # Step 10: Enrich segment2, type_produit_2, upper_mid (stub with graceful fallback)
-        self.logger.step(10, "Enriching segment and product type")
+        # =======================================================================
+        # STEP 13: Enrich segmentation (SAS: L492-502)
+        # =======================================================================
+        self.logger.step(13, "Enriching segment and product type")
         df = self._enrich_segment_and_product_type(df, vision)
 
-        # Step 11: Final deduplication by nopol (SAS L505-507: NODUPKEY BY NOPOL)
-        self.logger.step(11, "Deduplicating by nopol")
-        # Order by nopol, cdsitp first to ensure consistent dedup (SAS L502)
+        # =======================================================================
+        # STEP 14: Final deduplication (SAS: L505-507)
+        # =======================================================================
+        self.logger.step(14, "Deduplicating by nopol")
         df = df.orderBy("nopol", "cdsitp").dropDuplicates(["nopol"])
 
         self.logger.info("AZ transformations completed successfully")
@@ -248,6 +404,4 @@ class AZProcessor(BaseProcessor):
             }
         ], logger=self.logger)
         
-        return df
-
         return df

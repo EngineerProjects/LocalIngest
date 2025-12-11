@@ -37,7 +37,7 @@ class BronzeReader:
             project_root = Path(__file__).parent.parent
             reading_config_path = project_root / "config" / "reading_config.json"
 
-        with open(reading_config_path, 'r', encoding='utf-8') as f:
+        with open(reading_config_path, 'r', encoding='LATIN9') as f:
             self.reading_config = json.load(f)
 
         # Import schema registry
@@ -93,10 +93,10 @@ class BronzeReader:
         read_options = group_config.get('read_options', {})
 
         # Note: Encoding fallback logic (inspired by 02_TRANSCODIFICATION_ABS.sas)
-        # PySpark CSV reader uses UTF-8 by default (read_options.encoding='UTF-8')
+        # PySpark CSV reader uses LATIN9 by default (read_options.encoding='LATIN9')
         # If encoding issues occur, Spark will handle them gracefully
         # For explicit Latin9 fallback, you would need to:
-        # 1. Try UTF-8 first
+        # 1. Try LATIN9 first
         # 2. Catch encoding errors
         # 3. Retry with charset='ISO-8859-15' (Latin9)
         # This is handled at Spark DataFrame level and is already robust
@@ -197,71 +197,30 @@ class BronzeReader:
         """
         Read file based on format with schema enforcement.
 
-        IMPORTANT: For CSV files, schemas are applied BY NAME not by position.
-        This allows selecting a subset of columns (e.g., 120 from 800) without
-        requiring strict column ordering in schema definitions.
+        For CSV/JSON: schemas are applied BY NAME, not by position.
+        This allows selecting a subset of columns (e.g., 120 from 800)
+        without requiring strict column ordering in schema definitions.
 
         Args:
             path: File path or pattern
             file_format: Format string ('csv', 'parquet', 'json', 'text')
             schema: PySpark StructType schema (optional)
-                   - For CSV: Defines column names to select + their types
-                   - Column order in schema does NOT need to match CSV order
             read_options: Read options passed directly to Spark reader
 
         Returns:
             DataFrame with schema columns selected and types enforced
-
-        Note:
-            CSV Reading Strategy:
-            1. Read ALL columns from CSV with header=True (by name)
-            2. Select only columns defined in schema (by name, any order)
-            3. Cast each column to its schema-defined type
-            
-            This prevents position-based schema misalignment issues when CSV
-            has many columns (e.g., 800) but only a subset is needed.
         """
-        # Remove 'format' from options (it's not a Spark read option)
+        # Remove 'format' from options (not a Spark read option)
         spark_options = {k: v for k, v in read_options.items() if k != 'format'}
 
-        # Read based on format
         if file_format == 'csv':
-            # CRITICAL: Read CSV by name, not by position
-            # Step 1: Read ALL columns from CSV with header (infer types initially)
-            df_all = self.spark.read.csv(path, inferSchema=True, **spark_options)
-            
-            if schema:
-                # Step 2: Select only schema-defined columns BY NAME and cast to schema types
-                # This allows flexible column ordering in schema.py
-                from pyspark.sql.functions import col
-                
-                # Build select expressions: select column by name, cast to schema type
-                select_exprs = []
-                for field in schema.fields:
-                    if field.name in df_all.columns:
-                        # Column exists: select and cast to schema type
-                        select_exprs.append(
-                            col(field.name).cast(field.dataType).alias(field.name)
-                        )
-                    # If column doesn't exist, skip it (handles optional columns)
-                
-                if select_exprs:
-                    df = df_all.select(select_exprs)
-                else:
-                    # No matching columns found - return empty dataframe with schema
-                    df = self.spark.createDataFrame([], schema)
-            else:
-                # No schema provided - return all columns with inferred types
-                df = df_all
-                
-        elif file_format == 'parquet':
-            # Parquet has embedded schema, safe to read directly
-            df = self.spark.read.parquet(path, **spark_options)
-            
-        elif file_format == 'json':
-            # JSON: same logic as CSV for consistency
-            df_all = self.spark.read.json(path, **spark_options)
-            
+            # Always read with header=True so Spark uses column names
+            df_all = (
+                self.spark.read
+                    .options(**spark_options)
+                    .csv(path, header=True, inferSchema=False)
+            )
+
             if schema:
                 from pyspark.sql.functions import col
                 select_exprs = [
@@ -272,14 +231,32 @@ class BronzeReader:
                 df = df_all.select(select_exprs) if select_exprs else self.spark.createDataFrame([], schema)
             else:
                 df = df_all
-                
+
+        elif file_format == 'parquet':
+            df = self.spark.read.options(**spark_options).parquet(path)
+
+        elif file_format == 'json':
+            df_all = self.spark.read.options(**spark_options).json(path)
+
+            if schema:
+                from pyspark.sql.functions import col
+                select_exprs = [
+                    col(field.name).cast(field.dataType).alias(field.name)
+                    for field in schema.fields
+                    if field.name in df_all.columns
+                ]
+                df = df_all.select(select_exprs) if select_exprs else self.spark.createDataFrame([], schema)
+            else:
+                df = df_all
+
         elif file_format == 'text':
-            df = self.spark.read.text(path, **spark_options)
-            
+            df = self.spark.read.options(**spark_options).text(path)
+
         else:
             raise ValueError(f"Unsupported file format: {file_format}")
 
         return df
+
 
     def _apply_read_filters(
         self,

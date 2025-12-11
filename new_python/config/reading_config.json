@@ -14,7 +14,7 @@
                 "format": "csv",
                 "sep": ",",
                 "header": true,
-                "encoding": "UTF-8",
+                "encoding": "LATIN9",
                 "dateFormat": "yyyy-MM-dd"
             },
             "filters": [],
@@ -489,7 +489,7 @@
                 "format": "csv",
                 "sep": ",",
                 "header": true,
-                "encoding": "UTF-8"
+                "encoding": "LATIN9"
             },
             "filters": [],
             "location_type": "reference"
@@ -504,7 +504,7 @@
                 "format": "csv",
                 "sep": ",",
                 "header": true,
-                "encoding": "UTF-8"
+                "encoding": "LATIN9"
             },
             "filters": [],
             "location_type": "reference"
@@ -625,7 +625,7 @@
                 "format": "csv",
                 "sep": ",",
                 "header": true,
-                "encoding": "UTF-8"
+                "encoding": "LATIN9"
             },
             "filters": [],
             "location_type": "reference"
@@ -641,7 +641,7 @@
                 "format": "csv",
                 "sep": ",",
                 "header": true,
-                "encoding": "UTF-8"
+                "encoding": "LATIN9"
             },
             "filters": [],
             "location_type": "reference"
@@ -656,7 +656,7 @@
                 "format": "csv",
                 "sep": ",",
                 "header": true,
-                "encoding": "UTF-8"
+                "encoding": "LATIN9"
             },
             "filters": [],
             "location_type": "reference"

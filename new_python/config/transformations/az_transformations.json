@@ -31,9 +31,9 @@
       "cdgecent",
       "cdmotres",
       "cdpolrvi",
-      "nopoli1",
+      "nopolli1",
       "cdcasres",
-      "dtechamm",
+      "dtechann",
       "cdfract",
       "quarisq",
       "nmrisq",
@@ -90,8 +90,8 @@
       "mtcapi12",
       "mtcapi13",
       "mtcapi14",
-      "cdpolgp1",
-      "prcdci",
+      "cdpolqpl",
+      "prcdcie",
       "cdgrev"
     ],
     "rename": {
@@ -113,7 +113,7 @@
       },
       "top_coass": {
         "type": "flag_equality",
-        "source_col": "cdpolgp1",
+        "source_col": "cdpolqpl",
         "value": "1"
       }
     },
@@ -390,30 +390,30 @@
     "column": "coass",
     "conditions": [
       {
-        "check": "cdpolgp1 == '1' and cdtpcoa in ['3', '6']",
+        "check": "cdpolqpl == '1' and cdtpcoa in ['3', '6']",
         "result": "APERITION"
       },
       {
-        "check": "cdpolgp1 == '1' and cdtpcoa in ['4', '5']",
+        "check": "cdpolqpl == '1' and cdtpcoa in ['4', '5']",
         "result": "COASS. ACCEPTEE"
       },
       {
-        "check": "cdpolgp1 == '1' and cdtpcoa == '8'",
+        "check": "cdpolqpl == '1' and cdtpcoa == '8'",
         "result": "ACCEPTATION INTERNATIONALE"
       },
       {
-        "check": "cdpolgp1 == '1' and cdtpcoa not in ['3', '4', '5', '6', '8']",
+        "check": "cdpolqpl == '1' and cdtpcoa not in ['3', '4', '5', '6', '8']",
         "result": "AUTRES"
       },
       {
-        "check": "cdpolgp1 != '1'",
+        "check": "cdpolqpl != '1'",
         "result": "SANS COASSURANCE"
       }
     ],
     "default": "SANS COASSURANCE",
     "part_cie": {
       "column": "partcie",
-      "logic": "when cdpolgp1 != '1' then 1 else prcdci / 100"
+      "logic": "when cdpolqpl != '1' then 1 else prcdcie / 100"
     }
   },
   "revision_criteria": {
