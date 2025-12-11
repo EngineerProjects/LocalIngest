@@ -586,8 +586,14 @@ def calculate_azec_suspension(df: DataFrame, dates: Dict[str, str]) -> DataFrame
     Example:
         >>> df = calculate_azec_suspension(df, dates)
     """
+    from pyspark.sql.functions import to_date  # type: ignore
+    
     dtdebn = dates['dtdebn']
     dtfinmn = dates['dtfinmn']
+
+    # Convert string dates to date literals for use in least/greatest
+    dtdebn_date = to_date(lit(dtdebn))
+    dtfinmn_date = to_date(lit(dtfinmn))
 
     # SAS Logic:
     # CASE
@@ -601,30 +607,30 @@ def calculate_azec_suspension(df: DataFrame, dates: Dict[str, str]) -> DataFrame
     # Condition 1: Suspension within the period
     cond1 = (
         (
-            (col("datresil") >= lit(dtdebn)) &
-            (col("datresil") <= lit(dtfinmn))
+            (col("datresil") >= dtdebn_date) &
+            (col("datresil") <= dtfinmn_date)
         ) |
         (
-            (col("datfin") >= lit(dtdebn)) &
-            (col("datfin") <= lit(dtfinmn))
+            (col("datfin") >= dtdebn_date) &
+            (col("datfin") <= dtfinmn_date)
         )
     )
 
     # Calculate days: min(datfin, dtfinmn, datexpir) - max(dtdebn-1, datresil-1)
     susp_days_1 = datediff(
-        least(col("datfin"), lit(dtfinmn), col("datexpir")),
-        greatest(date_sub(lit(dtdebn), 1), date_sub(col("datresil"), 1))
+        least(col("datfin"), dtfinmn_date, col("datexpir")),
+        greatest(date_sub(dtdebn_date, 1), date_sub(col("datresil"), 1))
     )
 
     # Condition 2: Suspension started before period and extends through it
     cond2 = (
         col("datresil").isNotNull() &
-        (col("datresil") <= lit(dtdebn)) &
-        (col("datfin") >= lit(dtfinmn))
+        (col("datresil") <= dtdebn_date) &
+        (col("datfin") >= dtfinmn_date)
     )
 
     # Calculate days: (dtfinmn - dtdebn + 1)
-    susp_days_2 = datediff(lit(dtfinmn), lit(dtdebn)) + 1
+    susp_days_2 = datediff(dtfinmn_date, dtdebn_date) + 1
 
     df = df.withColumn(
         "nbj_susp_ytd",
