@@ -594,6 +594,12 @@ class AZECProcessor(BaseProcessor):
             DataFrame enriched with NAF codes and capitals
         """
         reader = BronzeReader(self.spark, self.config)
+        
+        # Initialize NAF columns if not present (to avoid errors during joins)
+        if 'cdnaf' not in df.columns:
+            df = df.withColumn('cdnaf', lit(None).cast(StringType()))
+        if 'cdtre' not in df.columns:
+            df = df.withColumn('cdtre', lit(None).cast(StringType()))
 
         # 1. INCENDCU: NAF codes and PE/RD capitals
         try:
@@ -612,7 +618,7 @@ class AZECProcessor(BaseProcessor):
                 # Left join on police
                 df = df.join(df_incend_select, on='police', how='left')
 
-                # Update CDNAF and CDTRE if null
+                # Update CDNAF and CDTRE only if currently null
                 df = df.withColumn(
                     'cdnaf',
                     when(col('cdnaf').isNull() & col('cdnaf_incend').isNotNull(), col('cdnaf_incend'))
