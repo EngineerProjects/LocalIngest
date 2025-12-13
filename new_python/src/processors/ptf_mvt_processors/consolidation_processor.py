@@ -146,6 +146,10 @@ class ConsolidationProcessor(BaseProcessor):
         self.logger.step(6.3, "Adding ISIC global code mapping")
         df_consolidated = self._add_isic_global_code(df_consolidated)
         
+        # Step 6k: Add special business flags (SAS L596-600)
+        self.logger.step(6.4, "Adding special business flags")
+        df_consolidated = self._add_business_flags(df_consolidated)
+        
         # Step 7: Add placeholders for any remaining missing columns
         self.logger.step(6.9, "Adding placeholders for any remaining missing columns")
         df_consolidated = self._add_placeholders(df_consolidated)
@@ -153,6 +157,35 @@ class ConsolidationProcessor(BaseProcessor):
         self.logger.info("Consolidation completed successfully")
         
         return df_consolidated
+
+
+    def _add_business_flags(self, df: DataFrame) -> DataFrame:
+        """
+        Add special business flags for specific intermediaries.
+        
+        Based on: SAS PTF_MVTS_CONSOLIDATION_MACRO.sas L596-600
+        
+        Logic:
+        - TOP_BERLIOZ: Flag for intermediary "4A5766"
+        - TOP_PARTENARIAT: Flag for intermediaries "4A6160", "4A6947", "4A6956"
+        
+        Args:
+            df: Consolidated DataFrame
+            
+        Returns:
+            DataFrame with TOP_BERLIOZ and TOP_PARTENARIAT columns
+        """
+        # SAS L598: if NOINT="4A5766" then TOP_BERLIOZ=1;
+        df = df.withColumn('top_berlioz',
+            when(col('noint') == '4A5766', lit(1)).otherwise(lit(0))
+        )
+        
+        # SAS L599: if NOINT in ("4A6160","4A6947","4A6956") then TOP_PARTENARIAT=1;
+        df = df.withColumn('top_partenariat',
+            when(col('noint').isin(['4A6160', '4A6947', '4A6956']), lit(1)).otherwise(lit(0))
+        )
+        
+        return df
 
     def write(self, df: DataFrame, vision: str) -> None:
         """
@@ -221,19 +254,19 @@ class ConsolidationProcessor(BaseProcessor):
     IRD_JOIN_CONFIG = {
         'q46': {
             'file_group': 'ird_risk_q46',
-            'date_columns': ['dtouchm', 'dtrectrx', 'dtreffin'],
+            'date_columns': ['dtouchan', 'dtrectrx', 'dtreffin'],  # FIXED: dtouchm → dtouchan
             'text_columns': ['ctprvtrv', 'ctdeffra', 'lbnattrv', 'lbdstcsc'],
             'suffix': '_risk'
         },
         'q45': {
             'file_group': 'ird_risk_q45',
-            'date_columns': ['dtouchm', 'dtrectrx', 'dtreffin'],
+            'date_columns': ['dtouchan', 'dtrectrx', 'dtreffin'],  # FIXED: dtouchm → dtouchan
             'text_columns': ['ctprvtrv', 'ctdeffra', 'lbnattrv', 'lbdstcsc'],
             'suffix': '_risk_q45'
         },
         'qan': {
             'file_group': 'ird_risk_qan',
-            'date_columns': ['dtouchm', 'dtrcppr', 'dtreffin'],
+            'date_columns': ['dtouchan', 'dtrcppr', 'dtreffin'],  # FIXED: dtouchm → dtouchan
             'text_columns': ['ctprvtrv', 'ctdeffra', 'lbnattrv', 'lbdstcsc'],
             'suffix': '_risk'
         }
@@ -452,7 +485,7 @@ class ConsolidationProcessor(BaseProcessor):
             DataFrame with coalesced values
         """
         ird_columns = [
-            'dtouchm', 'dtrectrx', 'dtreffin',
+            'dtouchan', 'dtrectrx', 'dtreffin',  # FIXED: dtouchm → dtouchan
             'ctprvtrv', 'ctdeffra', 'lbnattrv', 'lbdstcsc'
         ]
 
