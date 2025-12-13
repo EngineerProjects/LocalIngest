@@ -97,6 +97,8 @@ def build_computed_expression(df: DataFrame, comp_config: Dict[str, Any]):
     Supported types:
       - 'coalesce_default': coalesce(col, default)
       - 'flag_equality': when(col == value, 1).otherwise(0)
+      - 'flag': when(condition_expr, 1).otherwise(0)
+      - 'arithmetic': evaluate arithmetic expression with col() replacements
       - 'constant': lit(value)
 
     Args:
@@ -121,6 +123,42 @@ def build_computed_expression(df: DataFrame, comp_config: Dict[str, Any]):
         source_col = comp_config['source_col'].lower()
         value = comp_config['value']
         return when(col(source_col) == value, lit(1)).otherwise(lit(0))
+
+    elif comp_type == 'flag':
+        # Parse condition expression
+        condition_str = comp_config['condition']
+        # Replace column names with col() calls
+        import re
+        condition_work = condition_str
+        sorted_cols = sorted(df.columns, key=len, reverse=True)
+        for c in sorted_cols:
+            pattern = rf'\b{re.escape(c)}\b'
+            condition_work = re.sub(pattern, f'col("{c}")', condition_work)
+        
+        # Replace logical operators
+        condition_work = condition_work.replace(' not in ', ' .notin ')  # Temporary
+        condition_work = condition_work.replace(' in ', ' .isin ')
+        condition_work = condition_work.replace(' .notin ', ' not in ')  # Restore
+        condition_work = condition_work.replace(' and ', ' & ')
+        condition_work = condition_work.replace(' or ', ' | ')
+        
+        # Evaluate condition
+        condition_expr = eval(condition_work)
+        return when(condition_expr, lit(1)).otherwise(lit(0))
+
+    elif comp_type == 'arithmetic':
+        # Parse arithmetic expression
+        expression_str = comp_config['expression']
+        # Replace column names with col() calls
+        import re
+        expr_work = expression_str
+        sorted_cols = sorted(df.columns, key=len, reverse=True)
+        for c in sorted_cols:
+            pattern = rf'\b{re.escape(c)}\b'
+            expr_work = re.sub(pattern, f'col("{c}")', expr_work)
+        
+        # Evaluate expression
+        return eval(expr_work)
 
     elif comp_type == 'constant':
         return lit(comp_config['value'])
