@@ -41,9 +41,16 @@
     "rename": {},
     "computed": {
       "partcie": {
-        "type": "coalesce_default",
-        "source_col": "partbrut",
-        "default": 1.0
+        "type": "arithmetic",
+        "expression": "partbrut / 100.0"
+      },
+      "top_lta": {
+        "type": "flag",
+        "condition": "duree not in ['00', '01', '', ' ']"
+      },
+      "top_revisable": {
+        "type": "flag",
+        "condition": "indregul == 'O'"
       }
     },
     "metadata": {

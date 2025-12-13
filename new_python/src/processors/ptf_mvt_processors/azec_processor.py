@@ -117,17 +117,38 @@ class AZECProcessor(BaseProcessor):
         self.logger.step(7, "Calculating exposures")
         df = self._calculate_exposures(df, dates)
 
-        # Step 9: Join capitals from CAPITXCU
+        # Step 10: Join capitals from CAPITXCU
         self.logger.step(8, "Joining capital data (CAPITXCU)")
         df = self._join_capitals(df, vision)
 
-        # Step 10: Calculate coassurance (dictionary-driven)
-        self.logger.step(9, "Calculating coassurance")
-        coassurance_config = business_rules['coassurance_config']
-        # Skip non-dict entries like 'description'
-        for col_name, config in coassurance_config.items():
-            if isinstance(config, dict) and 'conditions' in config:
-                df = apply_conditional_transform(df, col_name, config)
+        # Step 10.5: Calculate AZEC coassurance (uses CODECOAS, not cdpolgp1 like AZ)
+        # Based on SAS PTF_MVTS_AZEC_MACRO.sas L232-247
+        self.logger.step(9, "Calculating AZEC coassurance")
+        
+        # COASS: Coassurance type (SAS L232-238)
+        df = df.withColumn('coass',
+            when(col('codecoas') == '0', lit('SANS COASSURANCE'))
+            .when(col('codecoas') == 'A', lit('APERITION'))
+            .when(col('codecoas') == 'C', lit('COASS. ACCEPTEE'))
+            .when((col('typcontr') == 'A') & (col('codecoas') == 'R'), lit('REASS. ACCEPTEE'))
+            .otherwise(lit('AUTRES'))
+        )
+        
+        # TOP_COASS: Binary flag (SAS L247)
+        df = df.withColumn('top_coass',
+            when(col('codecoas') == '0', lit(0)).otherwise(lit(1))
+        )
+        
+        # CDNATP: Reprocessing logic (SAS L240-245)
+        df = df.withColumn('cdnatp',
+            when((col('duree') == '00') & col('produit').isin(['CNR', 'CTR', 'DO0']), lit('C'))
+            .when((col('duree') == '00') & col('produit').isin(['TRC']), lit('T'))
+            .when(col('duree').isin(['01', '02', '03']), lit('R'))
+            .otherwise(lit(''))
+        )
+        
+        # TYPE_AFFAIRE: Alias for TYPCONTR (SAS L248)
+        df = df.withColumn('type_affaire', col('typcontr'))
 
         # Step 11: NAF code enrichment from INCENDCU, MPACU, RCENTCU, RISTECCU
         self.logger.step(10, "Enriching NAF codes and PE/RD capitals (INCENDCU)")
@@ -148,7 +169,12 @@ class AZECProcessor(BaseProcessor):
         # Step 14: Calculate primes (optimized: single select instead of 5 withColumns)
         self.logger.step(11, "Calculating primes")
         primeto_expr = col("prime") * col("partcie")
-        primecua_expr = (col("prime") * col("partbrut") / 100.0) + col("cpcua")  # ADDED: PRIMECUA calculation
+        primecua_expr = (col("prime") * col("partbrut") / 100.0) + col("cpcua")  # SAS L217
+        
+        # Cotis_100: SAS L229 - conditional logic
+        # CASE WHEN PARTBRUT = 0 THEN PRIME ELSE (PRIME + (CPCUA/PARTCIE)) END
+        cotis_100_expr = when(col("partbrut") == 0, col("prime")) \
+                        .otherwise(col("prime") + (col("cpcua") / col("partcie")))
 
         # FIXED: Add CSSSEG filtering for PRIMES_AFN and PRIMES_RES
         cssseg_filter = (col("cssseg") != "5") if "cssseg" in df.columns else lit(True)
@@ -156,11 +182,11 @@ class AZECProcessor(BaseProcessor):
         df = df.select(
             "*",
             primeto_expr.alias("primeto"),
-            primecua_expr.alias("primecua"),  # ADDED: PRIMECUA column
-            col("prime").alias("cotis_100"),
+            primecua_expr.alias("primecua"),  # SAS L217
+            cotis_100_expr.alias("cotis_100"),  # SAS L229 - FIXED
             when(col("nbptf") == 1, primeto_expr).otherwise(lit(0)).alias("primes_ptf"),
-            when((col("nbafn") == 1) & cssseg_filter, primecua_expr).otherwise(lit(0)).alias("primes_afn"),  # FIXED: Added CSSSEG filter and use primecua_expr
-            when((col("nbres") == 1) & cssseg_filter, primecua_expr).otherwise(lit(0)).alias("primes_res")   # FIXED: Added CSSSEG filter and use primecua_expr
+            when((col("nbafn") == 1) & cssseg_filter, primecua_expr).otherwise(lit(0)).alias("primes_afn"),  # SAS L223
+            when((col("nbres") == 1) & cssseg_filter, primecua_expr).otherwise(lit(0)).alias("primes_res")   # SAS L224
         )
 
         # Step 15: NBRES adjustments (AZEC-specific)
