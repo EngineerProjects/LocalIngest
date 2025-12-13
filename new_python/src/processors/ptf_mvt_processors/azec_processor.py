@@ -597,11 +597,11 @@ class AZECProcessor(BaseProcessor):
         
         # Initialize ALL enrichment columns upfront to avoid unresolved column errors
         enrichment_cols = {
-            'cdnaf': StringType(),
-            'cdtre': StringType(),
-            'perte_exp': DoubleType(),
-            'risque_direct': DoubleType(),
-            'nbj_acti': IntegerType()
+            'cdnaf': StringType,  # FIXED: Class not instance
+            'cdtre': StringType,
+            'perte_exp': DoubleType,
+            'risque_direct': DoubleType,
+            'nbj_acti': IntegerType
         }
         
         from utils.processor_helpers import add_null_columns
