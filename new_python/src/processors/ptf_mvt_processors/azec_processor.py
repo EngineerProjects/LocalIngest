@@ -538,10 +538,11 @@ class AZECProcessor(BaseProcessor):
             
             if df_ptgst is not None:
                 # Select needed columns and prepare for join
+                # Note: BronzeReader lowercases all columns
                 df_ptgst_select = df_ptgst.select(
                     col("ptgst"),
                     col("region"),
-                    col("P_Num").alias("p_num")  # FIXED: P_Num in source (case-sensitive)
+                    col("p_num") if "p_num" in df_ptgst.columns else lit(None).cast(StringType()).alias("p_num")
                 ).dropDuplicates(["ptgst"])
                 
                 # Left join on poingest = ptgst
@@ -601,11 +602,11 @@ class AZECProcessor(BaseProcessor):
                 # Select needed columns
                 df_incend_select = df_incend.select(
                     'police',
-                    col('cod_naf').alias('cdnaf_incend'),  # FIXED: cod_naf in source
-                    col('cod_tre').alias('cdtre_incend'),  # FIXED: cod_tre in source
-                    col('perte_exp').alias('perte_exp_incend'),
-                    col('risque_direct').alias('risque_direct_incend'),
-                    col('nbj_acti').alias('nbj_acti')  # Activity days
+                    col('cod_naf').alias('cdnaf_incend'),
+                    col('cod_tre').alias('cdtre_incend'),
+                    col('mt_baspe').alias('perte_exp_incend'),  # FIXED: mt_baspe in source
+                    col('mt_basdi').alias('risque_direct_incend'),  # FIXED: mt_basdi in source
+                    col('nbj_acti').alias('nbj_acti') if 'nbj_acti' in df_incend.columns else lit(None).cast(IntegerType()).alias('nbj_acti')
                 )
 
                 # Left join on police
@@ -800,7 +801,7 @@ class AZECProcessor(BaseProcessor):
             if df_mulprocu is not None and df_mulprocu.count() > 0:
                 # Select CA column
                 # Aggregate CHIFFAFF to get MTCA (SAS L340: SUM(CHIFFAFF) AS MTCA)
-                from pyspark.sql.functions import sum as spark_sum
+                from pyspark.sql.functions import sum as spark_sum # type: ignore
                 df_mulprocu_agg = df_mulprocu.groupBy('police').agg(
                     spark_sum('chiffaff').alias('mtca_mulpro')
                 )
