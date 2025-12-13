@@ -319,9 +319,9 @@ def load_index_table(
         logger.info("Loading construction cost index table")
 
     try:
-        from src.reader import DataLakeReader
+        from src.reader import BronzeReader
 
-        reader = DataLakeReader(spark, config, logger)
+        reader = BronzeReader(spark, config)
 
         # Try to load index table from bronze/ref/
         # The exact file name should be configured in reading_config.json

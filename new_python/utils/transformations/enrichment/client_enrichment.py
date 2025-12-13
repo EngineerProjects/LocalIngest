@@ -37,9 +37,9 @@ def join_client_data(
     Returns:
         DataFrame with client data enriched
     """
-    from src.reader import DataLakeReader
+    from src.reader import BronzeReader
 
-    reader = DataLakeReader(spark, config, logger)
+    reader = BronzeReader(spark, config)
     year, month = vision[:4], vision[4:6]
     dtfin = f"{year}-{month}-01"  # Simplified - should use last day of month
 

@@ -149,9 +149,9 @@ def join_do_dest_table(
     Returns:
         DataFrame with DO_DEST data joined
     """
-    from src.reader import DataLakeReader
+    from src.reader import BronzeReader
 
-    reader = DataLakeReader(spark, config, logger)
+    reader = BronzeReader(spark, config)
 
     if logger:
         logger.info("Joining DO_DEST reference table")

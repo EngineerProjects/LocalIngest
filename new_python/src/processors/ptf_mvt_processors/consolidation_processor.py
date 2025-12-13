@@ -252,19 +252,19 @@ class ConsolidationProcessor(BaseProcessor):
         'q46': {
             'file_group': 'ird_risk_q46',
             'date_columns': ['dtouchan', 'dtrectrx', 'dtreffin'],
-            'text_columns': ['ctprvtrv', 'ctdeffra', 'lbnattrv', 'lbdstcsc'],
+            'text_columns': ['ctprvtrv', 'ctdeftra', 'lbnattrv', 'lbdstcsc'],  # FIXED: ctdeffra → ctdeftra
             'suffix': '_risk'  # Same suffix for all (SAS pattern)
         },
         'q45': {
             'file_group': 'ird_risk_q45',
             'date_columns': ['dtouchan', 'dtrectrx', 'dtreffin'],
-            'text_columns': ['ctprvtrv', 'ctdeffra', 'lbnattrv', 'lbdstcsc'],
+            'text_columns': ['ctprvtrv', 'ctdeftra', 'lbnattrv', 'lbdstcsc'],  # FIXED: ctdeffra → ctdeftra
             'suffix': '_risk'  # Same suffix (dropped before Q45 join)
         },
         'qan': {
             'file_group': 'ird_risk_qan',
             'date_columns': ['dtouchan', 'dtrcppr'],  # QAN uses dtrcppr not dtrectrx
-            'text_columns': ['ctprvtrv', 'ctdeffra', 'lbnattrv', 'lbdstcsc'],
+            'text_columns': ['ctprvtrv', 'ctdeftra', 'lbnattrv', 'lbdstcsc'],  # FIXED: ctdeffra → ctdeftra
             'suffix': '_risk'  # Same suffix (dropped before QAN join)
         }
     }
@@ -538,24 +538,23 @@ class ConsolidationProcessor(BaseProcessor):
             df = df.join(broadcast(df_ird_select), on='nopol', how='left')
             
             # 3. COALESCE immediately (SAS L178-188, L214-224, L249-258)
-            cols_to_drop = []
-            
+            # CRITICAL: Use withColumn to REPLACE existing columns, not create new ones
             for col_name in cfg['date_columns'] + cfg['text_columns']:
                 risk_col = f"{col_name}_risk"
                 if risk_col in df.columns:
                     # Special case: DTREFFIN assignment for Q46 (SAS L186)
                     if col_name == 'dtreffin' and source == 'q46':
                         df = df.withColumn('dtreffin', col(risk_col))
-                    # Standard coalesce for other columns
+                    # Standard coalesce: replace main column
                     else:
                         df = df.withColumn(col_name,
                             when(col(col_name).isNull(), col(risk_col)).otherwise(col(col_name)))
-                    
-                    cols_to_drop.append(risk_col)
             
-            # 4. DROP immediately (SAS L187, L223, L257)
-            if cols_to_drop:
-                df = df.drop(*cols_to_drop)
+            # 4. DROP _risk columns immediately (SAS L187, L223, L257)
+            risk_cols_to_drop = [f"{c}_risk" for c in cfg['date_columns'] + cfg['text_columns']]
+            risk_cols_existing = [c for c in risk_cols_to_drop if c in df.columns]
+            if risk_cols_existing:
+                df = df.drop(*risk_cols_existing)
             
             self.logger.debug(f"IRD {source.upper()}: Joined and coalesced successfully")
             

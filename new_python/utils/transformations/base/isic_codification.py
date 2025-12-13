@@ -364,9 +364,9 @@ def join_isic_reference_tables(
     Returns:
         DataFrame with all ISIC reference data joined
     """
-    from src.reader import DataLakeReader
+    from src.reader import BronzeReader
 
-    reader = DataLakeReader(spark, config, logger)
+    reader = BronzeReader(spark, config)
     year, month = vision[:4], vision[4:6]
 
     if logger:
