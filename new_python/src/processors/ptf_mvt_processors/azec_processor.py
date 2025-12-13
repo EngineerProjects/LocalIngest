@@ -124,8 +124,10 @@ class AZECProcessor(BaseProcessor):
         # Step 10: Calculate coassurance (dictionary-driven)
         self.logger.step(9, "Calculating coassurance")
         coassurance_config = business_rules['coassurance_config']
+        # Skip non-dict entries like 'description'
         for col_name, config in coassurance_config.items():
-            df = apply_conditional_transform(df, col_name, config)
+            if isinstance(config, dict) and 'conditions' in config:
+                df = apply_conditional_transform(df, col_name, config)
 
         # Step 11: NAF code enrichment from INCENDCU, MPACU, RCENTCU, RISTECCU
         self.logger.step(10, "Enriching NAF codes and PE/RD capitals (INCENDCU)")
@@ -437,7 +439,7 @@ class AZECProcessor(BaseProcessor):
         Based on: PTF_MVTS_AZEC_MACRO.sas L259:
         LEFT JOIN REF.TABLE_SEGMENTATION_AZEC_MML t2 ON (t1.PRODUIT = t2.PRODUIT)
         """
-        from pyspark.sql.functions import lit as f_lit
+        from pyspark.sql.functions import lit as f_lit # type: ignore
         
         # Try to use TABLE_SEGMENTATION_AZEC_MML reference first
         try:
@@ -462,7 +464,7 @@ class AZECProcessor(BaseProcessor):
         
         # Fallback: Use hardcoded segmentation
         from config.reference_data.azec_segmentation import AZEC_PRODUCTS_SEGMENTATION
-        from pyspark.sql.functions import create_map
+        from pyspark.sql.functions import create_map # type: ignore
         
         # Create mapping dictionary for broadcast
         mapping_pairs = []
