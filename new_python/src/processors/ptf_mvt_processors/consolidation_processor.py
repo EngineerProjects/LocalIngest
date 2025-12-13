@@ -9,7 +9,7 @@ Uses dictionary-driven configuration and SilverReader.
 
 from pyspark.sql import DataFrame # type: ignore
 from pyspark.sql.functions import col, when, lit, coalesce, upper, broadcast # type: ignore
-from pyspark.sql.types import StringType # type: ignore
+from pyspark.sql.types import StringType, DateType, DoubleType # type: ignore
 
 from src.processors.base_processor import BaseProcessor
 from src.reader import SilverReader, BronzeReader
@@ -527,25 +527,59 @@ class ConsolidationProcessor(BaseProcessor):
 
     def _apply_fallback_logic(self, df: DataFrame) -> DataFrame:
         """
-        Apply fallback logic for missing values.
-
-        Fallbacks:
-        - DTRCPPR: Use DTREFFIN if missing
-
+        Apply fallback logic for missing dates.
+        
+        Based on: SAS PTF_MVTS_CONSOLIDATION_MACRO.sas L373-379
+        
+        Logic:
+        - If DTRCPPR is missing and DTREFFIN exists, use DTREFFIN for DTRCPPR
+        
         Args:
-            df: Consolidated DataFrame
-
+            df: DataFrame with IRD columns
+            
         Returns:
-            DataFrame with fallback values applied
+            DataFrame with fallback applied
         """
-        # DTRCPPR fallback: use DTREFFIN if missing
         if 'dtrcppr' in df.columns and 'dtreffin' in df.columns:
             df = df.withColumn(
                 'dtrcppr',
                 when(col('dtrcppr').isNull() & col('dtreffin').isNotNull(), col('dtreffin'))
                 .otherwise(col('dtrcppr'))
             )
+        
+        return df
 
+    def _enrich_ird_risk(self, df: DataFrame, vision: str) -> DataFrame:
+        """
+        Enrich with IRD risk data from Q46, Q45, and QAN.
+        
+        Based on: SAS PTF_MVTS_CONSOLIDATION_MACRO.sas L145-362
+        
+        Args:
+            df: Consolidated DataFrame
+            vision: Vision in YYYYMM format
+            
+        Returns:
+            DataFrame enriched with IRD risk data
+        """
+        # Initialize dtreffin column upfront to avoid unresolved column errors
+        # DTREFFIN does NOT exist in AZ/AZEC - comes only from IRD joins (SAS L186)
+        # This is a Spark workaround: SAS does implicit NULL, Spark needs explicit column
+        if 'dtreffin' not in df.columns:
+            from utils.processor_helpers import add_null_columns
+            df = add_null_columns(df, {'dtreffin': DateType})
+        
+        reader = BronzeReader(self.spark, self.config)
+        
+        # Join IRD Q46, Q45, and QAN data using generic method
+        for config_key in ['q46', 'q45', 'qan']:
+            try:
+                df = self._join_ird_risk(df, vision, reader, config_key)
+                self.logger.debug(f"IRD {config_key.upper()} enrichment attempted")
+            except Exception as e:
+                self.logger.warning(f"IRD {config_key.upper()} enrichment failed: {e}")
+        
+        self.logger.info("IRD risk data enrichment completed")
         return df
 
     def _enrich_client_data(self, df: DataFrame, vision: str) -> DataFrame:
