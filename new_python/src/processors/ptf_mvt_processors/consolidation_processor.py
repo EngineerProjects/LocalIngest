@@ -109,10 +109,6 @@ class ConsolidationProcessor(BaseProcessor):
         self.logger.step(5.5, "Enriching with IRD risk data")
         df_consolidated = self._enrich_ird_risk(df_consolidated, vision)
 
-        # Step 6b: Apply IRD coalesce logic
-        self.logger.step(5.5, "Applying IRD coalesce logic")
-        df_consolidated = self._apply_ird_coalesce(df_consolidated)
-
         # Step 6c: Apply fallback logic (DTRCPPR)
         self.logger.step(5.7, "Applying fallback logic")
         df_consolidated = self._apply_fallback_logic(df_consolidated)
@@ -250,25 +246,26 @@ class ConsolidationProcessor(BaseProcessor):
 
         return df
 
-    # IRD join configuration (consolidates 3 methods into 1)
+    # IRD join configuration - SEQUENTIAL processing (SAS L154-258)
+    # All sources use SAME suffix '_risk' but are joined sequentially with immediate drops
     IRD_JOIN_CONFIG = {
         'q46': {
             'file_group': 'ird_risk_q46',
-            'date_columns': ['dtouchan', 'dtrectrx', 'dtreffin'],  # FIXED: dtouchm → dtouchan
+            'date_columns': ['dtouchan', 'dtrectrx', 'dtreffin'],
             'text_columns': ['ctprvtrv', 'ctdeffra', 'lbnattrv', 'lbdstcsc'],
-            'suffix': '_risk'
+            'suffix': '_risk'  # Same suffix for all (SAS pattern)
         },
         'q45': {
             'file_group': 'ird_risk_q45',
-            'date_columns': ['dtouchan', 'dtrectrx', 'dtreffin'],  # FIXED: dtouchm → dtouchan
+            'date_columns': ['dtouchan', 'dtrectrx', 'dtreffin'],
             'text_columns': ['ctprvtrv', 'ctdeffra', 'lbnattrv', 'lbdstcsc'],
-            'suffix': '_risk_q45'
+            'suffix': '_risk'  # Same suffix (dropped before Q45 join)
         },
         'qan': {
             'file_group': 'ird_risk_qan',
-            'date_columns': ['dtouchan', 'dtrcppr', 'dtreffin'],  # FIXED: dtouchm → dtouchan
+            'date_columns': ['dtouchan', 'dtrcppr'],  # QAN uses dtrcppr not dtrectrx
             'text_columns': ['ctprvtrv', 'ctdeffra', 'lbnattrv', 'lbdstcsc'],
-            'suffix': '_risk'
+            'suffix': '_risk'  # Same suffix (dropped before QAN join)
         }
     }
 
@@ -311,65 +308,19 @@ class ConsolidationProcessor(BaseProcessor):
 
         return df
 
-    def _join_ird_risk(
-        self,
-        df: DataFrame,
-        vision: str,
-        reader,
-        config_key: str
-    ) -> DataFrame:
+
+    def _apply_destinat_final_adjustments(self, df: DataFrame) -> DataFrame:
         """
-        Generic IRD risk join (works for Q45, Q46, QAN).
-
-        OPTIMIZED: Replaces _join_ird_q46, _join_ird_q45, _join_ird_qan (67% code reduction)
-
+        Apply final adjustments to DESTINAT (not currently implemented).
+        
+        Placeholder for potential future logic.
+        
         Args:
-            df: Main DataFrame
-            vision: Vision string
-            reader: BronzeReader instance
-            config_key: Config key ('q46', 'q45', or 'qan')
-
+            df: DataFrame with destinat column
+            
         Returns:
-            DataFrame with IRD columns joined
+            DataFrame (unchanged for now)
         """
-        from pyspark.sql.functions import to_date # type: ignore
-
-        cfg = self.IRD_JOIN_CONFIG[config_key]
-
-        try:
-            df_risk = reader.read_file_group(cfg['file_group'], vision)
-            if df_risk is None:
-                self.logger.warning(f"{cfg['file_group']} not available")
-                return df
-
-            # Build select columns dynamically
-            select_cols = ["nopol"]
-
-            # Add date columns with to_date conversion
-            for date_col in cfg['date_columns']:
-                if date_col in df_risk.columns:
-                    select_cols.append(
-                        to_date(col(date_col)).alias(f"{date_col}{cfg['suffix']}")
-                    )
-                else:
-                    select_cols.append(lit(None).alias(f"{date_col}{cfg['suffix']}"))
-
-            # Add text columns with suffix
-            for text_col in cfg['text_columns']:
-                if text_col in df_risk.columns:
-                    select_cols.append(col(text_col).alias(f"{text_col}{cfg['suffix']}"))
-                else:
-                    select_cols.append(lit(None).alias(f"{text_col}{cfg['suffix']}"))
-
-            df_risk_select = df_risk.select(*select_cols)
-
-            # Left join with broadcast hint (IRD tables are small)
-            df = df.join(broadcast(df_risk_select), on="nopol", how="left")
-            self.logger.debug(f"Joined {cfg['file_group']} (broadcast)")
-
-        except Exception as e:
-            self.logger.warning(f"Could not join {cfg['file_group']}: {e}")
-
         return df
 
     def _add_placeholders(self, df: DataFrame) -> DataFrame:
@@ -400,6 +351,7 @@ class ConsolidationProcessor(BaseProcessor):
             for col_name in missing_enrichments
             if col_name.lower() not in existing_cols
         }
+        
         if null_cols_needed:
             df = add_null_columns(df, null_cols_needed)
 
@@ -469,62 +421,6 @@ class ConsolidationProcessor(BaseProcessor):
 
         return df
 
-    def _apply_ird_coalesce(self, df: DataFrame) -> DataFrame:
-        """
-        Apply IRD risk coalesce logic.
-
-        Fills missing columns with values from IRD risk data.
-        Handles both Q46 and Q45 columns (Q45 has _q45 suffix).
-
-        Based on SAS L113-159.
-
-        Args:
-            df: DataFrame with IRD columns joined
-
-        Returns:
-            DataFrame with coalesced values
-        """
-        ird_columns = [
-            'dtouchan', 'dtrectrx', 'dtreffin',  # FIXED: dtouchm → dtouchan
-            'ctprvtrv', 'ctdeffra', 'lbnattrv', 'lbdstcsc'
-        ]
-
-        # Build all coalesce expressions and drop columns in one operation
-        coalesce_exprs = {}
-        cols_to_drop = []
-
-        # First pass: Q46 _risk columns
-        for col_name in ird_columns:
-            risk_col = f"{col_name}_risk"
-            if risk_col in df.columns:
-                coalesce_exprs[col_name] = coalesce(col(col_name), col(risk_col))
-                cols_to_drop.append(risk_col)
-
-        # Second pass: Q45 _risk_q45 columns
-        for col_name in ird_columns:
-            risk_col_q45 = f"{col_name}_risk_q45"
-            if risk_col_q45 in df.columns:
-                # If already has expression from Q46, chain with Q45
-                if col_name in coalesce_exprs:
-                    coalesce_exprs[col_name] = coalesce(coalesce_exprs[col_name], col(risk_col_q45))
-                else:
-                    coalesce_exprs[col_name] = coalesce(col(col_name), col(risk_col_q45))
-                cols_to_drop.append(risk_col_q45)
-
-        # Handle dtrcppr separately (only in QAN)
-        if 'dtrcppr_risk' in df.columns:
-            coalesce_exprs['dtrcppr'] = coalesce(col('dtrcppr'), col('dtrcppr_risk'))
-            cols_to_drop.append('dtrcppr_risk')
-
-        # Apply all coalesces in single select
-        if coalesce_exprs:
-            df = df.select(
-                "*",
-                *[expr.alias(name) for name, expr in coalesce_exprs.items()]
-            ).drop(*cols_to_drop)
-
-        return df
-
     def _apply_fallback_logic(self, df: DataFrame) -> DataFrame:
         """
         Apply fallback logic for missing dates.
@@ -553,7 +449,15 @@ class ConsolidationProcessor(BaseProcessor):
         """
         Enrich with IRD risk data from Q46, Q45, and QAN.
         
-        Based on: SAS PTF_MVTS_CONSOLIDATION_MACRO.sas L145-362
+        Based on: SAS PTF_MVTS_CONSOLIDATION_MACRO.sas L154-258
+        
+        CRITICAL: Uses SEQUENTIAL processing (not parallel):
+        1. Join Q46 → Coalesce → Drop _risk columns
+        2. Join Q45 → Coalesce → Drop _risk columns (reuses suffix)
+        3. Join QAN → Coalesce → Drop _risk columns (reuses suffix)
+        
+        All sources use SAME suffix '_risk' but are processed sequentially
+        to avoid column name collisions.
         
         Args:
             df: Consolidated DataFrame
@@ -571,16 +475,95 @@ class ConsolidationProcessor(BaseProcessor):
         
         reader = BronzeReader(self.spark, self.config)
         
-        # Join IRD Q46, Q45, and QAN data using generic method
-        for config_key in ['q46', 'q45', 'qan']:
-            try:
-                df = self._join_ird_risk(df, vision, reader, config_key)
-                self.logger.debug(f"IRD {config_key.upper()} enrichment attempted")
-            except Exception as e:
-                self.logger.warning(f"IRD {config_key.upper()} enrichment failed: {e}")
+        # SEQUENTIAL processing (SAS pattern)
+        # Q46 → Coalesce → Drop (SAS L158-188)
+        df = self._join_ird_and_coalesce(df, reader, vision, 'q46')
+        
+        # Q45 → Coalesce → Drop (SAS L194-224)
+        df = self._join_ird_and_coalesce(df, reader, vision, 'q45')
+        
+        # QAN → Coalesce → Drop (SAS L230-258)
+        df = self._join_ird_and_coalesce(df, reader, vision, 'qan')
         
         self.logger.info("IRD risk data enrichment completed")
         return df
+    
+    def _join_ird_and_coalesce(
+        self,
+        df: DataFrame,
+        reader,
+        vision: str,
+        source: str
+    ) -> DataFrame:
+        """
+        Join one IRD source, coalesce values, and drop temp columns immediately.
+        
+        This matches SAS pattern of sequential join-coalesce-drop for each source.
+        All sources use '_risk' suffix but are processed one at a time.
+        
+        Args:
+            df: Main DataFrame
+            reader: BronzeReader instance
+            vision: Vision string
+            source: 'q46', 'q45', or 'qan'
+            
+        Returns:
+            DataFrame with IRD data coalesced and temp columns dropped
+        """
+        cfg = self.IRD_JOIN_CONFIG[source]
+        
+        try:
+            df_ird = reader.read_file_group(cfg['file_group'], vision)
+            if df_ird is None or df_ird.count() == 0:
+                self.logger.debug(f"IRD {source.upper()}: No data found")
+                return df
+            
+            # 1. SELECT columns with _risk suffix
+            from pyspark.sql.functions import to_date # type: ignore
+            select_cols = ['nopol']
+            
+            for col_name in cfg['date_columns']:
+                if col_name in df_ird.columns:
+                    select_cols.append(to_date(col(col_name)).alias(f"{col_name}_risk"))
+            
+            for col_name in cfg['text_columns']:
+                if col_name in df_ird.columns:
+                    select_cols.append(col(col_name).alias(f"{col_name}_risk"))
+                else:
+                    select_cols.append(lit(None).cast(StringType()).alias(f"{col_name}_risk"))
+            
+            df_ird_select = df_ird.select(*select_cols)
+            
+            # 2. LEFT JOIN (SAS L172-176, L207-212, L242-247)
+            df = df.join(broadcast(df_ird_select), on='nopol', how='left')
+            
+            # 3. COALESCE immediately (SAS L178-188, L214-224, L249-258)
+            cols_to_drop = []
+            
+            for col_name in cfg['date_columns'] + cfg['text_columns']:
+                risk_col = f"{col_name}_risk"
+                if risk_col in df.columns:
+                    # Special case: DTREFFIN assignment for Q46 (SAS L186)
+                    if col_name == 'dtreffin' and source == 'q46':
+                        df = df.withColumn('dtreffin', col(risk_col))
+                    # Standard coalesce for other columns
+                    else:
+                        df = df.withColumn(col_name,
+                            when(col(col_name).isNull(), col(risk_col)).otherwise(col(col_name)))
+                    
+                    cols_to_drop.append(risk_col)
+            
+            # 4. DROP immediately (SAS L187, L223, L257)
+            if cols_to_drop:
+                df = df.drop(*cols_to_drop)
+            
+            self.logger.debug(f"IRD {source.upper()}: Joined and coalesced successfully")
+            
+        except Exception as e:
+            self.logger.warning(f"IRD {source.upper()} enrichment failed: {e}")
+        
+        return df
+
 
     def _enrich_client_data(self, df: DataFrame, vision: str) -> DataFrame:
         """
@@ -1024,4 +1007,3 @@ class ConsolidationProcessor(BaseProcessor):
             self.logger.warning(f"DO_DEST enrichment failed: {e}")
         
         return df
-
