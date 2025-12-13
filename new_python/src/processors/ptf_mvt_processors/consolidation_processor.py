@@ -252,19 +252,19 @@ class ConsolidationProcessor(BaseProcessor):
         'q46': {
             'file_group': 'ird_risk_q46',
             'date_columns': ['dtouchan', 'dtrectrx', 'dtreffin'],
-            'text_columns': ['ctprvtrv', 'ctdeftra', 'lbnattrv', 'lbdstcsc'],  # FIXED: ctdeffra → ctdeftra
+            'text_columns': ['ctprvtrv', 'ctdeftra', 'lbnattrv', 'lbdstcsc'],  # SAS L164-167 (lbdstcsc → dstcsc in coalesce)
             'suffix': '_risk'  # Same suffix for all (SAS pattern)
         },
         'q45': {
             'file_group': 'ird_risk_q45',
             'date_columns': ['dtouchan', 'dtrectrx', 'dtreffin'],
-            'text_columns': ['ctprvtrv', 'ctdeftra', 'lbnattrv', 'lbdstcsc'],  # FIXED: ctdeffra → ctdeftra
+            'text_columns': ['ctprvtrv', 'ctdeftra', 'lbnattrv', 'lbdstcsc'],  # SAS L200-203 (lbdstcsc → dstcsc in coalesce)
             'suffix': '_risk'  # Same suffix (dropped before Q45 join)
         },
         'qan': {
             'file_group': 'ird_risk_qan',
             'date_columns': ['dtouchan', 'dtrcppr'],  # QAN uses dtrcppr not dtrectrx
-            'text_columns': ['ctprvtrv', 'ctdeftra', 'lbnattrv', 'lbdstcsc'],  # FIXED: ctdeffra → ctdeftra
+            'text_columns': ['ctprvtrv', 'ctdeftra', 'lbnattrv', 'dstcsc'],  # SAS L235-238 (QAN: dstcsc directly, not lbdstcsc)
             'suffix': '_risk'  # Same suffix (dropped before QAN join)
         }
     }
@@ -541,14 +541,18 @@ class ConsolidationProcessor(BaseProcessor):
             # CRITICAL: Use withColumn to REPLACE existing columns, not create new ones
             for col_name in cfg['date_columns'] + cfg['text_columns']:
                 risk_col = f"{col_name}_risk"
+                
+                # Special mapping: lbdstcsc_risk → dstcsc (SAS L185, L222, L256)
+                target_col = 'dstcsc' if col_name == 'lbdstcsc' else col_name
+                
                 if risk_col in df.columns:
                     # Special case: DTREFFIN assignment for Q46 (SAS L186)
                     if col_name == 'dtreffin' and source == 'q46':
                         df = df.withColumn('dtreffin', col(risk_col))
                     # Standard coalesce: replace main column
                     else:
-                        df = df.withColumn(col_name,
-                            when(col(col_name).isNull(), col(risk_col)).otherwise(col(col_name)))
+                        df = df.withColumn(target_col,
+                            when(col(target_col).isNull(), col(risk_col)).otherwise(col(target_col)))
             
             # 4. DROP _risk columns immediately (SAS L187, L223, L257)
             risk_cols_to_drop = [f"{c}_risk" for c in cfg['date_columns'] + cfg['text_columns']]
@@ -925,26 +929,26 @@ class ConsolidationProcessor(BaseProcessor):
             DataFrame with isic_code_gbl column added
         """
         try:
-            reader = BronzeReader(self.config_path, self.logger)
-            isic_lg_df = reader.read("isic_lg", "ref")
+            reader = BronzeReader(self.spark, self.config)
+            df_isic_lg = reader.read_file_group('isic_lg', 'ref')
             
-            if isic_lg_df is not None and isic_lg_df.count() > 0:
+            if df_isic_lg is not None and df_isic_lg.count() > 0:
                 # Join on ISIC_LOCAL = ISIC_CODE
-                isic_lg_df = isic_lg_df.select(
+                df_isic_lg = df_isic_lg.select(
                     col("isic_local").alias("isic_local_ref"),
                     col("isic_global").alias("isic_code_gbl_ref")
                 )
                 
                 df = df.join(
-                    isic_lg_df,
+                    df_isic_lg,
                     col("isic_code") == col("isic_local_ref"),
                     "left"
                 )
                 
-                # Use mapped value or fallback to original
+                # Add isic_code_gbl column
                 df = df.withColumn(
                     "isic_code_gbl",
-                    coalesce(col("isic_code_gbl_ref"), col("isic_code"))
+                    coalesce(col("isic_code_gbl_ref"), lit(None).cast(StringType()))
                 ).drop("isic_local_ref", "isic_code_gbl_ref")
                 
                 self.logger.info("ISIC global code mapping applied successfully")
@@ -976,8 +980,8 @@ class ConsolidationProcessor(BaseProcessor):
             DataFrame with destinat column enriched from reference
         """
         try:
-            reader = BronzeReader(self.config_path, self.logger)
-            do_dest_df = reader.read("do_dest", "ref")
+            reader = BronzeReader(self.spark, self.config)
+            do_dest_df = reader.read_file_group("do_dest", "ref")
             
             if do_dest_df is not None and do_dest_df.count() > 0:
                 # Select relevant columns and alias to avoid conflicts
