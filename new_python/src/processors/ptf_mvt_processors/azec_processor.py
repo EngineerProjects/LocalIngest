@@ -595,66 +595,49 @@ class AZECProcessor(BaseProcessor):
         """
         reader = BronzeReader(self.spark, self.config)
         
-        # Initialize NAF columns if not present (to avoid errors during joins)
-        if 'cdnaf' not in df.columns:
-            df = df.withColumn('cdnaf', lit(None).cast(StringType()))
-        if 'cdtre' not in df.columns:
-            df = df.withColumn('cdtre', lit(None).cast(StringType()))
+        # Initialize ALL enrichment columns upfront to avoid unresolved column errors
+        enrichment_cols = {
+            'cdnaf': StringType(),
+            'cdtre': StringType(),
+            'perte_exp': DoubleType(),
+            'risque_direct': DoubleType(),
+            'nbj_acti': IntegerType()
+        }
+        
+        from utils.processor_helpers import add_null_columns
+        existing_cols = set(df.columns)
+        cols_to_add = {k: v for k, v in enrichment_cols.items() if k not in existing_cols}
+        if cols_to_add:
+            df = add_null_columns(df, cols_to_add)
 
         # 1. INCENDCU: NAF codes and PE/RD capitals
         try:
             df_incend = reader.read_file_group('incendcu_azec', vision)
-            if df_incend is not None and df_incend.count() > 0:
+            if df_incend is not None:
                 # Select needed columns
                 df_incend_select = df_incend.select(
                     'police',
-                    col('cod_naf').alias('cdnaf_incend'),
-                    col('cod_tre').alias('cdtre_incend'),
-                    col('mt_baspe').alias('perte_exp_incend'),  # FIXED: mt_baspe in source
-                    col('mt_basdi').alias('risque_direct_incend'),  # FIXED: mt_basdi in source
-                    col('nbj_acti').alias('nbj_acti') if 'nbj_acti' in df_incend.columns else lit(None).cast(IntegerType()).alias('nbj_acti')
-                )
+                    col('cod_naf').alias('cod_naf'),
+                    col('cod_tre').alias('cod_tre'),
+                    col('mt_baspe').alias('mt_baspe'),
+                    col('mt_basdi').alias('mt_basdi')
+                ).dropDuplicates(['police'])
 
                 # Left join on police
                 df = df.join(df_incend_select, on='police', how='left')
 
-                # Update CDNAF and CDTRE only if currently null
-                df = df.withColumn(
-                    'cdnaf',
-                    when(col('cdnaf').isNull() & col('cdnaf_incend').isNotNull(), col('cdnaf_incend'))
-                    .otherwise(col('cdnaf'))
-                )
-                df = df.withColumn(
-                    'cdtre',
-                    when(col('cdtre').isNull() & col('cdtre_incend').isNotNull(), col('cdtre_incend'))
-                    .otherwise(col('cdtre'))
-                )
+                # Update columns with coalesce (use INCENDCU if main is null)
+                df = df.withColumn('cdnaf', coalesce(col('cdnaf'), col('cod_naf')))
+                df = df.withColumn('cdtre', coalesce(col('cdtre'), col('cod_tre')))
+                df = df.withColumn('perte_exp', coalesce(col('perte_exp'), col('mt_baspe'), lit(0)))
+                df = df.withColumn('risque_direct', coalesce(col('risque_direct'), col('mt_basdi'), lit(0)))
 
-                # Add PE/RD capitals (coalesce with existing values)
-                df = df.withColumn(
-                    'perte_exp',
-                    coalesce(col('perte_exp'), col('perte_exp_incend'), lit(0))
-                )
-                df = df.withColumn(
-                    'risque_direct',
-                    coalesce(col('risque_direct'), col('risque_direct_incend'), lit(0))
-                )
-
-                # Drop temporary columns
-                df = df.drop('cdnaf_incend', 'cdtre_incend', 'perte_exp_incend', 'risque_direct_incend')
+                # Drop temporary join columns
+                df = df.drop('cod_naf', 'cod_tre', 'mt_baspe', 'mt_basdi')
 
                 self.logger.info("INCENDCU joined successfully - NAF codes and PE/RD capitals enriched")
         except Exception as e:
-            self.logger.warning(f"INCENDCU not available: {e}. Skipping NAF code enrichment.")
-            # Initialize columns if not present
-            from utils.processor_helpers import add_null_columns
-            existing_cols = set(df.columns)
-            if 'perte_exp' not in existing_cols:
-                df = df.withColumn('perte_exp', lit(0).cast(DoubleType()))
-            if 'risque_direct' not in existing_cols:
-                df = df.withColumn('risque_direct', lit(0).cast(DoubleType()))
-            if 'nbj_acti' not in existing_cols:
-                df = add_null_columns(df, {'nbj_acti': IntegerType})
+            self.logger.warning(f"INCENDCU not available: {e}. Using default values.")
 
         # 2. MPACU: Additional NAF codes (SAS L277: FULL JOIN with MPACU.MPACU)
         try:
@@ -807,7 +790,7 @@ class AZECProcessor(BaseProcessor):
             if df_mulprocu is not None and df_mulprocu.count() > 0:
                 # Select CA column
                 # Aggregate CHIFFAFF to get MTCA (SAS L340: SUM(CHIFFAFF) AS MTCA)
-                from pyspark.sql.functions import sum as spark_sum # type: ignore
+                from pyspark.sql.functions import sum as spark_sum
                 df_mulprocu_agg = df_mulprocu.groupBy('police').agg(
                     spark_sum('chiffaff').alias('mtca_mulpro')
                 )
