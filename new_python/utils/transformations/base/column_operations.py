@@ -127,24 +127,42 @@ def build_computed_expression(df: DataFrame, comp_config: Dict[str, Any]):
     elif comp_type == 'flag':
         # Parse condition expression
         condition_str = comp_config['condition']
-        # Replace column names with col() calls
         import re
-        condition_work = condition_str
+        
+        # Replace column names with col() calls
+        condition_work = condition_str.lower()
         sorted_cols = sorted(df.columns, key=len, reverse=True)
         for c in sorted_cols:
             pattern = rf'\b{re.escape(c)}\b'
             condition_work = re.sub(pattern, f'col("{c}")', condition_work)
         
+        # Handle 'not in' BEFORE 'in' (order matters!)
+        # "duree not in ['00', '01']" → "~col("duree").isin(['00', '01'])"
+        condition_work = re.sub(
+            r'(col\(["\'][^"\']+["\']\))\s+not\s+in\s+(\[[^\]]+\])',
+            r'~\1.isin(\2)',
+            condition_work
+        )
+        
+        # Handle 'in' without 'not'
+        # "duree in ['00', '01']" → "col("duree").isin(['00', '01'])"
+        condition_work = re.sub(
+            r'(col\(["\'][^"\']+["\']\))\s+in\s+(\[[^\]]+\])',
+            r'\1.isin(\2)',
+            condition_work
+        )
+        
         # Replace logical operators
-        condition_work = condition_work.replace(' not in ', ' .notin ')  # Temporary
-        condition_work = condition_work.replace(' in ', ' .isin ')
-        condition_work = condition_work.replace(' .notin ', ' not in ')  # Restore
         condition_work = condition_work.replace(' and ', ' & ')
         condition_work = condition_work.replace(' or ', ' | ')
+        condition_work = condition_work.replace(' not ', ' ~ ')
         
         # Evaluate condition
-        condition_expr = eval(condition_work)
-        return when(condition_expr, lit(1)).otherwise(lit(0))
+        try:
+            condition_expr = eval(condition_work)
+            return when(condition_expr, lit(1)).otherwise(lit(0))
+        except Exception as e:
+            raise ValueError(f"Failed to parse flag condition '{condition_str}': {e}\nProcessed: {condition_work}")
 
     elif comp_type == 'arithmetic':
         # Parse arithmetic expression
