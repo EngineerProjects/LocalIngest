@@ -17,6 +17,8 @@ from utils.transformations.base.column_operations import (
 
 from utils.transformations.base.generic_transforms import (
     apply_business_filters,
+    apply_conditional_transform,
+    apply_transformations,
 )
 
 # Operations (business logic for all domains)
@@ -62,6 +64,8 @@ __all__ = [
     'rename_columns',
     # Base - Generic transforms
     'apply_business_filters',
+    'apply_conditional_transform',
+    'apply_transformations',
     # Operations - PTF_MVT business logic
     'extract_capitals',
     'calculate_movements',

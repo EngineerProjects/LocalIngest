@@ -322,14 +322,15 @@ def _build_expression_from_string(
         pattern = rf'\b{re.escape(c)}\b'
         expr_work = re.sub(pattern, f'col("{c}")', expr_work)
 
-    # Replace logical operators
+    # CRITICAL: Replace null checks BEFORE logical operators
+    # Otherwise 'is not null' becomes 'is ~ null' due to ' not ' → ' ~ ' replacement
+    expr_work = re.sub(r'(col\(["\'][^"\']+["\']\))\s+is\s+not\s+null', r'\1.isNotNull()', expr_work, flags=re.IGNORECASE)
+    expr_work = re.sub(r'(col\(["\'][^"\']+["\']\))\s+is\s+null', r'\1.isNull()', expr_work, flags=re.IGNORECASE)
+
+    # Replace logical operators AFTER null checks
     expr_work = expr_work.replace(' and ', ' & ')
     expr_work = expr_work.replace(' or ', ' | ')
     expr_work = expr_work.replace(' not ', ' ~ ')
-
-    # Replace null checks
-    expr_work = re.sub(r'(\w+\(["\'][\w]+["\']\))\s+is\s+null', r'\1.isNull()', expr_work)
-    expr_work = re.sub(r'(\w+\(["\'][\w]+["\']\))\s+is\s+not\s+null', r'\1.isNotNull()', expr_work)
 
     # Replace contains
     expr_work = re.sub(r'\.contains\s*\(\s*["\']([^"\']+)["\']\s*\)', r'.contains("\1")', expr_work)
