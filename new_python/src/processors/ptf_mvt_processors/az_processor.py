@@ -9,7 +9,7 @@ Uses dictionary-driven configuration for maximum reusability.
 
 from pyspark.sql import DataFrame # type: ignore
 from pyspark.sql.functions import col, when, lit, coalesce, broadcast # type: ignore
-from pyspark.sql.types import DoubleType, StringType # type: ignore
+from pyspark.sql.types import DoubleType, StringType, DateType # type: ignore
 
 from src.processors.base_processor import BaseProcessor
 from src.reader import BronzeReader
@@ -47,14 +47,11 @@ class AZProcessor(BaseProcessor):
         reader = BronzeReader(self.spark, self.config)
         
         self.logger.info("Reading ipf_az files (PTF16 + PTF36)")
-        df_ipf = reader.read_file_group('ipf_az', vision)
-        # Columns are already lowercase from BronzeReader
-        
-        return df_ipf
+        return reader.read_file_group('ipf_az', vision)
 
     def transform(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Apply AZ business transformations following SAS order.
+        Apply AZ business transformations following SAS logic.
 
         Args:
             df: Input DataFrame from read() (lowercase columns)
@@ -71,17 +68,12 @@ class AZProcessor(BaseProcessor):
         az_config = loader.get_az_config()
         business_rules = loader.get_business_rules()
 
-        # =======================================================================
-        # STEP 0: Apply business filters FIRST (before any transformations)
-        # SAS: WHERE clause in SELECT (L135, L149)
-        # =======================================================================
+        # STEP 0: Apply business filters (SAS L135, L149)
         self.logger.step(0, "Applying business filters (construction market)")
         az_filters = business_rules.get('business_filters', {}).get('az', {}).get('filters', [])
         df = apply_business_filters(df, {'filters': az_filters}, self.logger)
 
-        # =======================================================================
-        # STEP 1: Rename columns (SAS: AS clauses in SELECT, L55-115)
-        # =======================================================================
+        # STEP 1: Rename columns (SAS L55-115)
         self.logger.step(1, "Renaming columns") 
         from utils.transformations import rename_columns
         
@@ -97,43 +89,37 @@ class AZProcessor(BaseProcessor):
         }
         df = rename_columns(df, rename_map)
 
-        # =======================================================================
-        # STEP 2: Initialize columns to 0 (SAS: L106-115)
-        # =======================================================================
+        # STEP 2: Initialize columns (SAS L106-115)
         self.logger.step(2, "Initializing columns to 0")
         
-        # Initialize numeric columns
-        for col_name in ['primeto', 'primes_ptf', 'primes_afn', 'primes_res', 
-                          'primes_rpt', 'primes_rpc', 'expo_ytd', 'expo_gli',
-                          'cotis_100', 'mtca_', 'perte_exp', 'risque_direct',
-                          'value_insured', 'smp_100', 'lci_100']:
-            df = df.withColumn(col_name, lit(0.0))
-        
-        # Initialize integer flags
-        for col_name in ['nbptf', 'nbafn', 'nbres', 'nbrpt', 'nbrpc', 'top_temp',
-                          'top_lta', 'top_aop', 'nbafn_anticipe', 'nbres_anticipe']:
-            df = df.withColumn(col_name, lit(0))
-        
-        # Initialize date columns
-        from pyspark.sql.types import DateType
-        df = df.withColumn('dt_deb_expo', lit(None).cast(DateType()))
-        df = df.withColumn('dt_fin_expo', lit(None).cast(DateType()))
-        
-        # Initialize other columns needed for calculations (SAS L132-133: CTDUREE = .)
-        df = df.withColumn('ctduree', lit(None).cast('double'))
 
-        # =======================================================================
-        # STEP 3: Add computed columns (SAS: L60-97)
-        # =======================================================================
+        init_columns = {
+            # Numeric columns (float)
+            **{col: lit(0.0) for col in ['primeto', 'primes_ptf', 'primes_afn', 'primes_res',
+                                          'primes_rpt', 'primes_rpc', 'expo_ytd', 'expo_gli',
+                                          'cotis_100', 'mtca_', 'perte_exp', 'risque_direct',
+                                          'value_insured', 'smp_100', 'lci_100']},
+            # Integer flags
+            **{col: lit(0) for col in ['nbptf', 'nbafn', 'nbres', 'nbrpt', 'nbrpc', 'top_temp',
+                                        'top_lta', 'top_aop', 'nbafn_anticipe', 'nbres_anticipe']},
+            # Date columns and other
+            'dt_deb_expo': lit(None).cast(DateType()),
+            'dt_fin_expo': lit(None).cast(DateType()),
+            'ctduree': lit(None).cast('double')
+        }
+        for col_name, col_value in init_columns.items():
+            df = df.withColumn(col_name, col_value)
+
+        # STEP 3: Add computed columns (SAS L60-97)
         self.logger.step(3, "Adding computed columns (tx, top_coass, coass, partcie)")
         
-        # TX: coalesce txcede to 0 (SAS L60)
+        # TX (SAS L60)
         df = df.withColumn('tx', coalesce(col('txcede'), lit(0)))
         
-        # TOP_COASS: flag if cdpolqpl = '1' (SAS L63)
+        # TOP_COASS (SAS L63)
         df = df.withColumn('top_coass', when(col('cdpolqpl') == '1', lit(1)).otherwise(lit(0)))
         
-        # COASS: coassurance type (SAS L64-70)
+        # COASS (SAS L64-70)
         df = df.withColumn('coass',
             when((col('cdpolqpl') == '1') & col('cdcoas').isin('3', '6'), lit('APERITION'))
             .when((col('cdpolqpl') == '1') & col('cdcoas').isin('4', '5'), lit('COASS. ACCEPTEE'))
@@ -142,34 +128,36 @@ class AZProcessor(BaseProcessor):
             .otherwise(lit('SANS COASSURANCE'))
         )
         
-        # PARTCIE: company share (SAS L71-74)
+        # PARTCIE (SAS L71-74)
         df = df.withColumn('partcie',
             when(col('cdpolqpl') != '1', lit(1.0))
             .otherwise(col('prcie') / 100.0)
         )
         
-        # TOP_REVISABLE: revision flag (SAS L77)
+        # TOP_REVISABLE (SAS L77)
         df = df.withColumn('top_revisable', when(col('cdpolrvi') == '1', lit(1)).otherwise(lit(0)))
         
-        # CRITERE_REVISION: revision criteria mapping (SAS L78-96)
+        # CRITERE_REVISION (SAS L78-96)
         revision_config = az_config['revision_criteria']
         revision_expr = col('cdgrev')
         for code, label in revision_config['mapping'].items():
             revision_expr = when(col('cdgrev') == code, lit(label)).otherwise(revision_expr)
         df = df.withColumn('critere_revision', revision_expr)
 
-        # =======================================================================
-        # STEP 4: Add metadata columns (SAS: L128-133, L142-147)
-        # =======================================================================
+        # STEP 4: Add metadata columns (SAS L128-147)
         self.logger.step(4, "Adding metadata columns (vision, dircom, cdpole)")
         
-        df = df.withColumn('dircom', lit(DIRCOM.AZ))
-        df = df.withColumn('vision', lit(vision))
-        df = df.withColumn('exevue', lit(year_int))
-        df = df.withColumn('moisvue', lit(month_int))
+
+        metadata_cols = {
+            'dircom': lit(DIRCOM.AZ),
+            'vision': lit(vision),
+            'exevue': lit(year_int),
+            'moisvue': lit(month_int)
+        }
+        for col_name, col_value in metadata_cols.items():
+            df = df.withColumn(col_name, col_value)
         
-        # Determine CDPOLE from input file name (SAS uses different libraries PTF16 vs PTF36)
-        # Note: BronzeReader adds _source_file column for this purpose
+        # Determine CDPOLE from source file
         if '_source_file' in df.columns:
             df = df.withColumn(
                 'cdpole',
@@ -178,22 +166,18 @@ class AZProcessor(BaseProcessor):
                 .otherwise(lit(POLE.AGENT))
             ).drop('_source_file')
         else:
-            # Fallback: assume Agent if source file info missing
+
             df = df.withColumn('cdpole', lit(POLE.AGENT))
 
-        # =======================================================================
-        # STEP 5: Join IPFM99 for product 01099 (SAS: L157-187)
-        # =======================================================================
+        # STEP 5: Join IPFM99 for product 01099 (SAS L157-187)
         self.logger.step(5, "Joining IPFM99 for product 01099")
         df = self._join_ipfm99(df, vision)
 
-        # =======================================================================
-        # STEP 6: Extract capitals (SAS: L195-231)
-        # =======================================================================
+        # STEP 6: Extract capitals (SAS L195-231)
         self.logger.step(6, "Extracting capitals (SMP, LCI, PERTE_EXP, RISQUE_DIRECT)")
         capital_config = az_config['capital_extraction']
         
-        # Only extract the 4 main capital types (matching SAS)
+
         capital_targets = {
             'smp_100': capital_config['smp_100'],
             'lci_100': capital_config['lci_100'],
@@ -202,46 +186,38 @@ class AZProcessor(BaseProcessor):
         }
         df = extract_capitals(df, capital_targets)
 
-        # =======================================================================
-        # STEP 7: Calculate premium indicators (SAS: L238-243)
-        # =======================================================================
+        # STEP 7: Calculate premium indicators (SAS L238-243)
         self.logger.step(7, "Calculating premium indicators")
         
-        # PRIMETO: mtprprto * (1 - tx/100) (SAS L238-239)
+        # PRIMETO (SAS L238-239)
         df = df.withColumn('primeto', col('mtprprto') * (lit(1) - col('tx') / lit(100)))
         
-        # TOP_LTA: long-term contracts (SAS L241-243)
+        # TOP_LTA (SAS L241-243)
         df = df.withColumn('top_lta',
             when((col('ctduree') > 1) & col('tydris1').isin(LTA_TYPES), lit(1))
             .otherwise(lit(0))
         )
 
-        # =======================================================================
-        # STEP 8: Calculate movements (AFN/RES/RPT/RPC/NBPTF) (SAS: L250-291)
-        # =======================================================================
+        # STEP 8: Calculate movements (SAS L250-291)
         self.logger.step(8, "Calculating movement indicators")
         movement_cols = az_config['movements']['column_mapping']
         df = calculate_movements(df, dates, year_int, movement_cols)
 
-        # =======================================================================
-        # STEP 9: Calculate exposures (expo_ytd, expo_gli) (SAS: L298-311)
-        # =======================================================================
+        # STEP 9: Calculate exposures (SAS L298-311)
         self.logger.step(9, "Calculating exposures")
         exposure_cols = az_config['exposures']['column_mapping']
         df = calculate_exposures(df, dates, year_int, exposure_cols)
 
-        # =======================================================================
-        # STEP 10: Calculate cotisation and CA (SAS: L317-332)
-        # =======================================================================
+        # STEP 10: Calculate cotisation and CA (SAS L317-332)
         self.logger.step(10, "Calculating cotisation 100% and CA")
         
-        # Set PRCIE to 100 if missing (SAS L318-319)
+
         df = df.withColumn('prcie', 
             when((col('prcie').isNull()) | (col('prcie') == 0), lit(100.0))
             .otherwise(col('prcie'))
         )
         
-        # Cotis_100: Technical premium at 100% (SAS L322-327)
+        # Cotis_100 (SAS L322-327)
         df = df.withColumn('cotis_100', col('mtprprto'))
         df = df.withColumn('cotis_100',
             when((col('top_coass') == 1) & col('cdcoas').isin('4', '5'),
@@ -249,17 +225,15 @@ class AZProcessor(BaseProcessor):
             .otherwise(col('cotis_100'))
         )
         
-        # MTCA: Centralize CA in one column (SAS L330-332)
+        # MTCA (SAS L330-332)
         df = df.withColumn('mtca', coalesce(col('mtca'), lit(0)))
         df = df.withColumn('mtcaf', coalesce(col('mtcaf'), lit(0)))
         df = df.withColumn('mtca_', col('mtcaf') + col('mtca'))
 
-        # =======================================================================
-        # STEP 11: Apply business rules (SAS: L339-355)
-        # =======================================================================
+        # STEP 11: Apply business rules (SAS L339-355)
         self.logger.step(11, "Applying business rules")
         
-        # TOP_AOP (SAS L339-341)
+
         df = df.withColumn('top_aop', 
             when(col('opapoffr') == 'O', lit(1)).otherwise(lit(0))
         )
@@ -280,37 +254,28 @@ class AZProcessor(BaseProcessor):
             .otherwise(lit(0))
         )
 
-        # =======================================================================
-        # STEP 12: Data cleanup (SAS: L362-370)
-        # =======================================================================
+        # STEP 12: Data cleanup (SAS L362-370)
         self.logger.step(12, "Data cleanup")
         
-        # Reset expo dates if expo_ytd = 0 (SAS L364-367)
-        from pyspark.sql.functions import lit as spark_lit
-        from pyspark.sql.types import DateType
-        
+
         df = df.withColumn('dt_deb_expo',
-            when(col('expo_ytd') == 0, spark_lit(None).cast(DateType())).otherwise(col('dt_deb_expo'))
+            when(col('expo_ytd') == 0, lit(None).cast(DateType())).otherwise(col('dt_deb_expo'))
         )
         df = df.withColumn('dt_fin_expo',
-            when(col('expo_ytd') == 0, spark_lit(None).cast(DateType())).otherwise(col('dt_fin_expo'))
+            when(col('expo_ytd') == 0, lit(None).cast(DateType())).otherwise(col('dt_fin_expo'))
         )
         
-        # If NMCLT is blank, use NMACTA (SAS L368-369)
+        # NMCLT fallback (SAS L368-369)
         df = df.withColumn('nmclt',
             when((col('nmclt').isNull()) | (col('nmclt') == ' '), col('nmacta'))
             .otherwise(col('nmclt'))
         )
 
-        # =======================================================================
-        # STEP 13: Enrich segmentation (SAS: L492-502)
-        # =======================================================================
+        # STEP 13: Enrich segmentation (SAS L492-502)
         self.logger.step(13, "Enriching segment and product type")
         df = self._enrich_segment_and_product_type(df, vision)
 
-        # =======================================================================
-        # STEP 14: Final deduplication (SAS: L505-507)
-        # =======================================================================
+        # STEP 14: Final deduplication (SAS L505-507)
         self.logger.step(14, "Deduplicating by nopol")
         df = df.orderBy("nopol", "cdsitp").dropDuplicates(["nopol"])
 
@@ -320,7 +285,7 @@ class AZProcessor(BaseProcessor):
 
     def write(self, df: DataFrame, vision: str) -> None:
         """
-        Write transformed AZ data to silver layer in parquet format.
+        Write transformed AZ data to silver layer.
 
         Args:
             df: Transformed DataFrame (lowercase columns)
@@ -343,7 +308,7 @@ class AZProcessor(BaseProcessor):
         """
         reader = BronzeReader(self.spark, self.config)
         
-        # Use safe_reference_join helper to replace 61 lines of duplicate code
+        # IPFM99 is optional (SAS L157-187)
         df = safe_reference_join(
             df, reader,
             file_group='ipfm99_az',
@@ -353,10 +318,11 @@ class AZProcessor(BaseProcessor):
             null_columns={'mtcaenp': DoubleType, 'mtcasst': DoubleType, 'mtcavnt': DoubleType},
             filter_condition="cdprod == '01099'",
             use_broadcast=True,
-            logger=self.logger
+            logger=self.logger,
+            required=False
         )
         
-        # Update MTCA for product 01099
+
         df = df.withColumn(
             "mtca",
             when(
@@ -373,11 +339,9 @@ class AZProcessor(BaseProcessor):
         """
         Enrich with segment2, type_produit_2, and upper_mid.
         
-        Implements SAS logic from PTF_MVTS_AZ_MACRO.sas L377-503:
-        - Joins SEGMPRDT.PRDPFA1 / PRDPFA3 (segment tables by pole)
-        - Joins CPRODUIT (Type_Produit_2, segment)
-        - Joins PRDCAP.PRDCAP (product labels)
-        - Joins TABLE_PT_GEST (management points - upper_mid)
+        Implements SAS logic from PTF_MVTS_AZ_MACRO.sas L377-503.
+        cproduit is REQUIRED - processing will fail if table is missing.
+        table_pt_gest is optional - will add NULL if missing.
         
         Args:
             df: Input DataFrame with cdprod and cdpole columns
@@ -385,40 +349,37 @@ class AZProcessor(BaseProcessor):
         
         Returns:
             DataFrame with segment2, type_produit_2, upper_mid columns
-            (NULL if reference tables not available)
+        
+        Raises:
+            RuntimeError: If required reference data (cproduit) is unavailable
         """
         self.logger.info("Enriching segment and product type...")
         reader = BronzeReader(self.spark, self.config)
         
-        # Join cproduit - handle column mismatch (df has 'cdprod', cproduit has 'cprod')
+        # CPRODUIT - REQUIRED (SAS L413-435)
         try:
             df_cproduit = reader.read_file_group('cproduit', 'ref')
-            if df_cproduit is not None:
-                # Select and rename to match expected columns
-                df_cproduit = df_cproduit.select(
-                    col('cprod').alias('cdprod'),  # Rename cprod to cdprod for join
-                    col('Type_Produit_2').alias('type_produit_2'),
-                    col('segment').alias('segment2'),  # Rename segment to segment2
-                    col('Segment_3').alias('segment_3')
-                )
-                df = df.join(broadcast(df_cproduit), on='cdprod', how='left')
-                self.logger.info("Successfully joined cproduit reference data")
-            else:
-                self.logger.warning("cproduit not available - adding NULL columns")
-                df = add_null_columns(df, {
-                    'type_produit_2': StringType,
-                    'segment2': StringType,
-                    'segment_3': StringType
-                })
-        except Exception as e:
-            self.logger.warning(f"cproduit join failed: {e}. Adding NULL columns.")
-            df = add_null_columns(df, {
-                'type_produit_2': StringType,
-                'segment2': StringType,
-                'segment_3': StringType
-            })
+        except FileNotFoundError as e:
+            self.logger.error("CRITICAL: cproduit reference table is REQUIRED for AZ processing")
+            self.logger.error(f"Cannot find cproduit: {e}")
+            self.logger.error("This matches SAS behavior which would fail with 'File does not exist'")
+            raise RuntimeError("Missing required reference data: cproduit. Cannot process AZ without product segmentation.") from e
         
-        # Join table_pt_gest - this one works fine
+        if df_cproduit is None:
+            self.logger.error("CRITICAL: cproduit returned None (table exists but empty or unreadable)")
+            raise RuntimeError("cproduit reference data is unavailable")
+        
+        # Join cproduit
+        df_cproduit = df_cproduit.select(
+            col('cprod').alias('cdprod'),
+            col('Type_Produit_2').alias('type_produit_2'),
+            col('segment').alias('segment2'),
+            col('Segment_3').alias('segment_3')
+        )
+        df = df.join(broadcast(df_cproduit), on='cdprod', how='left')
+        self.logger.info("✓ Successfully joined cproduit reference data")
+        
+        # TABLE_PT_GEST - OPTIONAL (SAS L485)
         df = safe_reference_join(
             df, reader,
             file_group='table_pt_gest',
@@ -427,7 +388,8 @@ class AZProcessor(BaseProcessor):
             select_columns=['upper_mid'],
             null_columns={'upper_mid': StringType},
             use_broadcast=True,
-            logger=self.logger
+            logger=self.logger,
+            required=False
         )
         
         return df

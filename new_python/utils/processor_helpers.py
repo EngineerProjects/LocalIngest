@@ -30,17 +30,11 @@ def safe_reference_join(
     filter_condition: Optional[str] = None,
     use_broadcast: bool = True,
     how: str = "left",
-    logger = None
+    logger = None,
+    required: bool = False
 ) -> DataFrame:
     """
-    Safely join reference data with automatic fallback to NULL columns.
-    
-    Consolidates the common pattern:
-        try:
-            df_ref = reader.read_file_group(...)
-            df = df.join(broadcast(df_ref), ...)
-        except:
-            df = df.withColumn('col', lit(None))
+    Safely join reference data with configurable error handling.
     
     Args:
         df: Input DataFrame
@@ -54,30 +48,32 @@ def safe_reference_join(
         use_broadcast: Whether to broadcast the reference table
         how: Join type (default: 'left')
         logger: Logger instance for info/warning messages
+        required: If True, raise error when reference data missing (fail-fast).
+                  If False, add NULL columns as fallback (default: False)
     
     Returns:
-        DataFrame with reference columns joined or NULL columns if unavailable
-        
-    Example:
-        df = safe_reference_join(
-            df, reader, 'cproduit', 'ref',
-            join_keys='cdprod',
-            select_columns=['type_produit_2', 'segment2'],
-            null_columns={'type_produit_2': StringType, 'segment2': StringType},
-            logger=self.logger
-        )
+        DataFrame with reference columns joined or NULL columns if unavailable (when required=False)
+    
+    Raises:
+        RuntimeError: When required=True and reference data is unavailable
     """
     if logger:
-        logger.debug(f"Attempting to join reference data: {file_group}")
+        logger.debug(f"Attempting to join reference data: {file_group} (required={required})")
     
     try:
         # Read reference data
         df_ref = reader.read_file_group(file_group, vision)
         
         if df_ref is None:
-            if logger:
-                logger.warning(f"Reference data '{file_group}' returned None")
-            return _add_null_columns(df, null_columns or _infer_null_columns(select_columns))
+            if required:
+                error_msg = f"CRITICAL: Required reference data '{file_group}' is unavailable (returned None)"
+                if logger:
+                    logger.error(error_msg)
+                raise RuntimeError(error_msg)
+            else:
+                if logger:
+                    logger.warning(f"Optional reference data '{file_group}' returned None - adding NULL columns")
+                return _add_null_columns(df, null_columns or _infer_null_columns(select_columns))
         
         # Apply filter if provided
         if filter_condition:
@@ -103,12 +99,23 @@ def safe_reference_join(
         
         return df_result
         
+    except FileNotFoundError as e:
+        if required:
+            error_msg = f"CRITICAL: Required reference file '{file_group}' not found"
+            if logger:
+                logger.error(f"{error_msg}: {e}")
+            raise RuntimeError(error_msg) from e
+        else:
+            if logger:
+                logger.warning(f"Optional reference '{file_group}' not found: {e} - adding NULL columns")
+            return _add_null_columns(df, null_columns or _infer_null_columns(select_columns))
+    
     except Exception as e:
+        # Always raise on unexpected errors (not just missing files)
+        error_msg = f"Unexpected error joining reference data '{file_group}': {e}"
         if logger:
-            logger.warning(f"Reference join failed for '{file_group}': {e}. Adding NULL columns.")
-        
-        # Fallback: add NULL columns
-        return _add_null_columns(df, null_columns or _infer_null_columns(select_columns))
+            logger.error(error_msg)
+        raise RuntimeError(error_msg) from e
 
 
 def safe_multi_reference_join(

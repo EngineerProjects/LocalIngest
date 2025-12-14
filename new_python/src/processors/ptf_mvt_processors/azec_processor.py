@@ -8,9 +8,14 @@ Uses dictionary-driven configuration for maximum reusability.
 """
 
 from config.variables import AZEC_CAPITAL_MAPPING
-from pyspark.sql import DataFrame # type: ignore
-from pyspark.sql.functions import col, when, lit, coalesce, year, datediff, greatest, least # type: ignore
-from pyspark.sql.types import DoubleType, IntegerType, DateType, StringType # type: ignore
+from pyspark.sql import DataFrame
+from pyspark.sql.functions import (
+    col, when, lit, coalesce, year, datediff, greatest, least,
+    make_date, broadcast, create_map, sum as spark_sum
+)
+from pyspark.sql.types import (
+    DoubleType, IntegerType, DateType, StringType
+)
 
 from src.processors.base_processor import BaseProcessor
 from src.reader import BronzeReader
@@ -51,9 +56,6 @@ class AZECProcessor(BaseProcessor):
         # Calculate DTECHANM from ECHEANMM and ECHEANJJ
         # SAS: mdy(echeanmm, echeanjj, &annee.)
         year_int, _ = extract_year_month_int(vision)
-
-        from pyspark.sql.functions import make_date # type: ignore
-
         df = df.withColumn(
             "dtechanm",
             when(
@@ -66,7 +68,7 @@ class AZECProcessor(BaseProcessor):
 
     def transform(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Apply AZEC business transformations (dictionary-driven from JSON configs).
+        Apply AZEC business transformations (config-driven from JSON).
 
         Args:
             df: POLIC_CU DataFrame from read() (lowercase columns)
@@ -198,7 +200,7 @@ class AZECProcessor(BaseProcessor):
 
     def write(self, df: DataFrame, vision: str) -> None:
         """
-        Write transformed AZEC data to silver layer in parquet format.
+        Write transformed AZEC data to silver layer.
 
         Args:
             df: Transformed DataFrame (lowercase columns)
@@ -211,45 +213,54 @@ class AZECProcessor(BaseProcessor):
         """
         Handle AZEC migration for visions > 202009.
         
-        Based on SAS PTF_MVTS_AZEC_MACRO.sas L94-106:
-        - For vision > 202009: Join with ref_mig_azec_vs_ims
-        - Set NBPTF_NON_MIGRES_AZEC = 1 if policy NOT in migration table
-        - Set NBPTF_NON_MIGRES_AZEC = 0 if policy WAS migrated to IMS
+        ref_mig_azec_vs_ims is REQUIRED for vision > 202009.
+        Processing will fail if table is missing (matching SAS behavior).
+        
+        Args:
+            df: POLIC_CU DataFrame
+            vision: Vision in YYYYMM format
+            azec_config: AZEC configuration dict
+        
+        Returns:
+            DataFrame with nbptf_non_migres_azec column
+        
+        Raises:
+            RuntimeError: If required migration table is unavailable for vision > 202009
         """
         from src.reader import BronzeReader
         
         migration_config = azec_config['migration_handling']
         if int(vision) > migration_config['vision_threshold']:
-            # Try to join with migration reference table
+            reader = BronzeReader(self.spark, self.config)
+            
             try:
-                reader = BronzeReader(self.spark, self.config)
                 df_mig = reader.read_file_group('ref_mig_azec_vs_ims', vision='ref')
-                
-                if df_mig is not None:
-                    # SAS: (CASE WHEN t2.NOPOL_AZEC IS missing THEN 1 ELSE 0 END)
-                    df_mig_select = df_mig.select(
-                        col('nopol_azec').alias('_mig_nopol')
-                    ).dropDuplicates(['_mig_nopol'])
-                    
-                    df = df.alias('a').join(
-                        df_mig_select.alias('m'),
-                        col('a.police') == col('m._mig_nopol'),
-                        how='left'
-                    ).select(
-                        'a.*',
-                        when(col('m._mig_nopol').isNull(), lit(1))
-                        .otherwise(lit(0)).alias('nbptf_non_migres_azec')
-                    )
-                    self.logger.info("Migration table joined - NBPTF_NON_MIGRES_AZEC calculated")
-                else:
-                    # Table not available, assume all are non-migrated
-                    df = df.withColumn('nbptf_non_migres_azec', lit(1))
-                    self.logger.warning("Migration table not found - setting NBPTF_NON_MIGRES_AZEC=1 for all")
-            except Exception as e:
-                self.logger.warning(f"Migration join failed: {e}. Setting NBPTF_NON_MIGRES_AZEC=1 for all")
-                df = df.withColumn('nbptf_non_migres_azec', lit(1))
+            except FileNotFoundError as e:
+                self.logger.error(f"CRITICAL: ref_mig_azec_vs_ims is REQUIRED for vision > {migration_config['vision_threshold']}")
+                self.logger.error(f"Cannot find migration table: {e}")
+                self.logger.error("This matches SAS behavior which would fail with 'File does not exist'")
+                raise RuntimeError(f"Missing required reference data: ref_mig_azec_vs_ims for vision {vision}") from e
+            
+            if df_mig is None:
+                self.logger.error("CRITICAL: ref_mig_azec_vs_ims returned None")
+                raise RuntimeError("ref_mig_azec_vs_ims reference data is unavailable")
+            
+            # Join with migration table
+            df_mig_select = df_mig.select(
+                col('nopol_azec').alias('_mig_nopol')
+            ).dropDuplicates(['_mig_nopol'])
+            
+            df = df.alias('a').join(
+                df_mig_select.alias('m'),
+                col('a.police') == col('m._mig_nopol'),
+                how='left'
+            ).select(
+                'a.*',
+                when(col('m._mig_nopol').isNull(), lit(1))
+                .otherwise(lit(0)).alias('nbptf_non_migres_azec')
+            )
+            self.logger.info("Migration table joined - NBPTF_NON_MIGRES_AZEC calculated")
         else:
-            # Before migration date, all policies are in AZEC (set flag to 1)
             df = df.withColumn('nbptf_non_migres_azec', lit(1))
         
         return df
@@ -286,14 +297,16 @@ class AZECProcessor(BaseProcessor):
         mois: int
     ) -> DataFrame:
         """
-        Calculate NBAFN, NBRES, NBPTF indicators (AZEC-specific version).
-
-        AZEC movements use different logic than AZ due to:
-        - Product-specific date calculations (AZEC_PRODUIT_LIST)
-        - Migration handling (NBPTF_NON_MIGRES_AZEC)
-        - Different date fields (datafn, datresil vs dtcrepol, dtresilp)
-
-        Based on SAS PTF_MVTS_AZEC_MACRO.sas L143-173
+        Calculate NBAFN, NBRES, NBPTF indicators (AZEC-specific logic).
+        
+        Args:
+            df: AZEC DataFrame
+            dates: Date range dictionary
+            annee: Year as integer
+            mois: Month as integer
+        
+        Returns:
+            DataFrame with movement indicators calculated
         """
         from utils.transformations.operations.business_logic import calculate_azec_movements
 
@@ -314,98 +327,109 @@ class AZECProcessor(BaseProcessor):
         return df
 
     def _calculate_exposures(self, df: DataFrame, dates: dict) -> DataFrame:
-        """Calculate exposure metrics (config-driven AZEC version)."""
+        """
+        Calculate exposure metrics (config-driven).
+        
+        Args:
+            df: AZEC DataFrame
+            dates: Date range dictionary
+        
+        Returns:
+            DataFrame with exposure metrics calculated
+        """
         from config.variables import EXPOSURE_COLUMN_MAPPING
         from utils.transformations import calculate_exposures
         
-        # Use generic calculate_exposures with AZEC column mapping
-        # Note: annee not used in exposure calculation but required by signature
-        year_int, _ = extract_year_month_int(dates.get('vision', '202509'))  # Fallback
+        year_int, _ = extract_year_month_int(dates.get('vision', '202509'))
         return calculate_exposures(df, dates, year_int, EXPOSURE_COLUMN_MAPPING['azec'])
 
     def _join_capitals(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Join capital data from CAPITXCU with branch-specific aggregation.
-
-        Aggregates capitals by police, splitting by:
-        - smp_sre: LCI or SMP
-        - brch_rea: IP0 (Perte d'Exploitation) or ID0 (Dommages Directs)
-
-        Then calculates global totals:
-        - LCI_100 = LCI_PE_100 + LCI_DD_100
-        - SMP_100 = SMP_PE_100 + SMP_DD_100
+        Join capital data from CAPITXCU.
+        
+        CAPITXCU is REQUIRED - capitals are critical for AZEC analysis.
+        Processing will fail if table is missing (matching SAS behavior).
+        
+        Args:
+            df: AZEC DataFrame
+            vision: Vision in YYYYMM format
+        
+        Returns:
+            DataFrame with SMP/LCI capitals
+        
+        Raises:
+            RuntimeError: If required CAPITXCU table is unavailable
         """
         reader = BronzeReader(self.spark, self.config)
 
         try:
             df_cap = reader.read_file_group('capitxcu_azec', vision)
+        except FileNotFoundError as e:
+            self.logger.error("CRITICAL: CAPITXCU is REQUIRED for AZEC processing")
+            self.logger.error(f"Cannot find CAPITXCU: {e}")
+            self.logger.error("This matches SAS behavior which would fail with 'File does not exist'")
+            raise RuntimeError("Missing required capital data: CAPITXCU") from e
+        
+        if df_cap is None:
+            self.logger.error("CRITICAL: CAPITXCU returned None")
+            raise RuntimeError("CAPITXCU capital data is unavailable")
 
-            # Select only needed columns immediately (column pruning)
-            needed_cols = set(["police", "smp_sre", "brch_rea"])
-            for mapping in AZEC_CAPITAL_MAPPING:
-                needed_cols.add(mapping['source'])
+        # Select only needed columns
+        needed_cols = set(["police", "smp_sre", "brch_rea"])
+        for mapping in AZEC_CAPITAL_MAPPING:
+            needed_cols.add(mapping['source'])
 
-            # Filter to only existing columns
-            existing_needed_cols = [c for c in needed_cols if c in df_cap.columns]
-            df_cap = df_cap.select(*existing_needed_cols)
+        existing_needed_cols = [c for c in needed_cols if c in df_cap.columns]
+        df_cap = df_cap.select(*existing_needed_cols)
 
-            # Calculate branch-specific capitals (config-driven)
-            for mapping in AZEC_CAPITAL_MAPPING:
-                df_cap = df_cap.withColumn(
-                    mapping['target'],
-                    when(
-                        (col("smp_sre") == mapping['smp_sre']) &
-                        (col("brch_rea") == mapping['brch_rea']),
-                        coalesce(col(mapping['source']), lit(0))
-                    ).otherwise(lit(0))
-                )
-
-            # Aggregate by police (config-driven: auto-syncs with AZEC_CAPITAL_MAPPING)
-            from pyspark.sql.functions import sum as spark_sum # type: ignore
-            agg_columns = [mapping['target'] for mapping in AZEC_CAPITAL_MAPPING]
-            df_cap_agg = df_cap.groupBy("police").agg(
-                *[spark_sum(col_name).alias(col_name) for col_name in agg_columns]
+        # Calculate branch-specific capitals
+        for mapping in AZEC_CAPITAL_MAPPING:
+            df_cap = df_cap.withColumn(
+                mapping['target'],
+                when(
+                    (col("smp_sre") == mapping['smp_sre']) &
+                    (col("brch_rea") == mapping['brch_rea']),
+                    coalesce(col(mapping['source']), lit(0))
+                ).otherwise(lit(0))
             )
 
-            # Calculate global totals
-            df_cap_agg = df_cap_agg.withColumn("lci_100", col("lci_pe_100") + col("lci_dd_100"))
-            df_cap_agg = df_cap_agg.withColumn("lci_cie", col("lci_pe_cie") + col("lci_dd_cie"))
-            df_cap_agg = df_cap_agg.withColumn("smp_100", col("smp_pe_100") + col("smp_dd_100"))
-            df_cap_agg = df_cap_agg.withColumn("smp_cie", col("smp_pe_cie") + col("smp_dd_cie"))
+        # Aggregate by police
+        agg_columns = [mapping['target'] for mapping in AZEC_CAPITAL_MAPPING]
+        df_cap_agg = df_cap.groupBy("police").agg(
+            *[spark_sum(col_name).alias(col_name) for col_name in agg_columns]
+        )
 
-            # Left join
-            df = df.alias("a").join(
-                df_cap_agg.alias("b"),
-                col("a.police") == col("b.police"),
-                how="left"
-            ).select(
-                "a.*",
-                coalesce(col("b.smp_100"), lit(0)).alias("smp_100"),
-                coalesce(col("b.smp_cie"), lit(0)).alias("smp_cie"),
-                coalesce(col("b.lci_100"), lit(0)).alias("lci_100"),
-                coalesce(col("b.lci_cie"), lit(0)).alias("lci_cie")
-            )
+        # Calculate global totals
+        df_cap_agg = df_cap_agg.withColumn("lci_100", col("lci_pe_100") + col("lci_dd_100"))
+        df_cap_agg = df_cap_agg.withColumn("lci_cie", col("lci_pe_cie") + col("lci_dd_cie"))
+        df_cap_agg = df_cap_agg.withColumn("smp_100", col("smp_pe_100") + col("smp_dd_100"))
+        df_cap_agg = df_cap_agg.withColumn("smp_cie", col("smp_pe_cie") + col("smp_dd_cie"))
 
-            self.logger.info("Capital data joined successfully with branch-specific aggregation")
+        # Left join
+        df = df.alias("a").join(
+            df_cap_agg.alias("b"),
+            col("a.police") == col("b.police"),
+            how="left"
+        ).select(
+            "a.*",
+            coalesce(col("b.smp_100"), lit(0)).alias("smp_100"),
+            coalesce(col("b.smp_cie"), lit(0)).alias("smp_cie"),
+            coalesce(col("b.lci_100"), lit(0)).alias("lci_100"),
+            coalesce(col("b.lci_cie"), lit(0)).alias("lci_cie")
+        )
 
-        except Exception as e:
-            self.logger.warning(f"CAPITXCU not found or error: {e}. Using zero capitals.")
-            df = df.withColumn("smp_100", lit(0).cast(DoubleType()))
-            df = df.withColumn("smp_cie", lit(0).cast(DoubleType()))
-            df = df.withColumn("lci_100", lit(0).cast(DoubleType()))
-            df = df.withColumn("lci_cie", lit(0).cast(DoubleType()))
-
+        self.logger.info("✓ Capital data joined successfully")
         return df
 
     def _adjust_nbres(self, df: DataFrame) -> DataFrame:
         """
-        Apply AZEC-specific NBRES and NBAFN adjustments.
-
-        Based on SAS PTF_MVTS_AZEC_MACRO.sas L448-466:
-        - If PRODUIT IN ('DO0','TRC','CTR', 'CNR') then NBPTF = 0; NBRES = 0
-        - IF NBRES = 1 AND RMPLCANT NOT IN ('') AND MOTIFRES in ('RP') THEN NBRES = 0
-        - If NBRES = 1 AND MOTIFRES in ('SE','SA') THEN NBRES = 0
-        - If NBAFN = 1 and CSSSEG = "5" THEN NBAFN = 0
+        Apply AZEC-specific NBRES and NBAFN adjustments (SAS L448-466).
+        
+        Args:
+            df: AZEC DataFrame
+        
+        Returns:
+            DataFrame with adjusted NBRES and NBAFN
         """
         # Build NBRES expression with all conditions
         excluded_products = col("produit").isin(['DO0', 'TRC', 'CTR', 'CNR'])  # FIXED: Changed D00 to DO0
@@ -455,79 +479,52 @@ class AZECProcessor(BaseProcessor):
         """
         Add SEGMENT, CMARCH, CSEG, CSSSEG columns to AZEC data.
         
-        First tries to use TABLE_SEGMENTATION_AZEC_MML reference.
-        Falls back to hardcoded segmentation for 47 AZEC products.
+        TABLE_SEGMENTATION_AZEC_MML is REQUIRED (SAS L259).
+        Processing will fail if table is missing (matching SAS behavior).
         
-        Based on: PTF_MVTS_AZEC_MACRO.sas L259:
-        LEFT JOIN REF.TABLE_SEGMENTATION_AZEC_MML t2 ON (t1.PRODUIT = t2.PRODUIT)
+        Args:
+            df: AZEC DataFrame with produit column
+        
+        Returns:
+            DataFrame with segmentation columns
+        
+        Raises:
+            RuntimeError: If required segmentation table is unavailable
         """
-        from pyspark.sql.functions import lit as f_lit # type: ignore
+        reader = BronzeReader(self.spark, self.config)
         
-        # Try to use TABLE_SEGMENTATION_AZEC_MML reference first
         try:
-            reader = BronzeReader(self.spark, self.config)
             seg_ref = reader.read_file_group('table_segmentation_azec_mml', 'ref')
-            
-            if seg_ref is not None and seg_ref.count() > 0:
-                # Select needed columns
-                seg_ref = seg_ref.select(
-                    col('produit').alias('produit_ref'),
-                    'segment', 'cmarch', 'cseg', 'cssseg', 'lmarch', 'lseg', 'lssseg'
-                )
-                
-                # Left join on PRODUIT
-                df = df.join(seg_ref, col('produit') == col('produit_ref'), 'left')
-                df = df.drop('produit_ref')
-                
-                self.logger.info("SEGMENT enriched from TABLE_SEGMENTATION_AZEC_MML reference")
-                return df
-        except Exception as e:
-            self.logger.debug(f"TABLE_SEGMENTATION_AZEC_MML not available: {e}")
+        except FileNotFoundError as e:
+            self.logger.error("CRITICAL: TABLE_SEGMENTATION_AZEC_MML is REQUIRED for AZEC processing")
+            self.logger.error(f"Cannot find segmentation table: {e}")
+            self.logger.error("This matches SAS behavior which would fail with 'File does not exist'")
+            raise RuntimeError("Missing required reference: TABLE_SEGMENTATION_AZEC_MML") from e
         
-        # Fallback: Use hardcoded segmentation
-        from config.reference_data.azec_segmentation import AZEC_PRODUCTS_SEGMENTATION
-        from pyspark.sql.functions import create_map # type: ignore
+        if seg_ref is None:
+            self.logger.error("CRITICAL: TABLE_SEGMENTATION_AZEC_MML returned None")
+            raise RuntimeError("TABLE_SEGMENTATION_AZEC_MML reference data is unavailable")
         
-        # Create mapping dictionary for broadcast
-        mapping_pairs = []
-        for product, attrs in AZEC_PRODUCTS_SEGMENTATION.items():
-            mapping_pairs.extend([f_lit(product), f_lit(attrs['segment'])])
+        # Select needed columns
+        seg_ref = seg_ref.select(
+            col('produit').alias('produit_ref'),
+            'segment', 'cmarch', 'cseg', 'cssseg', 'lmarch', 'lseg', 'lssseg'
+        )
         
-        if mapping_pairs:
-            segment_map = create_map(*mapping_pairs)
-            df = df.withColumn('segment', segment_map[col('produit')])
-        else:
-            df = df.withColumn('segment', f_lit(None).cast(StringType()))
+        # Left join on PRODUIT
+        df = df.join(seg_ref, col('produit') == col('produit_ref'), 'left')
+        df = df.drop('produit_ref')
         
-        # Initialize other segment columns with NULL (will be filled from reference if available)
-        from utils.processor_helpers import add_null_columns
-        existing_cols = set(df.columns)
-        null_cols_needed = {
-            col_name: StringType
-            for col_name in ['cmarch', 'cseg', 'cssseg', 'lmarch', 'lseg', 'lssseg']
-            if col_name not in existing_cols
-        }
-        if null_cols_needed:
-            df = add_null_columns(df, null_cols_needed)
-        
-        self.logger.info("SEGMENT added from hardcoded mapping (47 products)")
-
+        self.logger.info("✓ SEGMENT enriched from TABLE_SEGMENTATION_AZEC_MML")
         return df
 
     def _enrich_region(self, df: DataFrame) -> DataFrame:
         """
         Enrich AZEC data with REGION and P_Num from PTGST_STATIC.
         
-        Based on: REF_segmentation_azec.sas L59-75 (%Lib_PTGST macro)
-        
-        Logic:
-        - Join with SAS_C.PTGST on POINGEST = PTGST
-        - If match found, add REGION and P_Num
-        - If no match, set REGION = 'Autres'
-        
         Args:
             df: AZEC DataFrame with poingest column
-            
+        
         Returns:
             DataFrame enriched with region and p_num columns
         """
@@ -577,27 +574,19 @@ class AZECProcessor(BaseProcessor):
     def _enrich_naf_codes(self, df: DataFrame, vision: str) -> DataFrame:
         """
         Enrich AZEC data with NAF codes and capitals from INCENDCU, MPACU, RCENTCU, RISTECCU.
-
-        Based on: PTF_MVTS_AZEC_MACRO.sas lines 269-303
-
-        Joins:
-        1. INCENDCU - NAF codes (CDNAF, CDTRE), PE/RD capitals, activity days
-        2. MPACU - Additional risk data
-        3. RCENTCU - Environmental coverage data
-        4. RISTECCU - Technical risk classification
-
+        
         Args:
             df: AZEC DataFrame
             vision: Vision in YYYYMM format
-
+        
         Returns:
             DataFrame enriched with NAF codes and capitals
         """
         reader = BronzeReader(self.spark, self.config)
         
-        # Initialize ALL enrichment columns upfront to avoid unresolved column errors
+        # Initialize enrichment columns upfront
         enrichment_cols = {
-            'cdnaf': StringType,  # FIXED: Class not instance
+            'cdnaf': StringType,
             'cdtre': StringType,
             'perte_exp': DoubleType,
             'risque_direct': DoubleType,
@@ -730,18 +719,11 @@ class AZECProcessor(BaseProcessor):
     def _enrich_formules_and_ca(self, df: DataFrame, vision: str) -> DataFrame:
         """
         Enrich AZEC data with product formulas from CONSTRCU and CA from MULPROCU.
-
-        Based on: PTF_MVTS_AZEC_MACRO.sas lines 299-357
-
-        Joins:
-        1. CONSTRCU - Product formulas (FORMULE, FORMULE2, FORMULE3, FORMULE4)
-                      and construction site details (DATOUVCH, LDESTLOC, DATRECEP, etc.)
-        2. MULPROCU - Turnover/CA data (MTCA)
-
+        
         Args:
             df: AZEC DataFrame
             vision: Vision in YYYYMM format
-
+        
         Returns:
             DataFrame enriched with formulas and CA
         """

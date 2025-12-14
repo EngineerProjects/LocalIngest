@@ -7,9 +7,12 @@ harmonizes schemas, enriches with reference data, writes to gold layer.
 Uses dictionary-driven configuration and SilverReader.
 """
 
-from pyspark.sql import DataFrame # type: ignore
-from pyspark.sql.functions import col, when, lit, coalesce, upper, broadcast # type: ignore
-from pyspark.sql.types import StringType, DateType, DoubleType # type: ignore
+from pyspark.sql import DataFrame
+from pyspark.sql.functions import (
+    col, when, lit, coalesce, upper, broadcast,
+    month, dayofmonth, to_date
+)
+from pyspark.sql.types import StringType, DateType, DoubleType
 
 from src.processors.base_processor import BaseProcessor
 from src.reader import SilverReader, BronzeReader
@@ -213,7 +216,7 @@ class ConsolidationProcessor(BaseProcessor):
         Returns:
             DataFrame with harmonized column names and computed columns (all lowercase)
         """
-        from pyspark.sql.functions import month, dayofmonth # type: ignore
+        from utils.helpers import compute_date_ranges
 
         # Apply renames
         rename_mapping = harmonization_config.get('rename', {})
@@ -252,19 +255,19 @@ class ConsolidationProcessor(BaseProcessor):
         'q46': {
             'file_group': 'ird_risk_q46',
             'date_columns': ['dtouchan', 'dtrectrx', 'dtreffin'],
-            'text_columns': ['ctprvtrv', 'ctdeftra', 'lbnattrv', 'lbdstcsc'],  # SAS L164-167 (lbdstcsc → dstcsc in coalesce)
+            'text_columns': ['ctprvtrv', 'ctdeftra', 'lbnattrv', 'lbdstcsc'],
             'suffix': '_risk'  # Same suffix for all (SAS pattern)
         },
         'q45': {
             'file_group': 'ird_risk_q45',
             'date_columns': ['dtouchan', 'dtrectrx', 'dtreffin'],
-            'text_columns': ['ctprvtrv', 'ctdeftra', 'lbnattrv', 'lbdstcsc'],  # SAS L200-203 (lbdstcsc → dstcsc in coalesce)
+            'text_columns': ['ctprvtrv', 'ctdeftra', 'lbnattrv', 'lbdstcsc'],
             'suffix': '_risk'  # Same suffix (dropped before Q45 join)
         },
         'qan': {
             'file_group': 'ird_risk_qan',
-            'date_columns': ['dtouchan', 'dtrcppr'],  # QAN uses dtrcppr not dtrectrx
-            'text_columns': ['ctprvtrv', 'ctdeftra', 'lbnattrv', 'dstcsc'],  # SAS L235-238 (QAN: dstcsc directly, not lbdstcsc)
+            'date_columns': ['dtouchan', 'dtrcppr'],
+            'text_columns': ['ctprvtrv', 'ctdeftra', 'lbnattrv', 'dstcsc'],
             'suffix': '_risk'  # Same suffix (dropped before QAN join)
         }
     }
@@ -285,7 +288,7 @@ class ConsolidationProcessor(BaseProcessor):
         Returns:
             Enriched DataFrame with IRD _risk columns (lowercase columns)
         """
-        from pyspark.sql.functions import to_date # type: ignore
+
 
         reader = BronzeReader(self.spark, self.config)
         year_int, month_int = extract_year_month_int(vision)
@@ -466,16 +469,14 @@ class ConsolidationProcessor(BaseProcessor):
         Returns:
             DataFrame enriched with IRD risk data
         """
-        # Initialize dtreffin column upfront to avoid unresolved column errors
-        # DTREFFIN does NOT exist in AZ/AZEC - comes only from IRD joins (SAS L186)
-        # This is a Spark workaround: SAS does implicit NULL, Spark needs explicit column
+        # Initialize dtreffin upfront
         if 'dtreffin' not in df.columns:
             from utils.processor_helpers import add_null_columns
             df = add_null_columns(df, {'dtreffin': DateType})
         
         reader = BronzeReader(self.spark, self.config)
         
-        # SEQUENTIAL processing (SAS pattern)
+        # Sequential processing (SAS L154-258)
         # Q46 → Coalesce → Drop (SAS L158-188)
         df = self._join_ird_and_coalesce(df, reader, vision, 'q46')
         
@@ -518,8 +519,6 @@ class ConsolidationProcessor(BaseProcessor):
                 self.logger.debug(f"IRD {source.upper()}: No data found")
                 return df
             
-            # 1. SELECT columns with _risk suffix
-            from pyspark.sql.functions import to_date # type: ignore
             select_cols = ['nopol']
             
             for col_name in cfg['date_columns']:
@@ -534,27 +533,26 @@ class ConsolidationProcessor(BaseProcessor):
             
             df_ird_select = df_ird.select(*select_cols)
             
-            # 2. LEFT JOIN (SAS L172-176, L207-212, L242-247)
+            # LEFT JOIN
             df = df.join(broadcast(df_ird_select), on='nopol', how='left')
             
-            # 3. COALESCE immediately (SAS L178-188, L214-224, L249-258)
-            # CRITICAL: Use withColumn to REPLACE existing columns, not create new ones
+            # Coalesce immediately
             for col_name in cfg['date_columns'] + cfg['text_columns']:
                 risk_col = f"{col_name}_risk"
                 
-                # Special mapping: lbdstcsc_risk → dstcsc (SAS L185, L222, L256)
+                # Map lbdstcsc_risk → dstcsc
                 target_col = 'dstcsc' if col_name == 'lbdstcsc' else col_name
                 
                 if risk_col in df.columns:
-                    # Special case: DTREFFIN assignment for Q46 (SAS L186)
+                    # DTREFFIN assignment for Q46
                     if col_name == 'dtreffin' and source == 'q46':
                         df = df.withColumn('dtreffin', col(risk_col))
-                    # Standard coalesce: replace main column
+                    # Standard coalesce
                     else:
                         df = df.withColumn(target_col,
                             when(col(target_col).isNull(), col(risk_col)).otherwise(col(target_col)))
             
-            # 4. DROP _risk columns immediately (SAS L187, L223, L257)
+            # Drop _risk columns
             risk_cols_to_drop = [f"{c}_risk" for c in cfg['date_columns'] + cfg['text_columns']]
             risk_cols_existing = [c for c in risk_cols_to_drop if c in df.columns]
             if risk_cols_existing:
@@ -630,7 +628,7 @@ class ConsolidationProcessor(BaseProcessor):
         Returns:
             DataFrame with note_euler column added (NULL if data unavailable)
         """
-        from pyspark.sql.functions import to_date # type: ignore
+
         from utils.helpers import compute_date_ranges
         
         reader = BronzeReader(self.spark, self.config)
