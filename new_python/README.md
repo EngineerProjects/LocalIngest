@@ -88,6 +88,7 @@ new_python/
 | [Emissions Workflow](docs/workflows/Emissions_Workflow.md) | Premium emissions |
 | [Configuration Guide](docs/configs/Configuration_Guide.md) | Config reference |
 | [Data Catalog](docs/configs/Data_Catalog.md) | Input/output tables |
+| [Insurance Calculations](docs/calculs_assurance_construction.md) | Technical formulas & business logic |
 
 ---
 
