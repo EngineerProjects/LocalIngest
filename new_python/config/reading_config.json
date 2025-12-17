@@ -373,6 +373,36 @@
             "filters": [],
             "location_type": "reference"
         },
+        "cliact14": {
+            "description": "CLIENT1 CLACENT1 - Client data generation 14 (SIRET/SIREN)",
+            "file_patterns": [
+                "clacent1.csv"
+            ],
+            "schema": "client1",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "cliact3": {
+            "description": "CLIENT3 CLACENT3 - Client data generation 3 (SIRET/SIREN)",
+            "file_patterns": [
+                "clacent3.csv"
+            ],
+            "schema": "client3",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
         "client3": {
             "description": "CLIENT3 - Client account data for Courtage channel",
             "file_patterns": [

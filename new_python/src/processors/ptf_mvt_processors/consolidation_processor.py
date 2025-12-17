@@ -230,7 +230,12 @@ class ConsolidationProcessor(BaseProcessor):
             comp_type = comp_config.get('type')
 
             if comp_type == 'constant':
-                df = df.withColumn(col_name.lower(), lit(comp_config['value']))
+                value = comp_config['value']
+                # Cast null to string to avoid void type (Parquet incompatible)
+                if value is None:
+                    df = df.withColumn(col_name.lower(), lit(None).cast("string"))
+                else:
+                    df = df.withColumn(col_name.lower(), lit(value))
 
             elif comp_type == 'month_extract':
                 source = comp_config['source'].lower()
@@ -518,6 +523,39 @@ class ConsolidationProcessor(BaseProcessor):
             if df_ird is None or df_ird.count() == 0:
                 self.logger.debug(f"IRD {source.upper()}: No data found")
                 return df
+            
+            # QUALITY IMPROVEMENT: Detect and remove duplications (not done in SAS)
+            # This ensures gold layer data quality
+            total_count = df_ird.count()
+            distinct_nopol_count = df_ird.select("nopol").distinct().count()
+            
+            if total_count > distinct_nopol_count:
+                dup_count = total_count - distinct_nopol_count
+                self.logger.warning(
+                    f"IRD {source.upper()}: {dup_count} duplications detected on NOPOL - "
+                    f"keeping most recent entry (total={total_count}, unique={distinct_nopol_count})"
+                )
+                
+                # Keep most recent entry per NOPOL based on available date columns
+                from pyspark.sql.window import Window
+                from pyspark.sql.functions import row_number, desc
+                
+                # Build ordering: prioritize by latest dates (nulls last)
+                order_cols = []
+                for date_col in cfg['date_columns']:
+                    if date_col in df_ird.columns:
+                        order_cols.append(col(date_col).desc_nulls_last())
+                
+                # If no date columns, just take first row
+                if not order_cols:
+                    order_cols = [lit(1)]
+                
+                window_spec = Window.partitionBy("nopol").orderBy(*order_cols)
+                df_ird = df_ird.withColumn("_row_num", row_number().over(window_spec)) \
+                               .filter(col("_row_num") == 1) \
+                               .drop("_row_num")
+                
+                self.logger.info(f"IRD {source.upper()}: Deduplication complete - kept {distinct_nopol_count} unique records")
             
             select_cols = ['nopol']
             
@@ -997,7 +1035,7 @@ class ConsolidationProcessor(BaseProcessor):
                 # Use reference value if available
                 df = df.withColumn(
                     "destinat",
-                    coalesce(col("destinat_ref"), col("destinat"))
+                    col("destinat_ref")  # Use joined value directly
                 ).drop("nopol_ref", "destinat_ref")
                 
                 self.logger.info("DO_DEST reference enrichment applied successfully")

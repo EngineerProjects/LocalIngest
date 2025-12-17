@@ -7,7 +7,7 @@
       "description": "Flag to indicate if contract is in coassurance",
       "conditions": [
         {
-          "col": "cdpolgp1",
+          "col": "cdpolqpl",
           "op": "==",
           "value": "1",
           "result": 1
@@ -19,7 +19,7 @@
       "description": "Coassurance type categorization",
       "conditions": [
         {
-          "col": "cdpolgp1",
+          "col": "cdpolqpl",
           "op": "==",
           "value": "1",
           "and_col": "cdcoas",
@@ -30,7 +30,7 @@
           "result": "APERITION"
         },
         {
-          "col": "cdpolgp1",
+          "col": "cdpolqpl",
           "op": "==",
           "value": "1",
           "and_col": "cdcoas",
@@ -41,7 +41,7 @@
           "result": "COASS. ACCEPTEE"
         },
         {
-          "col": "cdpolgp1",
+          "col": "cdpolqpl",
           "op": "==",
           "value": "1",
           "and_col": "cdcoas",
@@ -51,7 +51,7 @@
           "result": "ACCEPTATION INTERNATIONALE"
         },
         {
-          "col": "cdpolgp1",
+          "col": "cdpolqpl",
           "op": "==",
           "value": "1",
           "and_col": "cdcoas",
@@ -77,7 +77,7 @@
           "result": 1.0
         },
         {
-          "col": "cdpolgp1",
+          "col": "cdpolqpl",
           "op": "==",
           "value": "1",
           "result_expr": "prcdci / 100.0"

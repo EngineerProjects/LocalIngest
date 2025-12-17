@@ -53,8 +53,8 @@ def join_client_data(
             df = df.join(
                 df_client1.select(
                     col("noclt"),
-                    col("cdsirect").alias("cdsirect_c1"),
-                    col("cdsirep").alias("cdsirep_c1")
+                    col("cdsiret").alias("cdsiret_c1"),  # Fixed: was cdsirect
+                    col("cdsiren").alias("cdsiren_c1")   # Fixed: was cdsirep
                 ),
                 on=["noclt"],
                 how="left"
@@ -72,8 +72,8 @@ def join_client_data(
             df = df.join(
                 df_client3.select(
                     col("noclt"),
-                    col("cdsirect").alias("cdsirect_c3"),
-                    col("cdsirep").alias("cdsirep_c3")
+                    col("cdsiret").alias("cdsiret_c3"),  # Fixed: was cdsirect
+                    col("cdsiren").alias("cdsiren_c3")   # Fixed: was cdsirep
                 ),
                 on=["noclt"],
                 how="left"
@@ -84,28 +84,28 @@ def join_client_data(
         if logger:
             logger.warning(f"CLIACT3 not available: {e}")
 
-    # 3. Coalesce CDSIRECT and CDSIREP (CLIENT1 priority over CLIENT3)
-    if "cdsirect_c1" in df.columns or "cdsirect_c3" in df.columns:
+    # 3. Coalesce CDSIRET and CDSIREN (CLIENT1 priority over CLIENT3)
+    if "cdsiret_c1" in df.columns or "cdsiret_c3" in df.columns:
         df = df.withColumn(
-            "cdsirect",
+            "cdsiret",  # Fixed: was cdsirect
             coalesce(
-                col("cdsirect_c1") if "cdsirect_c1" in df.columns else lit(None),
-                col("cdsirect_c3") if "cdsirect_c3" in df.columns else lit(None)
+                col("cdsiret_c1") if "cdsiret_c1" in df.columns else lit(None),
+                col("cdsiret_c3") if "cdsiret_c3" in df.columns else lit(None)
             )
         )
         df = df.withColumn(
-            "cdsirep",
+            "cdsiren",  # Fixed: was cdsirep
             coalesce(
-                col("cdsirep_c1") if "cdsirep_c1" in df.columns else lit(None),
-                col("cdsirep_c3") if "cdsirep_c3" in df.columns else lit(None)
+                col("cdsiren_c1") if "cdsiren_c1" in df.columns else lit(None),
+                col("cdsiren_c3") if "cdsiren_c3" in df.columns else lit(None)
             )
         )
 
         # Drop temporary columns
-        if "cdsirect_c1" in df.columns:
-            df = df.drop("cdsirect_c1", "cdsirep_c1")
-        if "cdsirect_c3" in df.columns:
-            df = df.drop("cdsirect_c3", "cdsirep_c3")
+        if "cdsiret_c1" in df.columns:
+            df = df.drop("cdsiret_c1", "cdsiren_c1")  # Fixed column names
+        if "cdsiret_c3" in df.columns:
+            df = df.drop("cdsiret_c3", "cdsiren_c3")  # Fixed column names
 
     # 4. Join HISTO_NOTE_RISQUE for risk scoring (if CDSIREN available)
     if "cdsiren" in df.columns:

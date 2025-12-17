@@ -22,7 +22,7 @@ runtime:
 # Azure Data Lake Storage configuration
 datalake:
   # Base path (override via environment: DATALAKE_BASE_PATH)
-  base_path: "abfss://datamart@yourdatalake.dfs.core.windows.net/construction"
+  base_path: "/workspace/datalake"
 
   # Path template for all layers : {base_path}, {layer}, {year}, {month}
   path_template: "{base_path}/{layer}/{year}/{month}"
@@ -41,7 +41,7 @@ components:
     description: "Portfolio Movements (AZ + AZEC)"
 
   capitaux:
-    enabled: true
+    enabled: false
     description: "Capitaux domain (SMP/LCI extraction)"
 
   emissions:

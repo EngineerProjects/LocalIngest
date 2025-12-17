@@ -55,20 +55,17 @@ def assign_isic_codes(
     if logger:
         logger.info("Starting ISIC codification process")
 
-    # Initialize all columns in single select instead of 5 withColumns
-    init_columns = {
-        "cdisic": lit(None).cast("string"),
-        "origine_isic": lit(None).cast("string"),
-        "isic_code_sui": lit(None).cast("string"),
-        "cdnaf2008": lit(None).cast("string"),
-        "desti_isic": lit(None).cast("string")
-    }
-    df = df.select("*", *[expr.alias(name) for name, expr in init_columns.items()])
+    # Initialize columns that aren't added during joins
+    if "origine_isic" not in df.columns:
+        df = df.withColumn("origine_isic", lit(None).cast("string"))
+    if "isic_code_sui" not in df.columns:
+        df = df.withColumn("isic_code_sui", lit(None).cast("string"))
 
     # Only process construction market (cmarch = '6')
     is_construction = col("cmarch") == "6"
 
-    # Step 1: Assign ISIC from IRD_SUIVI_ENGAGEMENTS (if joined earlier)
+    # Step 1: Assign CDNAF2008 from IRD_SUIVI_ENGAGEMENTS (if joined earlier)
+    # Populate cdnaf2008 column for later MAPPING_CDNAF2008_ISIC join (SAS line 75)
     if "cdnaf08_sui" in df.columns and "cdisic_sui" in df.columns:
         df = df.withColumn(
             "cdnaf2008",
@@ -372,6 +369,8 @@ def join_isic_reference_tables(
     if logger:
         logger.info("Joining ISIC reference tables")
 
+    # Columns will be added right before the joins that need them
+
     # Removed count() calls - they trigger expensive full table scans
     # Spark's lazy evaluation means join will only execute when needed
 
@@ -381,7 +380,7 @@ def join_isic_reference_tables(
         if df_sui is not None:  # OPTIMIZED: Removed count() check
             df = df.join(
                 df_sui.select("nopol", "cdprod",
-                             col("cdnaf08").alias("cdnaf08_sui"),
+                             col("cdnaf08").alias("cdnaf08_sui"),  # Production uses CDNAF08
                              col("cdisic").alias("cdisic_sui")),
                 on=["nopol", "cdprod"],
                 how="left"
@@ -391,6 +390,15 @@ def join_isic_reference_tables(
     except Exception as e:
         if logger:
             logger.warning(f"IRD_SUIVI_ENGAGEMENTS not available: {e}")
+
+    # CRITICAL: Use SELECT to FORCE column creation (matching SAS lines 88-90)
+    # withColumn doesn't work with Spark lazy evaluation - must use select()
+    df = df.select(
+        "*",
+        lit(None).cast("string").alias("cdnaf2008"),
+        lit(None).cast("string").alias("desti_isic"),
+        lit(None).cast("string").alias("cdisic")
+    )
 
     # 2. Join MAPPING_CDNAF2003_ISIC
     try:
@@ -411,6 +419,7 @@ def join_isic_reference_tables(
             logger.warning(f"MAPPING_CDNAF2003_ISIC not available: {e}")
 
     # 3. Join MAPPING_CDNAF2008_ISIC
+    # Column cdnaf2008 now exists (created unconditionally after IRD join)
     try:
         df_naf08 = reader.read_file_group("mapping_cdnaf2008_isic", vision)
         if df_naf08 is not None:  # OPTIMIZED: Removed count() check
@@ -435,9 +444,9 @@ def join_isic_reference_tables(
             df = df.join(
                 df_act.select(
                     "actprin",
-                    col("cdnaf08").alias("cdnaf08_const_r"),
+                    col("cdnaf08").alias("cdnaf08_const_r"),  # Production uses CDNAF08
                     col("cdtre").alias("cdtre_const_r"),
-                    col("cdnaf03").alias("cdnaf03_const_r"),
+                    col("cdnaf03").alias("cdnaf03_const_r"),  # Production uses CDNAF03
                     col("cdisic").alias("cdisic_const_r")
                 ),
                 on=["actprin"],
@@ -450,6 +459,10 @@ def join_isic_reference_tables(
             logger.warning(f"MAPPING_ISIC_CONST_ACT not available: {e}")
 
     # 5. Join MAPPING_ISIC_CONST_CHT (for CDNATP='C')
+    # First ensure desti_isic column exists
+    if "desti_isic" not in df.columns:
+        df = df.withColumn("desti_isic", lit(None).cast("string"))
+    
     try:
         df_cht = reader.read_file_group("mapping_isic_const_cht", vision)
         if df_cht is not None:  # OPTIMIZED: Removed count() check
@@ -457,9 +470,9 @@ def join_isic_reference_tables(
             df = df.join(
                 df_cht.select(
                     col("desti_isic"),
-                    col("cdnaf08").alias("cdnaf08_const_c"),
+                    col("cdnaf08").alias("cdnaf08_const_c"),  # Production uses CDNAF08
                     col("cdtre").alias("cdtre_const_c"),
-                    col("cdnaf03").alias("cdnaf03_const_c"),
+                    col("cdnaf03").alias("cdnaf03_const_c"),  # Production uses CDNAF03
                     col("cdisic").alias("cdisic_const_c")
                 ),
                 on=["desti_isic"],
@@ -472,6 +485,10 @@ def join_isic_reference_tables(
             logger.warning(f"MAPPING_ISIC_CONST_CHT not available: {e}")
 
     # 6. Join table_isic_tre_naf (HAZARD_GRADES)
+    # First ensure cdisic column exists
+    if "cdisic" not in df.columns:
+        df = df.withColumn("cdisic", lit(None).cast("string"))
+    
     try:
         df_hazard = reader.read_file_group("table_isic_tre_naf", vision)
         if df_hazard is not None:  # OPTIMIZED: Removed count() check
@@ -495,7 +512,7 @@ def join_isic_reference_tables(
         if logger:
             logger.warning(f"table_isic_tre_naf not available: {e}")
 
-    # 7. Join 1SIC_LG_202306 (ISIC local � global)
+    # 7. Join 1SIC_LG_202306 (ISIC local → global)
     try:
         df_isic_global = reader.read_file_group("1sic_lg", "202306")  # Fixed version
         if df_isic_global is not None and df_isic_global.count() > 0:
@@ -504,7 +521,7 @@ def join_isic_reference_tables(
                     col("isic_local"),
                     col("isic_global")
                 ),
-                on=[df["cdisic"] == df_isic_global["isic_local"]],
+                on=[df["cdisic"] == df_isic_global["isic_local"]],  # Use cdisic not isic_code
                 how="left"
             )
             if logger:

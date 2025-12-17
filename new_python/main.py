@@ -207,12 +207,12 @@ Examples:
 
     try:
         from pyspark.sql import SparkSession # type: ignore
-        # Internal module to auto configure spark and connection to Azure
-        from azfr_fsspec_utils import fspath
-        import azfr_fsspec_abfs
+        # # Internal module to auto configure spark and connection to Azure
+        # from azfr_fsspec_utils import fspath
+        # import azfr_fsspec_abfs
 
-        # Configure SparkSession
-        azfr_fsspec_abfs.use()
+        # # Configure SparkSession
+        # azfr_fsspec_abfs.use()
 
         app_name = config.get('spark.app_name', 'Construction_Pipeline')
         spark_config = config.get('spark.config', {})
