@@ -9,9 +9,7 @@ import os
 from pathlib import Path
 from pyspark.sql import SparkSession # type: ignore
 
-from utils.loaders.config_loader import ConfigLoader
-from utils.logger import get_logger
-from utils.helpers import validate_vision, upload_log_to_datalake, extract_year_month_int
+from src.orchestrators import BaseOrchestrator
 from src.processors.ptf_mvt_processors.az_processor import AZProcessor
 from src.processors.ptf_mvt_processors.azec_processor import AZECProcessor
 from src.processors.ptf_mvt_processors.consolidation_processor import ConsolidationProcessor
@@ -71,6 +69,31 @@ def copy_ird_risk_to_gold(spark, config, vision: str, logger):
     logger.success(f"IRD risk files copy completed ({copied_count}/3 files copied)")
 
 
+class PTFMVTOrchestrator(BaseOrchestrator):
+    """
+    PTF_MVT pipeline orchestrator.
+    
+    Executes:
+    1. AZ Processor (Bronze → Silver)
+    2. AZEC Processor (Bronze → Silver)  
+    3. Consolidation Processor (Silver → Gold)
+    4. IRD Risk Files copy to Gold
+    """
+    
+    def define_stages(self):
+        """Define PTF_MVT pipeline stages."""
+        return [
+            ("AZ Processor (Bronze → Silver)", AZProcessor),
+            ("AZEC Processor (Bronze → Silver)", AZECProcessor),
+            ("Consolidation Processor (Silver → Gold)", ConsolidationProcessor)
+        ]
+    
+    def post_process(self, vision, results):
+        """Copy IRD risk files to gold layer after main processing."""
+        self.logger.section("STAGE 4: Copy IRD Risk Files to Gold")
+        copy_ird_risk_to_gold(self.spark, self.config, vision, self.logger)
+
+
 def run_ptf_mvt_pipeline(
     vision: str,
     config_path: str = None,
@@ -84,6 +107,7 @@ def run_ptf_mvt_pipeline(
     1. AZ Processor (bronze → silver)
     2. AZEC Processor (bronze → silver)
     3. Consolidation Processor (silver → gold)
+    4. IRD Risk Files copy to gold
 
     Args:
         vision: Vision in YYYYMM format (e.g., '202509')
@@ -108,69 +132,14 @@ def run_ptf_mvt_pipeline(
     if logger is None:
         raise ValueError("Logger is required. Initialize in main.py")
     
-    # Initialize configuration
+    # Default config path
     if config_path is None:
         project_root = Path(__file__).parent.parent
         config_path = project_root / "config" / "config.yml"
     
-    config = ConfigLoader(config_path)
-    
-    # Validate vision
-    if not validate_vision(vision):
-        logger.error(f"Invalid vision format: {vision}. Expected YYYYMM")
-        return False
-    
-    # Log pipeline start
-    logger.section(f"PTF_MVT Pipeline - Vision {vision}")
-    logger.info(f"Config: {config_path}")
-    logger.info(f"Spark: {spark.sparkContext.appName} v{spark.version}")
-    
-    try:
-        # ===================================================================
-        # STAGE 1: AZ Processor (Bronze → Silver)
-        # ===================================================================
-        logger.section("STAGE 1: AZ Processor (Bronze → Silver)")
-        az_processor = AZProcessor(spark, config, logger)
-        df_az = az_processor.run(vision)
-        logger.success(f"AZ Processor completed: {df_az.count()} rows written to silver")
-        
-        # ===================================================================
-        # STAGE 2: AZEC Processor (Bronze → Silver)
-        # ===================================================================
-        logger.section("STAGE 2: AZEC Processor (Bronze → Silver)")
-        azec_processor = AZECProcessor(spark, config, logger)
-        df_azec = azec_processor.run(vision)
-        logger.success(f"AZEC Processor completed: {df_azec.count()} rows written to silver")
-        
-        # ===================================================================
-        # STAGE 3: Consolidation Processor (Silver → Gold)
-        # ===================================================================
-        logger.section("STAGE 3: Consolidation Processor (Silver → Gold)")
-        consolidation_processor = ConsolidationProcessor(spark, config, logger)
-        df_consolidated = consolidation_processor.run(vision)
-        logger.success(f"Consolidation completed: {df_consolidated.count()} rows written to gold")
-
-        # ===================================================================
-        # STAGE 4: Copy IRD Risk Files to Gold Layer
-        # ===================================================================
-        logger.section("STAGE 4: Copy IRD Risk Files to Gold")
-        copy_ird_risk_to_gold(spark, config, vision, logger)
-
-        # ===================================================================
-        # PIPELINE SUMMARY
-        # ===================================================================
-        logger.section("Pipeline Summary")
-        logger.info(f"AZ records (silver): {df_az.count()}")
-        logger.info(f"AZEC records (silver): {df_azec.count()}")
-        logger.info(f"Consolidated records (gold): {df_consolidated.count()}")
-        logger.success("PTF_MVT Pipeline completed successfully!")
-
-        return True
-        
-    except Exception as e:
-        logger.failure(f"PTF_MVT Pipeline failed: {str(e)}")
-        logger.error(f"Error details: {e}", exc_info=True)
-        return False
+    # Create orchestrator and run
+    orchestrator = PTFMVTOrchestrator(spark, str(config_path), logger)
+    return orchestrator.run(vision)
 
 
 if __name__ == "__main__":

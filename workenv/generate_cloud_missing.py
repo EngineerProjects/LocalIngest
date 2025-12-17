@@ -89,8 +89,17 @@ class CloudGapGenerator:
         # AZEC policies
         self.azec_policies = [f"AZEC{str(i).zfill(7)}" for i in range(1, 5001)]
         
+        # Create silver and gold folders
+        self._create_datalake_structure()
+        
         print(f"📦 Output: {self.output_path}")
         print(f"🎯 Vision: {self.vision}")
+    
+    def _create_datalake_structure(self):
+        """Create silver and gold folder structure."""
+        (self.output_path / "silver" / str(self.year) / f"{self.month:02d}").mkdir(parents=True, exist_ok=True)
+        (self.output_path / "gold" / str(self.year) / f"{self.month:02d}").mkdir(parents=True, exist_ok=True)
+        print("✅ Created silver/ and gold/ folders")
     
     def _parse_vision(self, vision: str):
         """Parse vision string."""

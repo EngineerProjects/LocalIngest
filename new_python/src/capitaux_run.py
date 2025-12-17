@@ -9,7 +9,36 @@ Runs the complete capital data processing pipeline:
 Based on: CAPITAUX_RUN.sas (211 lines)
 """
 
-from typing import Optional
+from src.orchestrators import BaseOrchestrator
+
+
+class CapitauxOrchestrator(BaseOrchestrator):
+    """
+    Capitaux pipeline orchestrator.
+    
+    Executes:
+    1. AZ Capitaux Processor (Bronze → Silver)
+    2. AZEC Capitaux Processor (Bronze → Silver)
+    3. Consolidation (Silver → Gold)
+    """
+    
+    def define_stages(self):
+        """Define Capitaux pipeline stages."""
+        from src.processors.capitaux_processors import (
+            AZCapitauxProcessor,
+            AZECCapitauxProcessor,
+            CapitauxConsolidationProcessor
+        )
+        
+        return [
+            ("AZ Capitaux Processor (Bronze → Silver)", AZCapitauxProcessor),
+            ("AZEC Capitaux Processor (Bronze → Silver)", AZECCapitauxProcessor),
+            ("Consolidation (Silver → Gold)", CapitauxConsolidationProcessor)
+        ]
+    
+    def allow_stage_failure(self, stage_name: str) -> bool:
+        """AZEC is optional - pipeline can continue if it fails."""
+        return "AZEC" in stage_name
 
 
 def run_capitaux_pipeline(
@@ -23,7 +52,7 @@ def run_capitaux_pipeline(
     
     Workflow:
         STAGE 1: AZ Capitaux (Bronze → Silver)
-        STAGE 2: AZEC Capitaux (Bronze → Silver)
+        STAGE 2: AZEC Capitaux (Bronze → Silver) - optional
         STAGE 3: Consolidation (Silver → Gold)
     
     Args:
@@ -38,77 +67,37 @@ def run_capitaux_pipeline(
     Example:
         >>> success = run_capitaux_pipeline('202509', 'config/config.yml', spark, logger)
     """
+    orchestrator = CapitauxOrchestrator(spark, config_path, logger)
+    return orchestrator.run(vision)
+
+
+if __name__ == "__main__":
+    import sys
+    from pyspark.sql import SparkSession
+    from utils.logger import get_logger
+    from pathlib import Path
+    
+    if len(sys.argv) < 2:
+        print("Usage: python capitaux_run.py <vision>")
+        print("Example: python capitaux_run.py 202509")
+        sys.exit(1)
+    
+    vision = sys.argv[1]
+    
+    # Initialize Spark and Logger
+    print("Initializing Spark session...")
+    spark = SparkSession.builder \
+        .appName("Construction_Pipeline_Capitaux") \
+        .getOrCreate()
+    
+    logger = get_logger('capitaux_standalone', log_file=f'logs/capitaux_{vision}.log')
+    
+    # Config path
+    project_root = Path(__file__).parent.parent
+    config_path = str(project_root / "config" / "config.yml")
+    
     try:
-        logger.section(f"CAPITAUX PIPELINE - Vision {vision}")
-        logger.info("Starting capital data processing")
-        
-        # Load configuration
-        from utils.loaders.config_loader import ConfigLoader
-        config = ConfigLoader(config_path)
-        
-        # Import processors
-        from src.processors.capitaux_processors import (
-            AZCapitauxProcessor,
-            AZECCapitauxProcessor,
-            CapitauxConsolidationProcessor
-        )
-        
-        # =====================================================================
-        # STAGE 1: AZ Capitaux Processor (Bronze → Silver)
-        # =====================================================================
-        logger.section("STAGE 1: AZ Capitaux Processor (Bronze → Silver)")
-        
-        az_processor = AZCapitauxProcessor(spark, config, logger)
-        df_az = az_processor.run(vision)
-        
-        if df_az is None:
-            logger.error("AZ Processor failed")
-            return False
-        
-        logger.success(f"AZ Processor completed: {df_az.count():,} rows written to silver")
-        
-        # =====================================================================
-        # STAGE 2: AZEC Capitaux Processor (Bronze → Silver)
-        # =====================================================================
-        logger.section("STAGE 2: AZEC Capitaux Processor (Bronze → Silver)")
-        
-        try:
-            azec_processor = AZECCapitauxProcessor(spark, config, logger)
-            df_azec = azec_processor.run(vision)
-            
-            if df_azec is not None:
-                logger.success(f"AZEC Processor completed: {df_azec.count():,} rows written to silver")
-            else:
-                logger.warning("AZEC Processor returned None - data may not be available")
-        except Exception as e:
-            logger.warning(f"AZEC Processor encountered error: {e}")
-            logger.info("Continuing with AZ data only")
-            df_azec = None
-        
-        # =====================================================================
-        # STAGE 3: Consolidation (Silver → Gold)
-        # =====================================================================
-        logger.section("STAGE 3: Consolidation (Silver → Gold)")
-        
-        consolidation_processor = CapitauxConsolidationProcessor(spark, config, logger)
-        df_consolidated = consolidation_processor.run(vision)
-        
-        if df_consolidated is None:
-            logger.error("Consolidation failed")
-            return False
-        
-        logger.success(f"Consolidation completed: {df_consolidated.count():,} rows written to gold")
-        
-        # =====================================================================
-        # PIPELINE COMPLETION
-        # =====================================================================
-        logger.section("CAPITAUX PIPELINE COMPLETED")
-        logger.success(f"Capital data processing completed successfully for vision {vision}")
-        
-        return True
-        
-    except Exception as e:
-        logger.error(f"Capitaux pipeline failed: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return False
+        success = run_capitaux_pipeline(vision, config_path, spark, logger)
+        sys.exit(0 if success else 1)
+    finally:
+        spark.stop()

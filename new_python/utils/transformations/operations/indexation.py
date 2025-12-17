@@ -327,7 +327,7 @@ def load_index_table(
         # The exact file name should be configured in reading_config.json
         index_df = reader.read_file_group("construction_indices", vision=None)
 
-        if index_df is not None and index_df.count() > 0:
+        if index_df is not None:  # OPTIMIZED: Removed count() for null check
             if logger:
                 logger.success(f"Index table loaded: {index_df.count()} records")
             return index_df

@@ -49,7 +49,7 @@ def join_client_data(
     # 1. Join CLIENT1 (CLIACT14) for CDSIRECT, CDSIREP
     try:
         df_client1 = reader.read_file_group("cliact14", vision)
-        if df_client1 is not None and df_client1.count() > 0:
+        if df_client1 is not None:  # OPTIMIZED: Removed count() check
             df = df.join(
                 df_client1.select(
                     col("noclt"),
@@ -68,7 +68,7 @@ def join_client_data(
     # 2. Join CLIENT3 (CLIACT3) for CDSIRECT, CDSIREP (fallback)
     try:
         df_client3 = reader.read_file_group("cliact3", vision)
-        if df_client3 is not None and df_client3.count() > 0:
+        if df_client3 is not None:  # OPTIMIZED: Removed count() check
             df = df.join(
                 df_client3.select(
                     col("noclt"),
@@ -111,7 +111,7 @@ def join_client_data(
     if "cdsiren" in df.columns:
         try:
             df_histo_note = reader.read_file_group("histo_note_risque", vision)
-            if df_histo_note is not None and df_histo_note.count() > 0:
+            if df_histo_note is not None:  # OPTIMIZED: Removed count() check
                 # Filter by validity dates (SAS: dtdeb_valid <= dtfin AND dtfin_valid > dtfin)
                 df_histo_note_valid = df_histo_note.filter(
                     (col("dtdeb_valid") <= lit(dtfin)) &

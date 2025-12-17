@@ -12,7 +12,6 @@ from pyspark.sql.functions import col, when, lit, coalesce, broadcast # type: ig
 from pyspark.sql.types import DoubleType, StringType, DateType # type: ignore
 
 from src.processors.base_processor import BaseProcessor
-from src.reader import BronzeReader
 from utils.loaders import get_default_loader
 from config.constants import DIRCOM, POLE, LTA_TYPES
 from utils.helpers import extract_year_month_int, compute_date_ranges
@@ -23,7 +22,8 @@ from utils.transformations import (
     calculate_exposures,
     rename_columns,
 )
-from utils.processor_helpers import safe_reference_join, safe_multi_reference_join, add_null_columns
+from utils.processor_helpers import (safe_reference_join, safe_multi_reference_join, 
+                                      add_null_columns, get_bronze_reader)
 
 
 class AZProcessor(BaseProcessor):
@@ -44,7 +44,7 @@ class AZProcessor(BaseProcessor):
         Returns:
             Combined DataFrame (PTF16 + PTF36) with lowercase columns
         """
-        reader = BronzeReader(self.spark, self.config)
+        reader = get_bronze_reader(self)
         
         self.logger.info("Reading ipf_az files (PTF16 + PTF36)")
         return reader.read_file_group('ipf_az', vision)
@@ -306,7 +306,7 @@ class AZProcessor(BaseProcessor):
         Returns:
             DataFrame with IPFM99 joined (lowercase columns)
         """
-        reader = BronzeReader(self.spark, self.config)
+        reader = get_bronze_reader(self)
         
         # IPFM99 is optional (SAS L157-187)
         df = safe_reference_join(
@@ -354,11 +354,11 @@ class AZProcessor(BaseProcessor):
             RuntimeError: If required reference data (cproduit) is unavailable
         """
         self.logger.info("Enriching segment and product type...")
-        reader = BronzeReader(self.spark, self.config)
+        reader = get_bronze_reader(self)
         
         # CPRODUIT - REQUIRED (SAS L413-435)
         try:
-            df_cproduit = reader.read_file_group('cproduit', 'ref')
+            df_cproduit = reader.read_file_group('cproduit', 'ref').cache()  # Cache for reuse across transforms
         except FileNotFoundError as e:
             self.logger.error("CRITICAL: cproduit reference table is REQUIRED for AZ processing")
             self.logger.error(f"Cannot find cproduit: {e}")

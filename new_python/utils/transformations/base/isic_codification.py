@@ -515,7 +515,7 @@ def join_isic_reference_tables(
     # 7. Join 1SIC_LG_202306 (ISIC local → global)
     try:
         df_isic_global = reader.read_file_group("1sic_lg", "202306")  # Fixed version
-        if df_isic_global is not None and df_isic_global.count() > 0:
+        if df_isic_global is not None:  # OPTIMIZED: Removed count() check
             df = df.join(
                 df_isic_global.select(
                     col("isic_local"),

@@ -10,10 +10,15 @@ Based on: CAPITAUX_AZEC_MACRO.sas (149 lines)
 """
 
 from pyspark.sql import DataFrame # type: ignore
+from pyspark.sql.functions import col, broadcast, lit, coalesce, when
+from pyspark.sql.types import StringType, DoubleType
+from config.constants import MARKET
 from src.processors.base_processor import BaseProcessor
 from utils.helpers import extract_year_month_int
 from utils.loaders.config_loader import ConfigLoader
 from utils.processor_helpers import enrich_segmentation
+from pathlib import Path
+
 
 
 class AZECCapitauxProcessor(BaseProcessor):
@@ -58,7 +63,13 @@ class AZECCapitauxProcessor(BaseProcessor):
         from src.reader import BronzeReader
         
         reading_config_path = self.config.get('config_files.reading_config', 'config/reading_config.json')
+        
+        # Convert to absolute path if relative
+        if not Path(reading_config_path).is_absolute():
+            reading_config_path = str(self.get_project_root() / reading_config_path)
+        
         reader = BronzeReader(self.spark, self.config, reading_config_path)
+
         
         # Read CAPITXCU
         df_capitxcu = reader.read_file_group('capitxcu_azec', vision)
@@ -96,8 +107,15 @@ class AZECCapitauxProcessor(BaseProcessor):
         # Step 2: Read and aggregate INCENDCU
         self.logger.step(2, "Reading and aggregating INCENDCU (PE/RD)")
         from src.reader import BronzeReader
+        
         reading_config_path = self.config.get('config_files.reading_config', 'config/reading_config.json')
+        
+        # Convert to absolute path if relative
+        if not Path(reading_config_path).is_absolute():
+            reading_config_path = str(self.get_project_root() / reading_config_path)
+        
         reader = BronzeReader(self.spark, self.config, reading_config_path)
+
         
         try:
             df_incendcu = reader.read_file_group('incendcu_azec', vision)
@@ -128,10 +146,8 @@ class AZECCapitauxProcessor(BaseProcessor):
 
         # SAS L141-145: WHERE CMARCH = "6"
         if 'cmarch' in df.columns:
-            initial_count = df.count()
-            df = df.filter(col('cmarch') == '6')
-            filtered_count = df.count()
-            self.logger.info(f"Filtered from {initial_count:,} to {filtered_count:,} rows (CMARCH=6)")
+            df = df.filter(col('cmarch') == MARKET.CONSTRUCTION)
+            self.logger.info(f"After CMARCH=6 filter: {df.count():,} rows")
         else:
             self.logger.warning("CMARCH column not found - skipping construction market filter")
         

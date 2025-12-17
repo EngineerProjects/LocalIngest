@@ -37,11 +37,11 @@ output:
 # Component toggles
 components:
   ptf_mvt:
-    enabled: true
+    enabled: false
     description: "Portfolio Movements (AZ + AZEC)"
 
   capitaux:
-    enabled: false
+    enabled: true
     description: "Capitaux domain (SMP/LCI extraction)"
 
   emissions:

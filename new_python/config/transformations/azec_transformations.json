@@ -303,10 +303,7 @@
       {
         "type": "not_in",
         "column": "intermed",
-        "values": [
-          "24050",
-          "40490"
-        ],
+        "value": "@EXCLUDED_AZEC_INTERMED",
         "description": "Exclude specific intermediaries (SAS: Not in ('24050' '40490'))"
       },
       {

@@ -19,6 +19,7 @@ from src.reader import SilverReader, BronzeReader
 from utils.loaders import get_default_loader
 from config.constants import DIRCOM
 from utils.helpers import build_layer_path, extract_year_month_int
+from utils.processor_helpers import safe_reference_join, get_bronze_reader
 
 
 class ConsolidationProcessor(BaseProcessor):
@@ -295,7 +296,7 @@ class ConsolidationProcessor(BaseProcessor):
         """
 
 
-        reader = BronzeReader(self.spark, self.config)
+        reader = get_bronze_reader(self)
         year_int, month_int = extract_year_month_int(vision)
 
         try:
@@ -479,7 +480,7 @@ class ConsolidationProcessor(BaseProcessor):
             from utils.processor_helpers import add_null_columns
             df = add_null_columns(df, {'dtreffin': DateType})
         
-        reader = BronzeReader(self.spark, self.config)
+        reader = get_bronze_reader(self)
         
         # Sequential processing (SAS L154-258)
         # Q46 → Coalesce → Drop (SAS L158-188)
@@ -669,7 +670,7 @@ class ConsolidationProcessor(BaseProcessor):
 
         from utils.helpers import compute_date_ranges
         
-        reader = BronzeReader(self.spark, self.config)
+        reader = get_bronze_reader(self)
         dates = compute_date_ranges(vision)
         
         try:
@@ -726,7 +727,7 @@ class ConsolidationProcessor(BaseProcessor):
             DataFrame with ACTPRIN2, CDNAF2, CDACTCONST2, TypeAct columns
             (NULL/Mono if special product files unavailable)
         """
-        reader = BronzeReader(self.spark, self.config)
+        reader = get_bronze_reader(self)
         
         try:
             # Initialize empty special products table with schema
@@ -854,7 +855,7 @@ class ConsolidationProcessor(BaseProcessor):
             DataFrame with CDNAF08_W6 and CDNAF03_CLI columns added
             (NULL if data unavailable)
         """
-        reader = BronzeReader(self.spark, self.config)
+        reader = get_bronze_reader(self)
         
         # Step 1: W6 NAF enrichment
         try:
@@ -965,10 +966,10 @@ class ConsolidationProcessor(BaseProcessor):
             DataFrame with isic_code_gbl column added
         """
         try:
-            reader = BronzeReader(self.spark, self.config)
+            reader = get_bronze_reader(self)
             df_isic_lg = reader.read_file_group('isic_lg', 'ref')
             
-            if df_isic_lg is not None and df_isic_lg.count() > 0:
+            if df_isic_lg is not None:  # OPTIMIZED: Removed count() check
                 # Join on ISIC_LOCAL = ISIC_CODE
                 df_isic_lg = df_isic_lg.select(
                     col("isic_local").alias("isic_local_ref"),
@@ -1016,10 +1017,10 @@ class ConsolidationProcessor(BaseProcessor):
             DataFrame with destinat column enriched from reference
         """
         try:
-            reader = BronzeReader(self.spark, self.config)
+            reader = get_bronze_reader(self)
             do_dest_df = reader.read_file_group("do_dest", "ref")
             
-            if do_dest_df is not None and do_dest_df.count() > 0:
+            if do_dest_df is not None:  # OPTIMIZED: Removed count() check
                 # Select relevant columns and alias to avoid conflicts
                 do_dest_df = do_dest_df.select(
                     col("nopol").alias("nopol_ref"),

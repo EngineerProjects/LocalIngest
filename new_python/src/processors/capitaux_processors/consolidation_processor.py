@@ -50,8 +50,8 @@ class CapitauxConsolidationProcessor(BaseProcessor):
         
         from src.reader import SilverReader
         
-        reader = SilverReader(self.spark, self.config, self.logger)
-        df_az = reader.read_parquet('silver', f"az_capitaux_{vision}", vision)
+        reader = SilverReader(self.spark, self.config)
+        df_az = reader.read_silver_file(f"az_capitaux_{vision}", vision)
         
         self.logger.success(f"Read {df_az.count():,} AZ capital records from silver")
         return df_az
@@ -78,11 +78,11 @@ class CapitauxConsolidationProcessor(BaseProcessor):
         # Step 1: Read AZEC silver
         self.logger.step(1, "Reading AZEC capitaux from silver")
         from src.reader import SilverReader
-        reader = SilverReader(self.spark, self.config, self.logger)
+        reader = SilverReader(self.spark, self.config)
         
         df_azec = None # Initialize df_azec
         try:
-            df_azec = reader.read_parquet('silver', f"azec_capitaux_{vision}", vision)
+            df_azec = reader.read_silver_file(f"azec_capitaux_{vision}", vision)
             self.logger.success(f"Read {df_azec.count():,} AZEC capital records from silver")
         except Exception as e:
             self.logger.warning(f"AZEC data not available: {e}")

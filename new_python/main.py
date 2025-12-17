@@ -65,8 +65,8 @@ Examples:
         '--component',
         type=str,
         choices=['ptf_mvt', 'capitaux', 'emissions'],
-        default='ptf_mvt',
-        help='Component to run (default: ptf_mvt)'
+        default=None,  # None = auto-detect all enabled components
+        help='Component to run (default: all enabled components)'
     )
 
     args = parser.parse_args()

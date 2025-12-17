@@ -24,15 +24,6 @@ class POLE:
 
 
 # =========================================================================
-# PRODUCTS
-# =========================================================================
-
-class PRODUCTS:
-    """Special product codes."""
-    SPECIAL_CA = "01099"  # Product with special CA handling from IPFM99
-
-
-# =========================================================================
 # EXCLUSIONS
 # =========================================================================
 
@@ -78,11 +69,12 @@ EXCLUDED_AZEC_POLICE = ["012684940"]
 #   1. Update file patterns in reading_config.json (e.g., IPFE17/IPFE37)
 #   2. Update these constants to match the new market code
 #   3. No code changes needed - just configuration!
-# =========================================================================
+# =========================================================================     
 
-MARKET_CONSTRUCTION = "6"      # Construction market code (matches IPFE1**6**, IPFE3**6**)
-SEGMENT_CONSTRUCTION = "2"     # Construction segment code
-
+class MARKET:
+    """Market codes."""
+    CONSTRUCTION = "6"  # market code (matches IPFE1**6**, IPFE3**6**)
+    SEGMENT = "2"  # segment code
 
 # =========================================================================
 # POLICY STATUS CODES
@@ -128,30 +120,6 @@ class COASSURANCE_TYPE:
     AUTRES_LABEL = "AUTRES"
     SANS_LABEL = "SANS COASSURANCE"
     COASSURANCE_LABEL = "COASSURANCE"
-
-
-# =========================================================================
-# REVISION CRITERIA LABELS
-# =========================================================================
-
-REVISION_CRITERIA = {
-    "20": "20_SANS_PROV_MANUEL ",
-    "21": "21_PROV_FIXE_MANUEL ",
-    "22": "22_PROV_VAR_MANUEL  ",
-    "23": "23_SANS_REVISION    ",
-    "24": "24_REV_FIN_CHANTIER ",
-    "30": "30_SANS_PROV_MANUEL ",
-    "31": "31_PROV_FIXE_MANUEL ",
-    "32": "32_PROV_VAR_MANUEL  ",
-    "40": "40_SANS_PROV_AUTOMAT",
-    "41": "41_PROV_FIXE_AUTOMAT",
-    "42": "42_PROV_VAR_AUTOMAT ",
-    "43": "43_SANS_REV_AUTOMAT ",
-    "80": "80_REVISION_SPECIALE",
-    "90": "90_SANS_PROV_AUTOMAT",
-    "91": "91_PROV_FIXE_AUTOMAT",
-    "92": "92_PROV_VAR_AUTOMAT ",
-}
 
 
 # =========================================================================

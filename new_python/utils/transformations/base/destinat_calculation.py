@@ -161,7 +161,7 @@ def join_do_dest_table(
         # You may need to implement version selection logic
         df_do_dest = reader.read_file_group("do_dest", "202110")
 
-        if df_do_dest is not None and df_do_dest.count() > 0:
+        if df_do_dest is not None:  # OPTIMIZED: Removed count() check
             # Join on NOPOL
             df = df.join(
                 df_do_dest.select(

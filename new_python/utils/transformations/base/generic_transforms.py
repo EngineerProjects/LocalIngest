@@ -351,8 +351,8 @@ def apply_business_filters(
     Apply business filters from configuration dictionary.
 
     Supports multiple filter types:
-    - 'equals': column == value
-    - 'not_equals': column != value
+    - 'equals' or '==': column == value
+    - 'not_equals' or '!=': column != value
     - 'in': column.isin(values)
     - 'not_in': ~column.isin(values)
     - 'not_equals_column': column1 != column2
@@ -375,8 +375,9 @@ def apply_business_filters(
         >>> filter_config = {
         ...     'description': 'AZ filters',
         ...     'filters': [
-        ...         {'type': 'equals', 'column': 'cmarch', 'value': '6'},
-        ...         {'type': 'not_in', 'column': 'cdsitp', 'values': ['4', '5']},
+        ...         {'type': '==', 'column': 'cmarch', 'value': '6'},
+        ...         {'type': 'not_in', 'column': 'cdsitp', 'value': ['4', '5']},
+        ...         {'type': 'not_in', 'column': 'noint', 'value': '@EXCLUDED_NOINT'},
         ...         {'type': 'complex', 'expression': '(col_a > 10) & (col_b != "X")'}
         ...     ]
         ... }
@@ -389,44 +390,41 @@ def apply_business_filters(
     for filter_spec in filters:
         filter_type = filter_spec.get('type')
         column_name = filter_spec.get('column', '').lower()
-        description = filter_spec.get('description', '')
+        description = filter_spec.get('description', '') or filter_spec.get('comment', '')
 
         # Log filter application if logger available
         if logger:
             logger.debug(f"Applying filter: {description or filter_type}")
 
-        # Type: equals (column == value)
-        if filter_type == 'equals':
-            value = filter_spec['value']
+        # Resolve value from constants if needed (@CONSTANT syntax or values_from_constant)
+        value = filter_spec.get('value') or filter_spec.get('values')
+        value = _resolve_constant_reference(value)
+
+        # Legacy support for values_from_constant
+        if 'values_from_constant' in filter_spec:
+            from config import constants
+            value = getattr(constants, filter_spec['values_from_constant'])
+
+        # Type: equals (column == value) - support both 'equals' and '=='
+        if filter_type in ['equals', '==']:
             df = df.filter(col(column_name) == value)
 
-        # Type: not_equals (column != value)
-        elif filter_type == 'not_equals':
-            value = filter_spec['value']
+        # Type: not_equals (column != value) - support both 'not_equals' and '!='
+        elif filter_type in ['not_equals', '!=']:
             df = df.filter(col(column_name) != value)
 
         # Type: in (column.isin(values))
         elif filter_type == 'in':
-            values = filter_spec.get('values')
-            if not values:
-                raise ValueError(f"Filter 'in' requires 'values' list: {filter_spec}")
-            df = df.filter(col(column_name).isin(values))
+            if not value:
+                raise ValueError(f"Filter 'in' requires 'value' or 'values' list: {filter_spec}")
+            df = df.filter(col(column_name).isin(value))
 
         # Type: not_in (~column.isin(values))
         elif filter_type == 'not_in':
-            # Check if values come from a constant
-            if 'values_from_constant' in filter_spec:
-                constant_name = filter_spec['values_from_constant']
-                # Import from constants module
-                from config import constants
-                values = getattr(constants, constant_name)
-            else:
-                values = filter_spec.get('values')
+            if not value:
+                raise ValueError(f"Filter 'not_in' requires 'value' or 'values': {filter_spec}")
 
-            if not values:
-                raise ValueError(f"Filter 'not_in' requires 'values' or 'values_from_constant': {filter_spec}")
-
-            df = df.filter(~col(column_name).isin(values))
+            df = df.filter(~col(column_name).isin(value))
 
         # Type: not_equals_column (column1 != column2)
         elif filter_type == 'not_equals_column':
@@ -452,6 +450,47 @@ def apply_business_filters(
         logger.info(f"Business filters applied successfully ({len(filters)} filters)")
 
     return df
+
+
+def _resolve_constant_reference(value):
+    """
+    Resolve constant references in filter values.
+    
+    Supports @CONSTANT_NAME syntax to reference constants from config.constants module.
+    
+    Args:
+        value: Filter value (can be string, list, or any other type)
+    
+    Returns:
+        Resolved value (constant value if @CONSTANT found, otherwise original value)
+    
+    Examples:
+        >>> _resolve_constant_reference("@EXCLUDED_NOINT")
+        ["H90061", "482001", ...]  # Returns list from constants.EXCLUDED_NOINT
+        
+        >>> _resolve_constant_reference("@POLICY_STATUS.EXCLUDED")
+        ["4", "5"]  # Returns list from constants.POLICY_STATUS.EXCLUDED
+        
+        >>> _resolve_constant_reference(["4", "5"])
+        ["4", "5"]  # Returns as-is (no @ prefix)
+    """
+    if isinstance(value, str) and value.startswith('@'):
+        # Extract constant path (e.g., "@EXCLUDED_NOINT" → "EXCLUDED_NOINT")
+        constant_path = value[1:]
+        
+        # Import constants module
+        from config import constants
+        
+        # Navigate nested attributes if needed (e.g., "POLICY_STATUS.EXCLUDED")
+        parts = constant_path.split('.')
+        obj = constants
+        for part in parts:
+            obj = getattr(obj, part)
+        
+        return obj
+    
+    return value
+
 
 
 def _parse_filter_expression(expression: str, columns: List[str]) -> Any:

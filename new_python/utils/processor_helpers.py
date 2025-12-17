@@ -16,6 +16,31 @@ from typing import Union, List, Dict, Optional
 
 
 # ============================================================================
+# BronzeReader Factory
+# ============================================================================
+
+def get_bronze_reader(processor):
+    """
+    Factory function to create BronzeReader instance from processor context.
+    
+    Eliminates repeated pattern: reader = BronzeReader(self.spark, self.config)
+    Found in 17 locations across 5 processor files.
+    
+    Args:
+        processor: Processor instance (BaseProcessor subclass)
+    
+    Returns:
+        BronzeReader instance initialized with processor's spark and config
+    
+    Example:
+        reader = get_bronze_reader(self)
+        df = reader.read_file_group('ipf_az', vision)
+    """
+    from src.reader import BronzeReader
+    return BronzeReader(processor.spark, processor.config)
+
+
+# ============================================================================
 # Reference Data Join Helpers
 # ============================================================================
 
@@ -264,6 +289,10 @@ def enrich_segmentation(
         
         # Filter for construction market
         df_seg = df_seg.filter(col("cmarch") == market_filter)
+        
+        # Rename cprod to cdprod if needed (segmentation file uses 'cprod')
+        if 'cprod' in df_seg.columns and join_key == 'cdprod':
+            df_seg = df_seg.withColumnRenamed('cprod', 'cdprod')
         
         # Select needed columns
         df_seg = df_seg.select(join_key, 'cmarch', 'cseg', 'cssseg').dropDuplicates([join_key])

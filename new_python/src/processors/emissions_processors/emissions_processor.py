@@ -14,8 +14,10 @@ Processes One BI premium emissions data (rf_fr1_prm_dtl_midcorp_m):
 Based on: EMISSIONS_RUN.sas (308 lines)
 """
 
-from pyspark.sql import DataFrame  # type: ignore
-from pyspark.sql.functions import col, lit, sum as _sum, coalesce  # type: ignore
+from pyspark.sql import DataFrame
+from pyspark.sql.functions import col, lit, sum as _sum, coalesce, broadcast, when
+from pyspark.sql.types import StringType
+from config.constants import MARKET
 from src.processors.base_processor import BaseProcessor
 from utils.helpers import extract_year_month_int
 from utils.loaders.config_loader import ConfigLoader
@@ -63,8 +65,14 @@ class EmissionsProcessor(BaseProcessor):
         self.logger.info(f"Reading One BI emissions data for vision {vision}")
         
         from src.reader import BronzeReader
+        from pathlib import Path
         
         reading_config_path = self.config.get('config_files.reading_config', 'config/reading_config.json')
+        
+        # Convert to absolute path if relative
+        if not Path(reading_config_path).is_absolute():
+            reading_config_path = str(self.get_project_root() / reading_config_path)
+        
         reader = BronzeReader(self.spark, self.config, reading_config_path)
         
         # Read One BI premium data
@@ -174,7 +182,14 @@ class EmissionsProcessor(BaseProcessor):
         # Step 7: Enrich with segmentation (using helper)
         self.logger.step(7, "Enriching with segmentation")
         from src.reader import BronzeReader
+        from pathlib import Path
+        
         reading_config_path = self.config.get('config_files.reading_config', 'config/reading_config.json')
+        
+        # Convert to absolute path if relative
+        if not Path(reading_config_path).is_absolute():
+            reading_config_path = str(self.get_project_root() / reading_config_path)
+        
         reader = BronzeReader(self.spark, self.config, reading_config_path)
         
         # Use enrich_segmentation helper to replace 21 lines of duplicate code
@@ -182,7 +197,7 @@ class EmissionsProcessor(BaseProcessor):
         
         # Filter for construction market
         if 'cmarch' in df.columns:
-            df = df.filter(col('cmarch') == '6')
+            df = df.filter(col('cmarch') == MARKET.CONSTRUCTION)
             self.logger.info(f"After cmarch='6' filter: {df.count():,} records")
         
         # Step 8: Create aggregated outputs

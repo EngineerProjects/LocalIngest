@@ -54,6 +54,10 @@ def extract_capitals_extended(
     
     # For each capital type in config
     for capital_name, capital_config in config.items():
+        # Skip comment and metadata keys
+        if capital_name.startswith('_'):
+            continue
+            
         keywords = capital_config.get('keywords', [])
         exclude_keywords = capital_config.get('exclude_keywords', [])
         
@@ -84,7 +88,9 @@ def extract_capitals_extended(
                 when(match_condition, coalesce(col(mtcapi_col), lit(0.0))).otherwise(lit(0.0))
             )
         
-        df = df.withColumn(capital_name, capital_expr)
+        # Append _ind suffix to column name if indexed
+        target_col_name = f"{capital_name}_ind" if indexed else capital_name
+        df = df.withColumn(target_col_name, capital_expr)
     
     return df
 

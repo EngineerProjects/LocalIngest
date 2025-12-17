@@ -58,11 +58,30 @@ class DataGenerator:
         self.intermediaries = []
         self.management_points = []
         
-        # CONSOLIDATED NAF/ISIC CODE POOLS for consistency across all files
-        self.naf_2008_codes = ['0111Z', '4120A', '4312A', '4399C', '4211Z', '4120B', '4391A', '4391B', '4399A', '4399D']
-        self.naf_2003_codes = [f'{i:04d}Z' for i in range(1000, 1200)]
-        self.actprin_codes = ['ACT01', 'ACT02', 'ACT03', 'ACT04', 'ACT05']
+        # NAF codes - Centralized pool
+        self.naf_2008_codes = ['4120A', '4120B', '4211Z', '4212Z', '4213A', '4213B', 
+                               '4221Z', '4222Z', '4299Z', '4311Z', '4312A', '4312B',
+                               '4313Z', '4321A', '4321B', '4322A', '4322B', '4329A',
+                               '4329B', '4331Z', '4332A', '4332B', '4332C', '4333Z',
+                               '4334Z', '4339Z', '4391A', '4391B', '4399A', '4399B',
+                               '4399C', '4399D', '4399E']
+        self.naf_2003_codes = ['451A', '451B', '452A', '452B', '453A', '453B', '454A']
         
+        # ACTPRIN codes (used for IPFM)
+        self.actprin_codes = ['4120A', '4211Z', '4213A', '4221Z', '4312A',
+                             '4321A', '4322A', '4329A', '4332A', '4391A']
+        
+        # Create silver and gold folders
+        self._create_datalake_structure()
+        
+        print(f"📦 Initializing data generator for vision {vision}")
+    
+    def _create_datalake_structure(self):
+        """Create silver and gold folder structure."""
+        (self.output_path / "silver" / str(self.year) / f"{self.month:02d}").mkdir(parents=True, exist_ok=True)
+        (self.output_path / "gold" / str(self.year) / f"{self.month:02d}").mkdir(parents=True, exist_ok=True)
+        print("✅ Created silver/ and gold/ folders")
+    
     @staticmethod
     def _parse_vision(vision: str):
         """Parse YYYYMM vision."""
@@ -459,10 +478,41 @@ class DataGenerator:
             data[f'LBCAPI{i}'] = lbcapi_values
             data[f'MTCAPI{i}'] = mtcapi_values
         
-        # Add provider fields (14 pairs)
+        
+        # Add provider and indexation fields (14 pairs)
+        # CDPRVB: Provider/coverage codes - used for indexation source tracking
+        # PRPRVC: Indexation coefficients - evolution rates from first year (0.95-1.15 range)
+        
+        provider_codes = ['FFB', 'BTP', 'FNTP', 'CAPEB', 'SCOP', 'USI', 'FMB', '']  # Construction industry providers
+        
         for i in range(1, 15):
-            data[f'CDPRVB{i}'] = [''] * num_rows
-            data[f'PRPRVC{i}'] = [0.0] * num_rows
+            # CDPRVB: Provider codes (empty for ~70% of fields, actual codes for 30%)
+            # Schema: StringType - matches IPF_AZ_SCHEMA L158-171
+            cdprvb_values = []
+            for _ in range(num_rows):
+                if random.random() < 0.3:  # 30% have provider codes
+                    cdprvb_values.append(self.random_choice(provider_codes[:-1]))  # Exclude empty
+                else:
+                    cdprvb_values.append('')  # 70% empty
+            
+            data[f'CDPRVB{i}'] = cdprvb_values
+            
+            # PRPRVC: Indexation coefficients (evolution rates)
+            # Schema: DoubleType - matches IPF_AZ_SCHEMA L172-185
+            # Range: 0.95-1.15 (typical construction cost evolution ±5-15% over contract life)
+            # Used by indexation_v2.sas to adjust capital values over time
+            prprvc_values = []
+            for _ in range(num_rows):
+                # 40% no indexation (coef = 1.0)
+                # 60% with indexation (0.95-1.15 range)
+                if random.random() < 0.4:
+                    prprvc_values.append(1.0)  # No evolution
+                else:
+                    # Realistic construction cost evolution
+                    prprvc_values.append(self.random_double(0.95, 1.15, 4))  # 4 decimals precision
+            
+            data[f'PRPRVC{i}'] = prprvc_values
+
         
         data = self.add_extra_columns(data, num_rows, 8)
         self.write_csv(data, filename, "monthly")
@@ -634,10 +684,10 @@ class DataGenerator:
         num_azec = 800
         azec_policies = [f'AZ{i+1:07d}' for i in range(num_azec)]
         
-        # POLIC_CU
+        # POLIC_CU - Use products that exist in segmentation (CPROD 0001-0300)
         data = {
             'POLICE': azec_policies,
-            'PRODUIT': [self.random_choice(['A00', 'A01', 'AA1', 'MA1', 'MP1']) for _ in range(num_azec)],
+            'PRODUIT': [f'{random.randint(1, 300):04d}' for _ in range(num_azec)],  # Match segmentation range
             'INTERMED': [self.random_numeric_string(5) for _ in range(num_azec)],
             'POINGEST': [f'P{random.randint(1,500):04d}' for _ in range(num_azec)],
             'NOMCLI': [f'AZEC Client {i+1}' for i in range(num_azec)],
@@ -666,11 +716,11 @@ class DataGenerator:
         data = self.add_extra_columns(data, num_azec)
         self.write_csv(data, "polic_cu.csv", "reference")
         
-        # CAPITXCU
+        # CAPITXCU - Use products that exist in segmentation (CPROD 0001-0300 with CMARCH=6)
         num_cap = num_azec * 2
         data = {
             'POLICE': random.choices(azec_policies, k=num_cap),
-            'PRODUIT': ['A00'] * num_cap,
+            'PRODUIT': [f'{random.randint(1, 300):04d}' for _ in range(num_cap)],  # Match segmentation range
             'SMP_SRE': [self.random_choice(['SMP', 'LCI']) for _ in range(num_cap)],
             'BRCH_REA': [self.random_choice(['IP0', 'ID0']) for _ in range(num_cap)],
             'CAPX_100': [self.random_double(10000, 500000) for _ in range(num_cap)],
@@ -679,10 +729,10 @@ class DataGenerator:
         data = self.add_extra_columns(data, num_cap)
         self.write_csv(data, "capitxcu.csv", "reference")
         
-        # INCENDCU
+        # INCENDCU - Same fix for product codes
         data = {
             'POLICE': random.choices(azec_policies, k=600),
-            'PRODUIT': ['A00'] * 600,
+            'PRODUIT': [f'{random.randint(1, 300):04d}' for _ in range(600)],  # Match segmentation range
             'COD_NAF': ['4120A'] * 600,
             'COD_TRE': ['T01'] * 600,
             'MT_BASPE': [10000.0] * 600,
@@ -691,10 +741,10 @@ class DataGenerator:
         data = self.add_extra_columns(data, 600)
         self.write_csv(data, "incendcu.csv", "reference")
         
-        # CONSTRCU
+        # CONSTRCU - Same fix for product codes
         data = {
             'POLICE': random.choices(azec_policies, k=400),
-            'PRODUIT': ['A00'] * 400,
+            'PRODUIT': [f'{random.randint(1, 300):04d}' for _ in range(400)],  # Match segmentation range
             'DATFINCH': ['2025-12-31'] * 400,
             'DATOUVCH': ['2025-01-01'] * 400,
             'DATRECEP': [''] * 400,
@@ -764,6 +814,107 @@ class DataGenerator:
         }
         data = self.add_extra_columns(data, num_seg, 2)
         self.write_csv(data, "constrcu_azec_segment.csv", "reference", separator=",")
+    
+    # ========================================================================
+    # EMISSIONS DATA GENERATOR (ONE BI)
+    # ========================================================================
+    
+    def generate_emissions_one_bi(self, num_rows: int = 20000):
+        """
+        Generate One BI premium data (rf_fr1_prm_dtl_midcorp_m).
+        
+        CRITICAL: All business filters must be satisfied to avoid empty results.
+        Based on: schemas.py RF_FR1_PRM_DTL_MIDCORP_M_SCHEMA (15 columns)
+        """
+        
+        # === VALID VALUES ONLY ===
+        
+        # Distribution channels (4 values only)
+        distribution_channels = ['DCAG', 'DCPS', 'DIGITAL', 'BROKDIV']
+        
+        # Excluded intermediaries (from emissions_config.json)
+        excluded_noint = [
+            "102030", "446000", "446118", "446218", "482001", "489090", "500150",
+            "4A1400", "4A1500", "4A1600", "4A1700", "4A1800", "4A1900",
+            "4F1004", "5B2000", "5R0001",
+            "H90036", "H90037", "H90059", "H90061", "H99045", "H99059"
+        ]
+        
+        # Generate valid intermediaries (exclude the bad ones)
+        all_intermediaries = [f'INT{i:05d}' for i in range(1, 301)]
+        valid_intermediaries = [x for x in all_intermediaries if x not in excluded_noint]
+        
+        # Valid guarantee codes (exclude 180, 183, 184, 185)
+        valid_guarantees = ['220', '240', '250', '260', '300', '310', '320']
+        
+        # Build 5-char prospective codes (format: XX{code}YY)
+        guarantee_prospective_codes = [f'XX{g}YY' for g in valid_guarantees]
+        
+        # Valid categories (exclude 792, 793)
+        valid_categories = [f'{i:03d}' for i in range(1, 800) if i not in [792, 793]]
+        
+        # Statuses
+        statuses = ['ACT', 'CAN', 'SUS', 'VAL']
+        
+        # Vision year
+        vision_year = self.year  # 2025 for vision 202509
+        
+        # === GENERATE DATA ===
+        
+        data = {
+            # Distribution (REQUIRED for CDPOLE mapping)
+            'CD_NIV_2_STC': [self.random_choice(distribution_channels, 
+                                               weights=[0.30, 0.20, 0.10, 0.40]) 
+                            for _ in range(num_rows)],
+            
+            # Identifiers
+            'CD_INT_STC': [self.random_choice(valid_intermediaries) 
+                          for _ in range(num_rows)],
+            'NU_CNT_PRM': [self.random_choice(self.policy_numbers) 
+                          for _ in range(num_rows)],
+            'CD_PRD_PRM': [self.random_choice(self.product_codes) 
+                          for _ in range(num_rows)],
+            'CD_STATU_CTS': [self.random_choice(statuses) 
+                            for _ in range(num_rows)],
+            
+            # Dates (all in YYYY-MM-DD format)
+            'DT_CPTA_CTS': [self.random_date(self.year_start, self.vision_end) 
+                           for _ in range(num_rows)],
+            'DT_EMIS_CTS': [self.random_date(self.year_start, self.vision_start) 
+                           for _ in range(num_rows)],
+            'DT_ANNU_CTS': ['' if random.random() > 0.1 else 
+                           self.random_date(self.vision_start, self.year_end) 
+                           for _ in range(num_rows)],
+            
+            # Financial (ensure non-zero to pass filters)
+            'MT_HT_CTS': [self.random_double(100, 50000) for _ in range(num_rows)],
+            'MT_CMS_CTS': [self.random_double(10, 5000) for _ in range(num_rows)],
+            
+            # Categories (REQUIRED: exclude 792, 793)
+            'CD_CAT_MIN': [self.random_choice(valid_categories) for _ in range(num_rows)],
+            
+            # Guarantees (CRITICAL: Use valid codes)
+            'CD_GAR_PRINC': [self.random_choice(valid_guarantees) for _ in range(num_rows)],
+            'CD_GAR_PROSPCTIV': [self.random_choice(guarantee_prospective_codes) 
+                                for _ in range(num_rows)],
+            
+            # EXERCICE split (STRING type: "2023", "2024", "2025")
+            'NU_EX_RATT_CTS': [str(self.random_choice(
+                                  [vision_year, vision_year-1, vision_year-2],
+                                  weights=[0.70, 0.25, 0.05]
+                              )) for _ in range(num_rows)],
+            
+            # Market (REQUIRED for filter)
+            'CD_MARCHE': ['6'] * num_rows,  # Construction market
+        }
+        
+        # Write with COMMA separator (not pipe!)
+        self.write_csv(
+            data, 
+            f"rf_fr1_prm_dtl_midcorp_m_{self.vision}.csv", 
+            location_type="monthly",
+            separator=","  # ← IMPORTANT: Use comma, not pipe!
+        )
     
     # ========================================================================
     # IRD AND OTHER FILES
@@ -862,7 +1013,11 @@ class DataGenerator:
         print("-" * 70)
         self.generate_azec_files()
         
-        print("\n📦 PHASE 5: IRD & Others (6 files)")
+        print("\n📦 PHASE 5: EMISSIONS Data (1 file)")
+        print("-" * 70)
+        self.generate_emissions_one_bi(20000)
+        
+        print("\n📦 PHASE 6: IRD & Others (6 files)")
         print("-" * 70)
         self.generate_ird_and_others()
         

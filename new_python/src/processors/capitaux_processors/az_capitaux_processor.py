@@ -15,6 +15,8 @@ from src.processors.base_processor import BaseProcessor
 from utils.helpers import extract_year_month_int
 from utils.loaders.config_loader import ConfigLoader
 from utils.processor_helpers import enrich_segmentation
+from pathlib import Path
+
 
 
 class AZCapitauxProcessor(BaseProcessor):
@@ -59,7 +61,13 @@ class AZCapitauxProcessor(BaseProcessor):
         from src.reader import BronzeReader
         
         reading_config_path = self.config.get('config_files.reading_config', 'config/reading_config.json')
+        
+        # Convert to absolute path if relative
+        if not Path(reading_config_path).is_absolute():
+            reading_config_path = str(self.get_project_root() / reading_config_path)
+        
         reader = BronzeReader(self.spark, self.config, reading_config_path)
+
         
         # Read IPF files (combines Agent IPFE16 + Courtage IPFE36)
         df = reader.read_file_group('ipf_az', vision)
@@ -100,8 +108,13 @@ class AZCapitauxProcessor(BaseProcessor):
         
         # Load capital extraction config
         import json
-        from pathlib import Path
-        config_path = Path('config/transformations/capitaux_extraction_config.json')
+        
+        config_path = 'config/transformations/capitaux_extraction_config.json'
+        
+        # Convert to absolute path if relative
+        if not Path(config_path).is_absolute():
+            config_path = self.get_project_root() / config_path
+        
         with open(config_path, 'r') as f:
             capital_config = json.load(f)
         
@@ -145,7 +158,7 @@ class AZCapitauxProcessor(BaseProcessor):
         from utils.transformations import extract_capitals_extended
         df = extract_capitals_extended(
             df,
-            capital_config,
+            capital_config,  # Pass the entire dict
             num_capitals=14,
             indexed=True  # Use indexed columns
         )
@@ -204,8 +217,20 @@ class AZCapitauxProcessor(BaseProcessor):
         self.logger.step(7, "Enriching with segmentation")
         
         from src.reader import BronzeReader
+        
         reading_config_path = self.config.get('config_files.reading_config', 'config/reading_config.json')
+        
+        # Convert to absolute path if relative
+        if not Path(reading_config_path).is_absolute():
+            reading_config_path = str(self.get_project_root() / reading_config_path)
+        
         reader = BronzeReader(self.spark, self.config, reading_config_path)
+
+        # Drop segmentation columns if they already exist to avoid duplication
+        cols_to_drop = ['cmarch', 'cseg', 'cssseg']
+        for col in cols_to_drop:
+            if col in df.columns:
+                df = df.drop(col)
         
         # Use enrich_segmentation helper to replace 14 lines of duplicate code
         df = enrich_segmentation(df, reader, vision, logger=self.logger)

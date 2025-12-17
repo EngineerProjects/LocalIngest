@@ -18,7 +18,6 @@ from pyspark.sql.types import (
 )
 
 from src.processors.base_processor import BaseProcessor
-from src.reader import BronzeReader
 from utils.loaders import get_default_loader
 from config.constants import DIRCOM, EXCLUDED_AZEC_INTERMED, EXCLUDED_AZEC_POLICE
 from utils.helpers import build_layer_path, extract_year_month_int, compute_date_ranges
@@ -28,6 +27,7 @@ from utils.transformations import (
     apply_transformations,
     apply_business_filters,
 )
+from utils.processor_helpers import get_bronze_reader
 
 
 class AZECProcessor(BaseProcessor):
@@ -48,7 +48,7 @@ class AZECProcessor(BaseProcessor):
         Returns:
             POLIC_CU DataFrame with DTECHANM calculated (lowercase columns)
         """
-        reader = BronzeReader(self.spark, self.config)
+        reader = get_bronze_reader(self)
 
         self.logger.info("Reading POLIC_CU file")
         df = reader.read_file_group('polic_cu_azec', vision)
@@ -227,11 +227,10 @@ class AZECProcessor(BaseProcessor):
         Raises:
             RuntimeError: If required migration table is unavailable for vision > 202009
         """
-        from src.reader import BronzeReader
         
         migration_config = azec_config['migration_handling']
         if int(vision) > migration_config['vision_threshold']:
-            reader = BronzeReader(self.spark, self.config)
+            reader = get_bronze_reader(self)
             
             try:
                 df_mig = reader.read_file_group('ref_mig_azec_vs_ims', vision='ref')
@@ -360,7 +359,7 @@ class AZECProcessor(BaseProcessor):
         Raises:
             RuntimeError: If required CAPITXCU table is unavailable
         """
-        reader = BronzeReader(self.spark, self.config)
+        reader = get_bronze_reader(self)
 
         try:
             df_cap = reader.read_file_group('capitxcu_azec', vision)
@@ -491,10 +490,10 @@ class AZECProcessor(BaseProcessor):
         Raises:
             RuntimeError: If required segmentation table is unavailable
         """
-        reader = BronzeReader(self.spark, self.config)
+        reader = get_bronze_reader(self)
         
         try:
-            seg_ref = reader.read_file_group('table_segmentation_azec_mml', 'ref')
+            seg_ref = reader.read_file_group('table_segmentation_azec_mml', 'ref').cache()  # Cache for reuse
         except FileNotFoundError as e:
             self.logger.error("CRITICAL: TABLE_SEGMENTATION_AZEC_MML is REQUIRED for AZEC processing")
             self.logger.error(f"Cannot find segmentation table: {e}")
@@ -528,7 +527,7 @@ class AZECProcessor(BaseProcessor):
         Returns:
             DataFrame enriched with region and p_num columns
         """
-        reader = BronzeReader(self.spark, self.config)
+        reader = get_bronze_reader(self)
         
         try:
             df_ptgst = reader.read_file_group('ptgst_static', vision='ref')
@@ -582,7 +581,7 @@ class AZECProcessor(BaseProcessor):
         Returns:
             DataFrame enriched with NAF codes and capitals
         """
-        reader = BronzeReader(self.spark, self.config)
+        reader = get_bronze_reader(self)
         
         # Initialize enrichment columns upfront
         enrichment_cols = {
@@ -631,7 +630,7 @@ class AZECProcessor(BaseProcessor):
         # 2. MPACU: Additional NAF codes (SAS L277: FULL JOIN with MPACU.MPACU)
         try:
             df_mpacu = reader.read_file_group('mpacu_azec', vision)
-            if df_mpacu is not None and df_mpacu.count() > 0:
+            if df_mpacu is not None:  # OPTIMIZED: Removed count() check
                 # Select needed columns for NAF fallback
                 df_mpacu_select = df_mpacu.select(
                     'police',
@@ -654,7 +653,7 @@ class AZECProcessor(BaseProcessor):
         # 3. RCENTCU: Formulas for RC policies (SAS L309-312)
         try:
             df_rcentcu = reader.read_file_group('rcentcu_azec', vision)
-            if df_rcentcu is not None and df_rcentcu.count() > 0:
+            if df_rcentcu is not None:  # OPTIMIZED: Removed count() check
                 # Select formula columns (SAS L310)
                 df_rcentcu_select = df_rcentcu.select(
                     'police',
@@ -685,7 +684,7 @@ class AZECProcessor(BaseProcessor):
         # 4. RISTECCU: Technical risk formulas (SAS L312)
         try:
             df_risteccu = reader.read_file_group('risteccu_azec', vision)
-            if df_risteccu is not None and df_risteccu.count() > 0:
+            if df_risteccu is not None:  # OPTIMIZED: Removed count() check
                 # Select formula columns
                 df_risteccu_select = df_risteccu.select(
                     'police',
@@ -727,12 +726,12 @@ class AZECProcessor(BaseProcessor):
         Returns:
             DataFrame enriched with formulas and CA
         """
-        reader = BronzeReader(self.spark, self.config)
+        reader = get_bronze_reader(self)
 
         # 1. CONSTRCU: Product formulas and construction site details
         try:
             df_CONSTRCU = reader.read_file_group('CONSTRCU_azec', vision)
-            if df_CONSTRCU is not None and df_CONSTRCU.count() > 0:
+            if df_CONSTRCU is not None:  # OPTIMIZED: Removed count() check
                 # Select formula columns
                 CONSTRCU_cols = ['police']
 
@@ -769,7 +768,7 @@ class AZECProcessor(BaseProcessor):
         # 2. MULPROCU: Turnover (CA) data
         try:
             df_mulprocu = reader.read_file_group('mulprocu_azec', vision)
-            if df_mulprocu is not None and df_mulprocu.count() > 0:
+            if df_mulprocu is not None:  # OPTIMIZED: Removed count() check
                 # Select CA column
                 # Aggregate CHIFFAFF to get MTCA (SAS L340: SUM(CHIFFAFF) AS MTCA)
                 from pyspark.sql.functions import sum as spark_sum

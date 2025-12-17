@@ -7,7 +7,35 @@ Runs the Emissions data processing pipeline:
 Based on: EMISSIONS_RUN.sas (308 lines)
 """
 
-from typing import Optional
+from src.orchestrators import BaseOrchestrator
+
+
+class EmissionsOrchestrator(BaseOrchestrator):
+    """
+    Emissions pipeline orchestrator.
+    
+    Executes:
+    1. Emissions Processor (Bronze → Silver → Gold)
+       - Outputs 2 files: by guarantee and aggregated by policy
+    """
+    
+    def define_stages(self):
+        """Define Emissions pipeline stages."""
+        from src.processors.emissions_processors import EmissionsProcessor
+        
+        return [
+            ("Emissions Processor (Bronze → Silver → Gold)", EmissionsProcessor)
+        ]
+    
+    def print_summary(self, results):
+        """Custom summary for emissions (2 output files)."""
+        self.logger.section("EMISSIONS PIPELINE COMPLETED")
+        
+        for stage_name, result in results.items():
+            if result and isinstance(result, tuple):
+                df_pol_garp, df_pol = result
+                self.logger.success(f"  - POL_GARP: {df_pol_garp.count():,} rows (by guarantee)")
+                self.logger.success(f"  - POL: {df_pol.count():,} rows (aggregated)")
 
 
 def run_emissions_pipeline(
@@ -40,45 +68,37 @@ def run_emissions_pipeline(
     Example:
         >>> success = run_emissions_pipeline('202509', 'config/config.yml', spark, logger)
     """
+    orchestrator = EmissionsOrchestrator(spark, config_path, logger)
+    return orchestrator.run(vision)
+
+
+if __name__ == "__main__":
+    import sys
+    from pyspark.sql import SparkSession
+    from utils.logger import get_logger
+    from pathlib import Path
+    
+    if len(sys.argv) < 2:
+        print("Usage: python emissions_run.py <vision>")
+        print("Example: python emissions_run.py 202509")
+        sys.exit(1)
+    
+    vision = sys.argv[1]
+    
+    # Initialize Spark and Logger
+    print("Initializing Spark session...")
+    spark = SparkSession.builder \
+        .appName("Construction_Pipeline_Emissions") \
+        .getOrCreate()
+    
+    logger = get_logger('emissions_standalone', log_file=f'logs/emissions_{vision}.log')
+    
+    # Config path
+    project_root = Path(__file__).parent.parent
+    config_path = str(project_root / "config" / "config.yml")
+    
     try:
-        logger.section(f"EMISSIONS PIPELINE - Vision {vision}")
-        logger.info("Starting premium emissions data processing")
-        
-        # Load configuration
-        from utils.loaders.config_loader import ConfigLoader
-        config = ConfigLoader(config_path)
-        
-        # Import processor
-        from src.processors.emissions_processors import EmissionsProcessor
-        
-        # =====================================================================
-        # STAGE 1: Emissions Processor (Bronze → Silver → Gold)
-        # =====================================================================
-        logger.section("STAGE 1: Emissions Processor (Bronze → Silver → Gold)")
-        
-        emissions_processor = EmissionsProcessor(spark, config, logger)
-        dfs = emissions_processor.run(vision)
-        
-        if dfs is None:
-            logger.error("Emissions Processor failed")
-            return False
-        
-        df_pol_garp, df_pol = dfs
-        
-        logger.success(f"Emissions Processor completed:")
-        logger.success(f"  - POL_GARP: {df_pol_garp.count():,} rows (by guarantee)")
-        logger.success(f"  - POL: {df_pol.count():,} rows (aggregated)")
-        
-        # =====================================================================
-        # PIPELINE COMPLETION
-        # =====================================================================
-        logger.section("EMISSIONS PIPELINE COMPLETED")
-        logger.success(f"Emissions data processing completed successfully for vision {vision}")
-        
-        return True
-        
-    except Exception as e:
-        logger.error(f"Emissions pipeline failed: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return False
+        success = run_emissions_pipeline(vision, config_path, spark, logger)
+        sys.exit(0 if success else 1)
+    finally:
+        spark.stop()
