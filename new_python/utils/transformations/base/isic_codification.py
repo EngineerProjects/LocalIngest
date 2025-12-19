@@ -349,7 +349,7 @@ def join_isic_reference_tables(
     4. MAPPING_ISIC_CONST_ACT_{vision} - Activity � ISIC for CDNATP='R'
     5. MAPPING_ISIC_CONST_CHT_{vision} - Destination � ISIC for CDNATP='C'
     6. table_isic_tre_naf_{vision} - ISIC � HAZARD_GRADES
-    7. 1SIC_LG_202306 - ISIC local � ISIC global
+    7. _LG_202306 - ISIC local � ISIC global
 
     Args:
         df: Input DataFrame
@@ -512,9 +512,9 @@ def join_isic_reference_tables(
         if logger:
             logger.warning(f"table_isic_tre_naf not available: {e}")
 
-    # 7. Join 1SIC_LG_202306 (ISIC local → global)
+    # 7. Join ISIC_LG_202306 (ISIC local → global)
     try:
-        df_isic_global = reader.read_file_group("1sic_lg", "202306")  # Fixed version
+        df_isic_global = reader.read_file_group("isic_lg", "202306")  # Fixed version
         if df_isic_global is not None:  # OPTIMIZED: Removed count() check
             df = df.join(
                 df_isic_global.select(
@@ -525,10 +525,10 @@ def join_isic_reference_tables(
                 how="left"
             )
             if logger:
-                logger.debug("Joined 1SIC_LG for ISIC global mapping")
+                logger.debug("Joined ISIC_LG for ISIC global mapping")
     except Exception as e:
         if logger:
-            logger.warning(f"1SIC_LG not available: {e}")
+            logger.warning(f"ISIC_LG not available: {e}")
 
     if logger:
         logger.success("All available ISIC reference tables joined")

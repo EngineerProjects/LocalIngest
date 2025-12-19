@@ -730,7 +730,7 @@ class AZECProcessor(BaseProcessor):
 
         # 1. CONSTRCU: Product formulas and construction site details
         try:
-            df_CONSTRCU = reader.read_file_group('CONSTRCU_azec', vision)
+            df_CONSTRCU = reader.read_file_group('constrcu_azec', vision)
             if df_CONSTRCU is not None:  # OPTIMIZED: Removed count() check
                 # Select formula columns
                 CONSTRCU_cols = ['police']

@@ -71,9 +71,9 @@ EXCLUDED_AZEC_POLICE = ["012684940"]
 #   3. No code changes needed - just configuration!
 # =========================================================================     
 
-class MARKET:
+class MARKET_CODE:
     """Market codes."""
-    CONSTRUCTION = "6"  # market code (matches IPFE1**6**, IPFE3**6**)
+    MARKET = "6"  # market code (matches IPFE1**6**, IPFE3**6**)
     SEGMENT = "2"  # segment code
 
 # =========================================================================

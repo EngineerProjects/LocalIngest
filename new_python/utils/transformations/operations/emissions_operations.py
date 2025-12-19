@@ -15,7 +15,7 @@ from pyspark.sql.functions import (  # type: ignore
     col, when, lit, substring, regexp_replace, sum as spark_sum, coalesce
 )
 from typing import Dict, Any, Optional
-from config.constants import MARKET
+from config.constants import MARKET_CODE
 
 
 def assign_distribution_channel(df: DataFrame) -> DataFrame:
@@ -139,7 +139,7 @@ def apply_emissions_filters(
     initial_count = df.count() if logger else 0
     
     # Filter for construction market only (SAS: WHERE cd_marche='6')
-    df = df.filter(col('cd_marche') == MARKET.CONSTRUCTION)
+    df = df.filter(col('cd_marche') == MARKET_CODE.MARKET)
     if logger:
         logger.info(f"After market filter (cd_marche='6'): {df.count():,} records")
     

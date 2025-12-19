@@ -131,7 +131,14 @@ class BaseProcessor(ABC):
         df = self.transform(df, vision)
         duration = time.time() - start_time
         self.logger.info(f"Completed: {processor_name}.transform() (Duration: {duration:.2f}s)")
-        self.logger.info(f"Transformed to {df.count()} rows")
+        
+        # Handle tuple results (e.g., emissions returns 2 DFs)
+        if isinstance(df, tuple):
+            for i, result_df in enumerate(df, 1):
+                if result_df is not None:
+                    self.logger.info(f"Transformed to {result_df.count()} rows ({i}/{len(df)})")
+        else:
+            self.logger.info(f"Transformed to {df.count()} rows")
         
         # Write
         self.logger.info(f"Starting: {processor_name}.write()")

@@ -12,7 +12,7 @@ Based on: CAPITAUX_AZEC_MACRO.sas (149 lines)
 from pyspark.sql import DataFrame # type: ignore
 from pyspark.sql.functions import col, broadcast, lit, coalesce, when
 from pyspark.sql.types import StringType, DoubleType
-from config.constants import MARKET
+from config.constants import MARKET_CODE
 from src.processors.base_processor import BaseProcessor
 from utils.helpers import extract_year_month_int
 from utils.loaders.config_loader import ConfigLoader
@@ -146,7 +146,7 @@ class AZECCapitauxProcessor(BaseProcessor):
 
         # SAS L141-145: WHERE CMARCH = "6"
         if 'cmarch' in df.columns:
-            df = df.filter(col('cmarch') == MARKET.CONSTRUCTION)
+            df = df.filter(col('cmarch') == MARKET_CODE.MARKET)
             self.logger.info(f"After CMARCH=6 filter: {df.count():,} rows")
         else:
             self.logger.warning("CMARCH column not found - skipping construction market filter")

@@ -218,9 +218,11 @@ class DataGenerator:
         self.write_csv(data, "prdpfa1.csv", "reference")
         self.write_csv(data, "prdpfa3.csv", "reference")
         
-        # segmentprdt
+        # segmentprdt - FIXED: Use same product format as LOB (01001, 01002, etc.)
+        # LOB creates products as: 01001, 01002, etc. (5 chars starting with 01)
+        # Segmentation MUST match for join to work in emissions
         data = {
-            'CPROD': [f'{i+1:04d}' for i in range(300)],
+            'CPROD': [f'01{i+1:03d}' for i in range(300)],  # Matches LOB format: 01001-01300
             'CDPOLE': [self.random_choice(['1', '3']) for _ in range(300)],
             'CMARCH': ['6'] * 300,
             'CSEG': ['2'] * 300,

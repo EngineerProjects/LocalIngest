@@ -17,7 +17,7 @@ Based on: EMISSIONS_RUN.sas (308 lines)
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, lit, sum as _sum, coalesce, broadcast, when
 from pyspark.sql.types import StringType
-from config.constants import MARKET
+from config.constants import MARKET_CODE
 from src.processors.base_processor import BaseProcessor
 from utils.helpers import extract_year_month_int
 from utils.loaders.config_loader import ConfigLoader
@@ -117,6 +117,11 @@ class EmissionsProcessor(BaseProcessor):
         from pathlib import Path
         
         emissions_config_path = Path('config/transformations/emissions_config.json')
+        
+        # Convert to absolute path if relative
+        if not emissions_config_path.is_absolute():
+            emissions_config_path = self.get_project_root() / emissions_config_path
+        
         with open(emissions_config_path, 'r') as f:
             emissions_config = json.load(f)
         
@@ -197,7 +202,7 @@ class EmissionsProcessor(BaseProcessor):
         
         # Filter for construction market
         if 'cmarch' in df.columns:
-            df = df.filter(col('cmarch') == MARKET.CONSTRUCTION)
+            df = df.filter(col('cmarch') == MARKET_CODE.MARKET)
             self.logger.info(f"After cmarch='6' filter: {df.count():,} records")
         
         # Step 8: Create aggregated outputs

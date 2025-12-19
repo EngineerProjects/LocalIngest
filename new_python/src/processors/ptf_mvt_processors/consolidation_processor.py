@@ -196,7 +196,7 @@ class ConsolidationProcessor(BaseProcessor):
             vision: Vision in YYYYMM format
         """
         from utils.helpers import write_to_layer
-        write_to_layer(df, self.config, 'gold', 'construction_portfolio', vision, self.logger)
+        write_to_layer(df, self.config, 'gold', 'ptf_mvt', vision, self.logger)
 
     def _harmonize_schema(
         self,
