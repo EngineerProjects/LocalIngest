@@ -13,7 +13,6 @@
 | 7 | `DEST.do_dest202110` | `do_dest_202110.csv` OU `do_dest.csv` | `DEST` | `bronze/ref/` |
 | 8 | `REF.table_segmentation_azec_mml` | `table_segmentation_azec_mml.csv` | `REF` | `bronze/ref/` |
 
-
 ---
 
 ## � Où Placer les Fichiers
