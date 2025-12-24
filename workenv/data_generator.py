@@ -34,7 +34,7 @@ import random
 
 # Configuration
 VISION = "202509"
-OUTPUT_BASE = Path("workenv/generated_bronze")
+OUTPUT_BASE = Path().cwd() / "bronze"
 MONTHLY_DIR = OUTPUT_BASE / "monthly"
 REF_DIR = OUTPUT_BASE / "ref"
 

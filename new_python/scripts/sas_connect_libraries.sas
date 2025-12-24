@@ -28,17 +28,17 @@
  * ============================================================================ */
 LIBNAME SEG "/sasprod/produits/SASEnterpriseBIServer/segrac/METGTECH/REFERENTIEL/SEG_PRDTS";
 
-%put ✓ SEG : Segmentation produits;
-%put   → Chercher: segmentprdt_202509;
+%put OK SEG : Segmentation produits;
+%put   --> Chercher: segmentprdt_202509;
 %put ;
 
 /* ============================================================================
- * LIBRAIRIE 2 : MIG_AZEC - Référentiels AZEC
+ * LIBRAIRIE 2 : MIG_AZEC - Referentiels AZEC
  * ============================================================================ */
 LIBNAME MIG_AZEC "/sasprod/produits/SASEnterpriseBIServer/segrac/METGTECH/REFERENTIEL";
 
-%put ✓ MIG_AZEC : Référentiels migration AZEC;
-%put   → Chercher: ref_mig_azec_vs_ims (peut ne pas exister);
+%put OK MIG_AZEC : Referentiels migration AZEC;
+%put   --> Chercher: ref_mig_azec_vs_ims (peut ne pas exister);
 %put ;
 
 /* ============================================================================
@@ -46,9 +46,9 @@ LIBNAME MIG_AZEC "/sasprod/produits/SASEnterpriseBIServer/segrac/METGTECH/REFERE
  * ============================================================================ */
 LIBNAME INDICES 'INFP.IMA0P6$$.NAUTIND3' DISP=SHR SERVER=SERVEUR;
 
-%put ✓ INDICES : Format $INDICE pour indexation capitaux;
-%put   → Chercher: Formats catalog (OPTIONS FMTSEARCH=INDICES);
-%put   → Note: Export du format $INDICE (voir PROC FORMAT CNTLOUT);
+%put OK INDICES : Format $INDICE pour indexation capitaux;
+%put   --> Chercher: Formats catalog (OPTIONS FMTSEARCH=INDICES);
+%put   --> Note: Export du format $INDICE (voir PROC FORMAT CNTLOUT);
 %put ;
 
 /* ============================================================================
@@ -56,8 +56,8 @@ LIBNAME INDICES 'INFP.IMA0P6$$.NAUTIND3' DISP=SHR SERVER=SERVEUR;
  * ============================================================================ */
 LIBNAME W6 "/sasprod/produits/SASEnterpriseBIServer/segrac/METGTECH/ALEX_MIS/basecli_cumule";
 
-%put ✓ W6 : Base clients W6;
-%put   → Chercher: basecli_inv (peut être compressé .gz);
+%put OK W6 : Base clients W6;
+%put   --> Chercher: basecli_inv (peut etre compresse .gz);
 %put ;
 
 /* ============================================================================
@@ -65,8 +65,8 @@ LIBNAME W6 "/sasprod/produits/SASEnterpriseBIServer/segrac/METGTECH/ALEX_MIS/bas
  * ============================================================================ */
 LIBNAME BINSEE "/sasprod/prod/prod/run/azi/d2d/w6/particuliers/dm_crm/partage/param/pro";
 
-%put ✓ BINSEE : Notation risque Euler Hermes;
-%put   → Chercher: histo_note_risque;
+%put OK BINSEE : Notation risque Euler Hermes;
+%put   --> Chercher: histo_note_risque;
 %put ;
 
 /* ============================================================================
@@ -74,17 +74,17 @@ LIBNAME BINSEE "/sasprod/prod/prod/run/azi/d2d/w6/particuliers/dm_crm/partage/pa
  * ============================================================================ */
 LIBNAME DEST "/sasprod/produits/SASEnterpriseBIServer/segrac/METGAZDT/transverse/sasdata/pros_midcorp/Ref/Construction";
 
-%put ✓ DEST : Destination construction;
-%put   → Chercher: do_dest202110;
+%put OK DEST : Destination construction;
+%put   --> Chercher: do_dest202110;
 %put ;
 
 /* ============================================================================
- * LIBRAIRIE 7 : REF - Référentiels Divers
+ * LIBRAIRIE 7 : REF - Referentiels Divers
  * ============================================================================ */
 LIBNAME REF "/sasprod/produits/SASEnterpriseBIServer/segrac/METGAZDT/transverse/sasdata/pros_midcorp/Ref";
 
-%put ✓ REF : Référentiels transverses;
-%put   → Chercher: table_segmentation_azec_mml;
+%put OK REF : Referentiels transverses;
+%put   --> Chercher: table_segmentation_azec_mml;
 %put ;
 
 /* ============================================================================
