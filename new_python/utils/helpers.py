@@ -5,7 +5,7 @@ Vision parsing, path building, date range computations.
 
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
-from typing import Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional
 from pathlib import Path
 
 
@@ -478,10 +478,11 @@ def optimize_delta_table(
         
         # Z-Ordering for better data skipping
         if zorder_columns:
-            cols_str = ", ".join(zorder_columns)
-            spark.sql(f"OPTIMIZE delta.`{table_path}` ZORDER BY ({cols_str})")
+            # Wrap column names in backticks for case-insensitive matching
+            cols_quoted = ", ".join([f"`{col}`" for col in zorder_columns])
+            spark.sql(f"OPTIMIZE delta.`{table_path}` ZORDER BY ({cols_quoted})")
             if logger:
-                logger.info(f"Applied Z-Ordering on columns: {cols_str}")
+                logger.info(f"Applied Z-Ordering on columns: {', '.join(zorder_columns)}")
         
         if logger:
             logger.success("Delta table optimized successfully")
