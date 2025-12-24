@@ -208,8 +208,7 @@ class AZECProcessor(BaseProcessor):
         """
         from utils.helpers import write_to_layer
         write_to_layer(
-            df, self.config, 'silver', 'azec_ptf', vision, self.logger,
-            zorder_columns=["police", "dtfin"]  # Most filtered columns in SAS queries
+            df, self.config, 'silver', 'azec_ptf', vision, self.logger
         )
 
     def _handle_migration(self, df: DataFrame, vision: str, azec_config: dict) -> DataFrame:

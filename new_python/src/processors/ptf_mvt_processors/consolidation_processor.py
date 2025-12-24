@@ -197,8 +197,7 @@ class ConsolidationProcessor(BaseProcessor):
         """
         from utils.helpers import write_to_layer
         write_to_layer(
-            df, self.config, 'gold', 'ptf_mvt', vision, self.logger,
-            zorder_columns=["police", "dtfin"]  # Most filtered columns after consolidation
+            df, self.config, 'gold', 'ptf_mvt', vision, self.logger
         )
 
     def _harmonize_schema(

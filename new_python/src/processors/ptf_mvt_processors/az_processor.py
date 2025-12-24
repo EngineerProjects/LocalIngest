@@ -293,8 +293,7 @@ class AZProcessor(BaseProcessor):
         """
         from utils.helpers import write_to_layer
         write_to_layer(
-            df, self.config, 'silver', 'mvt_const_ptf', vision, self.logger,
-            zorder_columns=["police", "dtfin"]  # Most filtered columns in SAS queries
+            df, self.config, 'silver', 'mvt_const_ptf', vision, self.logger
         )
 
 
