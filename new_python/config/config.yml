@@ -30,7 +30,7 @@ datalake:
 # Output configuration (silver and gold layers)
 output:
   # Format for all outputs (parquet for type safety)
-  format: "parquet"
+  format: "delta"
   compression: "snappy"
   mode: "overwrite"
 

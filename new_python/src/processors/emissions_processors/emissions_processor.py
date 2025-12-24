@@ -259,11 +259,17 @@ class EmissionsProcessor(BaseProcessor):
         # Write POL_GARP (by guarantee)
         self.logger.info(f"Writing POL_GARP to gold for vision {vision}")
         output_name_garp = f"primes_emises_{vision}_pol_garp"
-        write_to_layer(df_pol_garp, self.config, 'gold', output_name_garp, vision, self.logger)
+        write_to_layer(
+            df_pol_garp, self.config, 'gold', output_name_garp, vision, self.logger,
+            zorder_columns=["nopol", "cgarp"]  # Policy + guarantee filters
+        )
         self.logger.success(f"Wrote {df_pol_garp.count():,} records to gold: {output_name_garp}.parquet")
         
         # Write POL (aggregated)
         self.logger.info(f"Writing POL to gold for vision {vision}")
         output_name_pol = f"primes_emises_{vision}_pol"
-        write_to_layer(df_pol, self.config, 'gold', output_name_pol, vision, self.logger)
+        write_to_layer(
+            df_pol, self.config, 'gold', output_name_pol, vision, self.logger,
+            zorder_columns=["nopol"]  # Policy-level aggregation
+        )
         self.logger.success(f"Wrote {df_pol.count():,} records to gold: {output_name_pol}.parquet")

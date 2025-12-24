@@ -18,14 +18,16 @@ def join_client_data(
     logger: Optional[Any] = None
 ) -> DataFrame:
     """
-    Join client reference data (CLACENT1, CLACENT3, HISTO_NOTE_RISQUE).
+    Join client reference data (CLACENT1, CLACENT3).
 
-    Based on PTF_MVTS_CONSOLIDATION_MACRO.sas L385-410.
+    Based on PTF_MVTS_CONSOLIDATION_MACRO.sas L385-394.
+    
+    Note: HISTO_NOTE_RISQUE (note_euler) is handled separately by 
+    consolidation_processor._enrich_euler_risk_note() to avoid duplication.
 
     Joins:
     1. CLIENT1 (CLIACT14) - Client data generation 14
     2. CLIENT3 (CLIACT3) - Client data generation 3
-    3. BINSEE.HISTO_NOTE_RISQUE - Risk scoring history
 
     Args:
         df: Input DataFrame
@@ -107,34 +109,8 @@ def join_client_data(
         if "cdsiret_c3" in df.columns:
             df = df.drop("cdsiret_c3", "cdsiren_c3")  # Fixed column names
 
-    # 4. Join HISTO_NOTE_RISQUE for risk scoring (if CDSIREN available)
-    if "cdsiren" in df.columns:
-        try:
-            df_histo_note = reader.read_file_group("histo_note_risque", vision)
-            if df_histo_note is not None:  # OPTIMIZED: Removed count() check
-                # Filter by validity dates (SAS: dtdeb_valid <= dtfin AND dtfin_valid > dtfin)
-                df_histo_note_valid = df_histo_note.filter(
-                    (col("dtdeb_valid") <= lit(dtfin)) &
-                    (col("dtfin_valid") > lit(dtfin))
-                )
-
-                df = df.join(
-                    df_histo_note_valid.select(
-                        "cdsiren",
-                        col("note_risque").alias("note_risque_histo"),
-                        col("score_credit").alias("score_credit_histo")
-                    ),
-                    on=["cdsiren"],
-                    how="left"
-                )
-
-                if logger:
-                    logger.debug("Joined HISTO_NOTE_RISQUE")
-        except Exception as e:
-            if logger:
-                logger.warning(f"HISTO_NOTE_RISQUE not available: {e}")
 
     if logger:
-        logger.success("Client data enrichment completed")
+        logger.success("✓ SUCCESS: Client data enrichment completed")
 
     return df

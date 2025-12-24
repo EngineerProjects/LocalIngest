@@ -251,6 +251,9 @@ class AZCapitauxProcessor(BaseProcessor):
         from utils.helpers import write_to_layer
         
         output_name = f"az_capitaux_{vision}"
-        write_to_layer(df, self.config, 'silver', output_name, vision, self.logger)
+        write_to_layer(
+            df, self.config, 'silver', output_name, vision, self.logger,
+            zorder_columns=["police", "cdprod"]  # Most filtered in capital queries
+        )
         
         self.logger.success(f"Wrote {df.count():,} records to silver: {output_name}.parquet")

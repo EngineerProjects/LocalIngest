@@ -164,6 +164,10 @@ def apply_capitaux_business_rules(
     """
     suffix = '_ind' if indexed else ''
     
+    # OPTIMIZATION: Reduce withColumn operations by combining expressions
+    # Original: 3 separate withColumn calls
+    # Optimized: 2 withColumn calls (one for each business rule)
+    
     # Rule 1: SMP completion (Nov 16, 2020)
     # SMP_100 = MAX(SMP_100, SMP_PE_100 + SMP_RD_100)
     smp_col = f'smp_100{suffix}'
@@ -179,29 +183,29 @@ def apply_capitaux_business_rules(
             )
         )
     
-    # Rule 2: RC limit - Combine both RC_PAR_SIN variants first
+    # Rule 2: RC limit - Combine all RC variants in one expression
     # SAS L146-150: RC_PAR_SIN includes both direct matches and TOUS_DOM variant
+    # SAS L293: LIMITE_RC_100 = MAX(LIMITE_RC_100_PAR_SIN, LIMITE_RC_100_PAR_AN)
     rc_col = f'limite_rc_100{suffix}'
     rc_sin_col = f'limite_rc_100_par_sin{suffix}'
     rc_sin_tous_dom_col = f'limite_rc_100_par_sin_tous_dom{suffix}'
     rc_an_col = f'limite_rc_100_par_an{suffix}'
 
-    # First, combine both RC_PAR_SIN variants (if both exist)
-    if rc_sin_col in df.columns and rc_sin_tous_dom_col in df.columns:
-        df = df.withColumn(
-            rc_sin_col,
-            greatest(
+    # OPTIMIZATION: Single expression instead of 2 separate withColumn calls
+    if all(c in df.columns for c in [rc_sin_col, rc_an_col]):
+        rc_sin_expr = col(rc_sin_col)
+        
+        # Include TOUS_DOM variant if it exists
+        if rc_sin_tous_dom_col in df.columns:
+            rc_sin_expr = greatest(
                 coalesce(col(rc_sin_col), lit(0.0)),
                 coalesce(col(rc_sin_tous_dom_col), lit(0.0))
             )
-        )
-
-    # SAS L293: LIMITE_RC_100 = MAX(LIMITE_RC_100_PAR_SIN, LIMITE_RC_100_PAR_AN)
-    if all(c in df.columns for c in [rc_sin_col, rc_an_col]):
+        
         df = df.withColumn(
             rc_col,
             greatest(
-                coalesce(col(rc_sin_col), lit(0.0)),
+                coalesce(rc_sin_expr, lit(0.0)),
                 coalesce(col(rc_an_col), lit(0.0))
             )
         )

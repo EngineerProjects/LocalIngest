@@ -292,7 +292,10 @@ class AZProcessor(BaseProcessor):
             vision: Vision in YYYYMM format
         """
         from utils.helpers import write_to_layer
-        write_to_layer(df, self.config, 'silver', 'mvt_const_ptf', vision, self.logger)
+        write_to_layer(
+            df, self.config, 'silver', 'mvt_const_ptf', vision, self.logger,
+            zorder_columns=["police", "dtfin"]  # Most filtered columns in SAS queries
+        )
 
 
     def _join_ipfm99(self, df: DataFrame, vision: str) -> DataFrame:

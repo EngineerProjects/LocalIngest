@@ -159,6 +159,9 @@ class CapitauxConsolidationProcessor(BaseProcessor):
         from utils.helpers import write_to_layer
         
         output_name = f"az_azec_capitaux_{vision}"
-        write_to_layer(df, self.config, 'gold', output_name, vision, self.logger)
+        write_to_layer(
+            df, self.config, 'gold', output_name, vision, self.logger,
+            zorder_columns=["police"]  # Primary filter after consolidation
+        )
         
         self.logger.success(f"Wrote {df.count():,} records to gold: {output_name}.parquet")

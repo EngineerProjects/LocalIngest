@@ -233,31 +233,60 @@ def write_to_layer(
     layer: str,
     filename: str,
     vision: str,
-    logger=None  # PipelineLogger type
+    logger=None,  # PipelineLogger type
+    optimize: bool = True,  # Auto-optimize Delta tables after write
+    zorder_columns: Optional[List[str]] = None  # Columns for Z-Ordering
 ) -> None:
     """
-    Generic function to write DataFrame to data lake layer.
-    
-    Eliminates code duplication across all processors.
-    Handles path construction, configuration, and logging.
-    
+    Generic function to write a Spark DataFrame to a data lake layer (silver or gold).
+
+    This function centralizes all logic related to output path construction,
+    format selection (Parquet, Delta, CSV), compression, write mode, and optional
+    partition coalescing for optimized file sizes.
+
+    The output path is automatically built using the configured base path,
+    layer name, and the vision period (YYYYMM), ensuring consistent folder
+    structure across all pipelines.
+
+    Features:
+        - Supports multiple output formats via config: parquet, delta, csv
+        - Automatically handles Delta-specific behavior (no file extension)
+        - Optional coalesce optimization for gold layer to reduce small files
+        - Delta Lake: OPTIMIZE + Z-Ordering for performance
+        - Delta Lake: Schema enforcement to prevent data corruption
+        - Centralized logging for traceability
+        - Ensures consistent naming: <filename>_<vision>.<format>
+
     Args:
-        df: DataFrame to write (lowercase columns)
-        config: ConfigLoader instance
-        layer: Layer name ('silver', 'gold')
-        filename: Output filename (without extension or vision suffix)
-        vision: Vision in YYYYMM format
-        logger: Optional PipelineLogger instance
-    
-    Example (Silver layer):
-        >>> from utils.helpers import write_to_layer
-        >>> write_to_layer(df, config, 'silver', 'mvt_const_ptf', '202509', logger)
-        # Writes to: .../silver/2025/09/mvt_const_ptf_202509.parquet
-    
-    Example (Gold layer):
-        >>> write_to_layer(df, config, 'gold', 'construction_portfolio', '202509', logger)
-        # Writes to: .../gold/2025/09/construction_portfolio_202509.parquet
+        df: Spark DataFrame to write. Columns are expected to be lowercase.
+        config: Configuration loader providing datalake paths and output settings.
+        layer: Target layer in the data lake ("silver" or "gold").
+        filename: Base name of the output dataset (without extension).
+        vision: Vision period in YYYYMM format, used for folder structure and filename.
+        logger: Optional logger for structured pipeline logging.
+        optimize: If True and format is Delta, run OPTIMIZE after write (default: True)
+        zorder_columns: Optional columns for Z-Ordering (Delta only, improves data skipping)
+
+    Examples:
+        Write to Silver layer in Parquet:
+            >>> write_to_layer(df, config, "silver", "mvt_const_ptf", "202509", logger)
+            # → .../silver/2025/09/mvt_const_ptf_202509.parquet
+
+        Write to Gold layer in Delta with Z-Ordering:
+            >>> write_to_layer(
+            ...     df, config, "gold", "construction_portfolio", "202509", logger,
+            ...     optimize=True, zorder_columns=["police", "dtfin"]
+            ... )
+            # → .../gold/2025/09/construction_portfolio_202509 (Delta directory)
+
+    Notes:
+        - Delta format writes a directory, not a single file, so no extension is added.
+        - Coalescing is applied only for gold layer to reduce the number of small files.
+        - All write behavior (format, mode, compression) is controlled by config.
+        - Delta tables are automatically optimized after write if optimize=True.
     """
+    from typing import List, Optional
+    
     base_path = config.get('datalake.base_path')
     path_template = config.get('datalake.path_template')
     year, month = extract_year_month_int(vision)
@@ -271,11 +300,15 @@ def write_to_layer(
     )
     
     # Get output configuration
-    output_format = config.get('output.format', 'parquet')
+    output_format = config.get('output.format', 'parquet').lower()
     compression = config.get('output.compression', 'snappy')
     mode = config.get('output.mode', 'overwrite')
     
-    output_path = f"{layer_path}/{filename}_{vision}.{output_format}"
+    # Delta tables do NOT use file extensions (they are directories)
+    if output_format == "delta":
+        output_path = f"{layer_path}/{filename}_{vision}"
+    else:
+        output_path = f"{layer_path}/{filename}_{vision}.{output_format}"
 
     if logger:
         logger.info(f"Writing {layer} data to: {output_path}")
@@ -302,13 +335,221 @@ def write_to_layer(
         if logger:
             logger.debug(f"Skipping coalesce optimization: {e}")
 
-    # Write as parquet (type-safe, all columns lowercase)
-    df.write.mode(mode).parquet(output_path, compression=compression)
-    
+    # --- Write logic depending on format ---
+    writer = df.write.mode(mode)
+
+    if output_format == "parquet":
+        writer.option("compression", compression).parquet(output_path)
+
+    elif output_format == "delta":
+        # Delta Lake with schema enforcement
+        writer = (
+            writer
+            .format("delta")
+            .option("mergeSchema", "false")  # Refuse schema changes (data quality)
+            .option("overwriteSchema", str(mode == "overwrite").lower())  # Allow schema overwrite only in overwrite mode
+        )
+        writer.save(output_path)
+
+    elif output_format == "csv":
+        writer.option("header", True).option("delimiter", ";").csv(output_path)
+
+    else:
+        raise ValueError(f"Unsupported output format: {output_format}")
+
     if logger:
         logger.success(f"{layer.capitalize()} data written successfully")
+    
+    # --- Post-write Delta Lake optimizations ---
+    if output_format == "delta" and optimize:
+        try:
+            # Get SparkSession from DataFrame
+            spark = df.sparkSession
+            
+            if logger:
+                logger.info("Running Delta OPTIMIZE (compacting small files)...")
+            
+            # Compact small files
+            spark.sql(f"OPTIMIZE delta.`{output_path}`")
+            
+            # Z-Ordering if specified
+            if zorder_columns:
+                cols_str = ", ".join(zorder_columns)
+                spark.sql(f"OPTIMIZE delta.`{output_path}` ZORDER BY ({cols_str})")
+                if logger:
+                    logger.info(f"Applied Z-Ordering on columns: {cols_str}")
+            
+            # Log Delta metrics
+            log_delta_metrics(spark, output_path, logger)
+            
+        except Exception as e:
+            if logger:
+                logger.warning(f"Delta optimization failed (non-critical): {e}")
 
 
+
+
+def log_delta_metrics(spark, table_path: str, logger=None) -> None:
+    """
+    Log Delta Lake table statistics for monitoring and observability.
+    
+    Extracts and logs key metrics like# of files, total size, and last operation.
+    Non-critical function - failures are caught and logged as debug messages.
+    
+    Args:
+        spark: SparkSession instance
+        table_path: Full path to Delta table
+        logger: Optional logger
+        
+    Example:
+        >>> log_delta_metrics(spark, "abfss://.../silver/2025/09/mvt_const_ptf_202509", logger)
+        # Logs: Delta metrics - Files: 4, Size: 125.34 MB, Last operation: WRITE
+    """
+    if not logger:
+        return
+    
+    try:
+        # Get table details
+        details = spark.sql(f"DESCRIBE DETAIL delta.`{table_path}`")
+        
+        # Extract important metrics
+        row = details.first()
+        num_files = row['numFiles']
+        size_bytes = row['sizeInBytes']
+        size_mb = size_bytes / (1024 * 1024)
+        
+        logger.info(f"Delta metrics - Files: {num_files}, Size: {size_mb:.2f} MB")
+        
+        # Try to get last operation from history
+        try:
+            history = spark.sql(f"DESCRIBE HISTORY delta.`{table_path}` LIMIT 1")
+            last_op = history.first()['operation']
+            logger.debug(f"Last operation: {last_op}")
+        except:
+            pass  # History might not be available yet
+            
+    except Exception as e:
+        logger.debug(f"Could not retrieve Delta metrics: {e}")
+
+
+def optimize_delta_table(
+    spark,
+    table_path: str,
+    zorder_columns: Optional[List[str]] = None,
+    logger=None
+) -> None:
+    """
+    Manually optimize a Delta Lake table by compacting small files.
+    
+    This function is useful for maintenance scripts or when you want to
+    optimize a table outside of the write_to_layer() flow.
+    
+    Compacts small Parquet files into larger, more efficient ones, reducing
+    I/O overhead and improving query performance. Optionally applies Z-Ordering
+    to co-locate related data for better data skipping.
+    
+    Args:
+        spark: Active SparkSession
+        table_path: Full path to Delta table
+        zorder_columns: Optional list of columns for Z-Ordering (co-location)
+        logger: Optional logger
+        
+    Example:
+        >>> optimize_delta_table(
+        ...     spark,
+        ...     "abfss://.../silver/2025/09/mvt_const_ptf_202509",
+        ...     zorder_columns=["police", "dtfin"],
+        ...     logger=logger
+        ... )
+        
+    Notes:
+        - OPTIMIZE is an expensive operation - run during off-peak hours
+       - Z-Ordering is most effective on columns frequently used in WHERE clauses
+        - Recommended Z-Ordering columns: high-cardinality filter columns
+    """
+    from typing import List, Optional
+    
+    if logger:
+        logger.info(f"Optimizing Delta table: {table_path}")
+    
+    try:
+        # Compact small files
+        spark.sql(f"OPTIMIZE delta.`{table_path}`")
+        
+        # Z-Ordering for better data skipping
+        if zorder_columns:
+            cols_str = ", ".join(zorder_columns)
+            spark.sql(f"OPTIMIZE delta.`{table_path}` ZORDER BY ({cols_str})")
+            if logger:
+                logger.info(f"Applied Z-Ordering on columns: {cols_str}")
+        
+        if logger:
+            logger.success("Delta table optimized successfully")
+            
+        # Log metrics after optimization
+        log_delta_metrics(spark, table_path, logger)
+        
+    except Exception as e:
+        if logger:
+            logger.error(f"Delta optimization failed: {e}")
+        raise
+
+
+def vacuum_delta_table(
+    spark,
+    table_path: str,
+    retention_hours: int = 168,  # 7 days by default
+    logger=None
+) -> None:
+    """
+    Remove old versions of a Delta table to free up storage.
+    
+    Delta Lake keeps all historical versions for time travel. VACUUM removes
+    files older than the retention threshold that are no longer referenced
+    by the transaction log, reclaiming storage space.
+    
+    Args:
+        spark: Active SparkSession
+        table_path: Full path to Delta table
+        retention_hours: Keep versions newer than this (default: 168h = 7 days)
+        logger: Optional logger
+        
+    Example:
+        >>> # Keep 30 days of history
+        >>> vacuum_delta_table(
+        ...     spark,
+        ...     "abfss://.../silver/2025/09/mvt_const_ptf_202509",
+        ...     retention_hours=720,  # 30 days
+        ...     logger=logger
+        ... )
+        
+    Warning:
+        ⚠️  Cannot time travel beyond the retention period after VACUUM!
+        ⚠️  Default Delta retention is 7 days - adjust based on your needs
+        ⚠️  For production, consider 30+ days retention for auditing
+        
+    Best Practices:
+        - Run VACUUM during maintenance windows (off-peak hours)
+        - Balance storage costs vs. time travel requirements
+        - Regulatory/compliance: May need longer retention (90+ days)
+        - Development: 7 days is usually sufficient
+    """
+    if logger:
+        logger.info(f"Vacuuming Delta table (retention: {retention_hours}h)")
+    
+    try:
+        spark.sql(f"VACUUM delta.`{table_path}` RETAIN {retention_hours} HOURS")
+        
+        if logger:
+            logger.success(f"Old versions removed (kept {retention_hours}h of history)")
+            
+        # Log metrics after vacuum
+        log_delta_metrics(spark, table_path, logger)
+        
+    except Exception as e:
+        if logger:
+            logger.error(f"Delta VACUUM failed: {e}")
+        raise
 
 
 

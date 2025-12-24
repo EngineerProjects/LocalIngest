@@ -449,6 +449,36 @@
             "filters": [],
             "location_type": "monthly"
         },
+        "ipfm0024_1": {
+            "description": "IPFM0024_1 - Product activities reference (Pole 1)",
+            "file_patterns": [
+                "ipfm0024_1.csv"
+            ],
+            "schema": "ipfspe_ipfm0024",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "ipfm0024_3": {
+            "description": "IPFM0024_3 - Product activities reference (Pole 3)",
+            "file_patterns": [
+                "ipfm0024_3.csv"
+            ],
+            "schema": "ipfspe_ipfm0024",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
         "ipfspe_ipfm63": {
             "description": "IPFSPE IPFM63 - Special product professional activities",
             "file_patterns": [
@@ -464,6 +494,36 @@
             "filters": [],
             "location_type": "monthly"
         },
+        "ipfm63_1": {
+            "description": "IPFM63_1 - Professional activities reference (Pole 1)",
+            "file_patterns": [
+                "ipfm63_1.csv"
+            ],
+            "schema": "ipfspe_ipfm63",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "ipfm63_3": {
+            "description": "IPFM63_3 - Professional activities reference (Pole 3)",
+            "file_patterns": [
+                "ipfm63_3.csv"
+            ],
+            "schema": "ipfspe_ipfm63",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
         "ipfspe_ipfm99": {
             "description": "IPFSPE IPFM99 - Special product generic activities",
             "file_patterns": [
@@ -478,6 +538,36 @@
             },
             "filters": [],
             "location_type": "monthly"
+        },
+        "ipfm99_1": {
+            "description": "IPFM99_1 - Generic activities reference (Pole 1)",
+            "file_patterns": [
+                "ipfm99_1.csv"
+            ],
+            "schema": "ipfspe_ipfm99",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
+        },
+        "ipfm99_3": {
+            "description": "IPFM99_3 - Generic activities reference (Pole 3)",
+            "file_patterns": [
+                "ipfm99_3.csv"
+            ],
+            "schema": "ipfspe_ipfm99",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "reference"
         },
         "w6_basecli_inv": {
             "description": "W6 BASECLI_INV - Client base cumulative data",
@@ -676,12 +766,12 @@
             "filters": [],
             "location_type": "reference"
         },
-        "constrcu_azec_segment": {
-            "description": "CONSTRCU_AZEC - Construction site segment reference for type_produit_2",
+        "typrd_2": {
+            "description": "SAS_C.TYPRD_2 - Product type reference for AZEC segmentation (type_produit_2)",
             "file_patterns": [
-                "constrcu_azec_segment.csv"
+                "typrd_2.csv"
             ],
-            "schema": "constrcu_azec_segment",
+            "schema": "typrd_2",
             "read_options": {
                 "format": "csv",
                 "sep": ",",

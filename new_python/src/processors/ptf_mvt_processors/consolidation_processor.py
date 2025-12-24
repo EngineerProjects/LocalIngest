@@ -196,7 +196,10 @@ class ConsolidationProcessor(BaseProcessor):
             vision: Vision in YYYYMM format
         """
         from utils.helpers import write_to_layer
-        write_to_layer(df, self.config, 'gold', 'ptf_mvt', vision, self.logger)
+        write_to_layer(
+            df, self.config, 'gold', 'ptf_mvt', vision, self.logger,
+            zorder_columns=["police", "dtfin"]  # Most filtered columns after consolidation
+        )
 
     def _harmonize_schema(
         self,
@@ -527,6 +530,9 @@ class ConsolidationProcessor(BaseProcessor):
             
             # QUALITY IMPROVEMENT: Detect and remove duplications (not done in SAS)
             # This ensures gold layer data quality
+            # OPTIMIZATION: Cache before multiple operations to avoid re-scanning
+            df_ird.cache()
+            
             total_count = df_ird.count()
             distinct_nopol_count = df_ird.select("nopol").distinct().count()
             
@@ -596,6 +602,9 @@ class ConsolidationProcessor(BaseProcessor):
             risk_cols_existing = [c for c in risk_cols_to_drop if c in df.columns]
             if risk_cols_existing:
                 df = df.drop(*risk_cols_existing)
+            
+            # OPTIMIZATION: Unpersist cached data after use
+            df_ird.unpersist()
             
             self.logger.debug(f"IRD {source.upper()}: Joined and coalesced successfully")
             

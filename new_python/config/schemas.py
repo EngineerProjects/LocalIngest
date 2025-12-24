@@ -605,18 +605,18 @@ MAPPING_ISIC_CONST_CHT_SCHEMA = StructType([
 # NAF 2003 to ISIC mapping 🟢
 MAPPING_CDNAF2003_ISIC_SCHEMA = StructType([
     StructField("CDNAF_2003", StringType(), True),  # NAF 2003 code
-    StructField("ISIC_CODE", StringType(), True),  # ISIC code
+    StructField("ISIC_Code", StringType(), True),  # ISIC code
 ])
 
 # NAF 2008 to ISIC mapping 🟢
 MAPPING_CDNAF2008_ISIC_SCHEMA = StructType([
     StructField("CDNAF_2008", StringType(), True),  # NAF 2008 code
-    StructField("ISIC_CODE", StringType(), True),  # ISIC code
+    StructField("ISIC_Code", StringType(), True),  # ISIC code
 ])
 
 # ISIC hazard grades reference table 🟢
 TABLE_ISIC_TRE_NAF_SCHEMA = StructType([
-    StructField("ISIC_CODE", StringType(), True),
+    StructField("ISIC_Code", StringType(), True),
     StructField("HAZARD_GRADES_FIRE", StringType(), True),
     StructField("HAZARD_GRADES_BI", StringType(), True),
     StructField("HAZARD_GRADES_RCA", StringType(), True),
@@ -641,7 +641,7 @@ IRD_SUIVI_ENGAGEMENTS_SCHEMA = StructType([
 # =============================================================================
 ISIC_LG_SCHEMA = StructType([
     StructField("ISIC_Local", StringType(), True),  # Local ISIC code
-    StructField("ISIC_Global", StringType(), True),  # Global ISIC code (ISIC_CODE_GBL)
+    StructField("ISIC_Global", StringType(), True),  # Global ISIC code (ISIC_Code_GBL)
 ])
 
 
@@ -672,14 +672,15 @@ TABLE_SEGMENTATION_AZEC_MML_SCHEMA = StructType([
 
 
 # =============================================================================
-# CONSTRCU_AZEC_SEGMENT - AZEC CONSTRUCTION SEGMENT REFERENCE
-# SAS: CONSTRCU_AZEC - Product segment2 and type_produit_2 for AZEC
+# TYPRD_2 - AZEC PRODUCT TYPE REFERENCE
+# SAS: REF_segmentation_azec.sas L320-325 (SAS_C.TYPRD_2)
+# Note: Used in AZEC segmentation merge with CONSTRCU for type_produit_2 enrichment
 # =============================================================================
-CONSTRCU_AZEC_SEGMENT_SCHEMA = StructType([
+TYPRD_2_SCHEMA = StructType([
     StructField("CDPROD", StringType(), True),  # Product code
-    StructField("POLICE", StringType(), True),  # Policy number
+    StructField("POLICE", StringType(), True),  # Policy number (for join with CONSTRCU)
     StructField("SEGMENT", StringType(), True),  # Segment2 classification
-    StructField("TYPE_PRODUIT", StringType(), True),  # Type_Produit_2
+    StructField("TYPE_PRODUIT", StringType(), True),  # Product type (type_produit_2)
 ])
 
 
@@ -697,8 +698,14 @@ SCHEMA_REGISTRY = {
     "ird_risk_q46": IRD_RISK_COMMON_SCHEMA,  # Consolidated
     "ird_risk_qan": IRD_RISK_QAN_SCHEMA,
     "ipfspe_ipfm0024": IPFSPE_IPFM0024_SCHEMA,
+    "ipfm0024_1": IPFSPE_IPFM0024_SCHEMA,  # Reference data
+    "ipfm0024_3": IPFSPE_IPFM0024_SCHEMA,  # Reference data
     "ipfspe_ipfm63": IPFSPE_IPFM63_SCHEMA,
+    "ipfm63_1": IPFSPE_IPFM63_SCHEMA,  # Reference data
+    "ipfm63_3": IPFSPE_IPFM63_SCHEMA,  # Reference data
     "ipfspe_ipfm99": IPFSPE_IPFM99_SCHEMA,
+    "ipfm99_1": IPFSPE_IPFM99_SCHEMA,  # Reference data
+    "ipfm99_3": IPFSPE_IPFM99_SCHEMA,  # Reference data
     
     # AZEC Reference Files (bronze/ref/)
     "polic_cu_azec": POLIC_CU_SCHEMA,  # FIXED: Now using POLIC_CU_SCHEMA which includes DATEXPIR
@@ -742,7 +749,7 @@ SCHEMA_REGISTRY = {
     "isic_lg": ISIC_LG_SCHEMA,
     "do_dest": DO_DEST_SCHEMA,
     "table_segmentation_azec_mml": TABLE_SEGMENTATION_AZEC_MML_SCHEMA,
-    "constrcu_azec_segment": CONSTRCU_AZEC_SEGMENT_SCHEMA,
+    "typrd_2": TYPRD_2_SCHEMA,
 }
 
 

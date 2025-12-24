@@ -343,7 +343,10 @@ class SilverReader:
         vision: str
     ) -> DataFrame:
         """
-        Read a parquet file from silver layer.
+        Read a file from silver layer using the configured format (delta, parquet, csv).
+        
+        Automatically detects the format from config, allowing seamless migration
+        from Parquet to Delta without modifying pipeline code.
 
         Args:
             filename: File name without extension (e.g., 'mvt_const_ptf')
@@ -355,15 +358,29 @@ class SilverReader:
         Example:
             >>> reader = SilverReader(spark, config)
             >>> df = reader.read_silver_file('mvt_const_ptf', '202509')
+            # Reads delta or parquet based on config.output.format
         """
         base_path = self.config.get('datalake.base_path')
         silver_path = build_layer_path(base_path, 'silver', vision)
         
-        # Build full file path
-        full_path = f"{silver_path}/{filename}_{vision}.parquet"
+        # Get format from config (default to parquet for backward compatibility)
+        output_format = self.config.get('output.format', 'parquet').lower()
         
-        # Read parquet file
-        df = self.spark.read.parquet(full_path)
+        # Build full file path (Delta = directory, others = file with extension)
+        if output_format == "delta":
+            full_path = f"{silver_path}/{filename}_{vision}"
+            df = self.spark.read.format("delta").load(full_path)
+            
+        elif output_format == "parquet":
+            full_path = f"{silver_path}/{filename}_{vision}.parquet"
+            df = self.spark.read.parquet(full_path)
+            
+        elif output_format == "csv":
+            full_path = f"{silver_path}/{filename}_{vision}.csv"
+            df = self.spark.read.option("header", True).option("delimiter", ";").csv(full_path)
+            
+        else:
+            raise ValueError(f"Unsupported silver format: {output_format}")
         
         # Ensure columns are lowercase (they should already be from silver write)
         from utils.transformations import lowercase_all_columns
