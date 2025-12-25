@@ -58,57 +58,103 @@ print("=" * 80)
 def generate_rf_fr1_prm_dtl_midcorp_m():
     """
     Génère rf_fr1_prm_dtl_midcorp_m_202509.csv
-    Données One BI Emissions - Respecte filtres métier
+    Données One BI Emissions - Respecte TOUS les filtres métier
     """
     print("\n📄 Génération: rf_fr1_prm_dtl_midcorp_m_202509.csv")
     
-    n_rows = 1000  # Nombre de lignes
+    n_rows = 502913  # Nombre de lignes
     
-    # Produits Construction valides (alignés avec segmentprdt)
+    # Produits Construction valides (alignés avec segmentprdt ET PAS 01073 !)
     valid_products = ['01099', '01059', '01111', '01037', '01050']
     
-    # Garanties Construction
-    guarantees = ['FIRE', 'RC', 'TRC', 'DO', 'RCD', 'RCE']
+    # Garanties Construction VALIDES (PAS 180, 183, 184, 185)
+    valid_guarantees = ['220', '240', '250', '260', '300', '310', '320']
+    
+    # Catégories VALIDES (éviter 792, 793)
+    valid_categories = [f'{i:03d}' for i in range(1, 800) if i not in [792, 793]]
+    
+    # Intermédiaires VALIDES (EXCLURE les 22 interdits)
+    excluded_intermediaries = [
+        "102030", "446000", "446118", "446218", "482001", "489090", "500150",
+        "4A1400", "4A1500", "4A1600", "4A1700", "4A1800", "4A1900",
+        "4F1004", "5B2000", "5R0001",
+        "H90036", "H90037", "H90059", "H90061", "H99045", "H99059"
+    ]
+    all_intermediaries = [f'INT{i:05d}' for i in range(1, 10000)]
+    valid_intermediaries = [x for x in all_intermediaries if x not in excluded_intermediaries]
+    
+    # Canaux distribution
+    distribution_channels = ['DCAG', 'DCPS', 'DIGITAL', 'BROKDIV']
+    
+    # Dates dans vision (CRITIQUE : <= 202509)
+    vision_date = datetime(2025, 9, 30)
     
     # Générer des données cohérentes avec les filtres
     data = {
+        # ===== FILTRES CRITIQUES =====
+        
+        # FILTRE #1 : cd_marche='6' (Construction) - MANDATORY
+        'cd_marche': ['6'] * n_rows,
+        
+        # FILTRE #2 : dt_cpta_cts <= 202509
+        'dt_cpta_cts': [
+            (vision_date - timedelta(days=random.randint(0, 270))).strftime('%Y-%m-%d')
+            for _ in range(n_rows)
+        ],
+        
+        # FILTRE #3 : cd_int_stc NOT IN excluded_intermediaries
+        'cd_int_stc': [random.choice(valid_intermediaries) for _ in range(n_rows)],
+        
+        # FILTRE #4 : cd_gar_princ NOT IN ['180','183','184','185']
+        'cd_gar_princ': [random.choice(valid_guarantees) for _ in range(n_rows)],
+        
+        # FILTRE #5 : cd_cat_min NOT IN ['792','793']
+        'cd_cat_min': [random.choice(valid_categories) for _ in range(n_rows)],
+        
+        # FILTRE #6 : cd_prd_prm != '01073'
+        'cd_prd_prm': [random.choice(valid_products) for _ in range(n_rows)],
+        
+        # ===== AUTRES COLONNES REQUISES =====
+        
+        # Distribution (pour mapping CDPOLE)
+        'cd_niv_2_stc': [random.choice(distribution_channels) for _ in range(n_rows)],
+        
         # Identifiants
-        'nopol': [f'POL{i:08d}' for i in range(1, n_rows + 1)],
-        'cdprod': [random.choice(valid_products) for _ in range(n_rows)],
-        'cgarp': [random.choice(guarantees) for _ in range(n_rows)],
+        'nu_cnt_prm': [f'POL{i:08d}' for i in range(1, n_rows + 1)],
+        'cd_statu_cts': [random.choice(['ACT', 'VAL']) for _ in range(n_rows)],
         
-        # Filtres CRITIQUES - DOIVENT matcher les constantes du code
-        'cd_marche': ['6'] * n_rows,  # MARKET_CONSTRUCTION = '6'
-        'dt_cpta_cts': [VISION] * n_rows,  # <= vision
+        # Dates
+        'dt_emis_cts': [
+            (vision_date - timedelta(days=random.randint(30, 365))).strftime('%Y-%m-%d')
+            for _ in range(n_rows)
+        ],
+        'dt_annu_cts': [''] * n_rows,  # Vide
         
-        # Dates cohérentes
-        'dt_effet': [(datetime(2025, 9, 1) - timedelta(days=random.randint(0, 730))).strftime('%Y-%m-%d') 
-                     for _ in range(n_rows)],
-        'dt_echeance': [(datetime(2025, 9, 30) + timedelta(days=random.randint(0, 365))).strftime('%Y-%m-%d') 
-                        for _ in range(n_rows)],
+        # Montants réalistes (>0 pour éviter filtres)
+        'mt_ht_cts': np.random.uniform(100, 50000, n_rows).round(2),
+        'mt_cms_cts': np.random.uniform(10, 5000, n_rows).round(2),
         
-        # Montants réalistes
-        'mt_prim_nette_eur': np.random.uniform(1000, 50000, n_rows).round(2),
-        'mt_prim_acquise_eur': np.random.uniform(1000, 50000, n_rows).round(2),
-        'mt_prim_emise_eur': np.random.uniform(1000, 50000, n_rows).round(2),
+        # Garantie prospective (format: XX<GAR>YY)
+        'cd_gar_prospctiv': [
+            f'XX{random.choice(valid_guarantees)}YY'
+            for _ in range(n_rows)
+        ],
         
-        # Exercices
-        'exe_emission': np.random.choice([2023, 2024, 2025], n_rows),
-        'exe_comptable': [2025] * n_rows,
-        
-        # Canaux distribution (éviter NOINT exclus)
-        'noint': [f'INT{random.randint(1000, 9999)}' for _ in range(n_rows)],
-        
-        # Pole (1=Agent, 3=Courtier)
-        'cdpole': np.random.choice(['1', '3'], n_rows)
+        # Exercices (2023-2025 pour mix current/prior)
+        'nu_ex_ratt_cts': [
+            str(random.choice([2023, 2024, 2025]))
+            for _ in range(n_rows)
+        ]
     }
     
     df = pd.DataFrame(data)
     
     output_file = MONTHLY_DIR / f"rf_fr1_prm_dtl_midcorp_m_{VISION}.csv"
-    df.to_csv(output_file, index=False, sep=',')
+    df.to_csv(output_file, index=False, sep=',')  # COMMA separator (pas pipe!)
     print(f"   ✓ Créé: {output_file} ({len(df):,} lignes)")
-    print(f"   ✓ Tous les enregistrements: cd_marche='6', dt_cpta_cts<='{VISION}'")
+    print(f"   ✓ TOUTES LES LIGNES : cd_marche='6', dt_cpta_cts<='{VISION}'")
+    print(f"   ✓ Aucun intermédiaire/garantie/catégorie/produit exclu")
+    print(f"   ✓ Ces données devraient SURVIVRE à tous les filtres Emissions")
 
 
 

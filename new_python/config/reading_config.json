@@ -358,21 +358,6 @@
             "filters": [],
             "location_type": "reference"
         },
-        "client1": {
-            "description": "CLIENT1 - Client account data for Agent channel",
-            "file_patterns": [
-                "clacent1.csv"
-            ],
-            "schema": "client1",
-            "read_options": {
-                "format": "csv",
-                "sep": "|",
-                "header": true,
-                "encoding": "LATIN9"
-            },
-            "filters": [],
-            "location_type": "reference"
-        },
         "cliact14": {
             "description": "CLIENT1 CLACENT1 - Client data generation 14 (SIRET/SIREN)",
             "file_patterns": [
@@ -403,21 +388,6 @@
             "filters": [],
             "location_type": "reference"
         },
-        "client3": {
-            "description": "CLIENT3 - Client account data for Courtage channel",
-            "file_patterns": [
-                "clacent3.csv"
-            ],
-            "schema": "client3",
-            "read_options": {
-                "format": "csv",
-                "sep": "|",
-                "header": true,
-                "encoding": "LATIN9"
-            },
-            "filters": [],
-            "location_type": "reference"
-        },
         "binsee_histo_note_risque": {
             "description": "BINSEE - Euler Hermes risk rating history",
             "file_patterns": [
@@ -433,21 +403,6 @@
             },
             "filters": [],
             "location_type": "reference"
-        },
-        "ipfspe_ipfm0024": {
-            "description": "IPFSPE IPFM0024 - Special product activities data",
-            "file_patterns": [
-                "*IPFM0024_*.csv"
-            ],
-            "schema": "ipfspe_ipfm0024",
-            "read_options": {
-                "format": "csv",
-                "sep": "|",
-                "header": true,
-                "encoding": "LATIN9"
-            },
-            "filters": [],
-            "location_type": "monthly"
         },
         "ipfm0024_1": {
             "description": "IPFM0024_1 - Product activities reference (Pole 1)",
@@ -479,21 +434,6 @@
             "filters": [],
             "location_type": "reference"
         },
-        "ipfspe_ipfm63": {
-            "description": "IPFSPE IPFM63 - Special product professional activities",
-            "file_patterns": [
-                "*IPFM63_*.csv"
-            ],
-            "schema": "ipfspe_ipfm63",
-            "read_options": {
-                "format": "csv",
-                "sep": "|",
-                "header": true,
-                "encoding": "LATIN9"
-            },
-            "filters": [],
-            "location_type": "monthly"
-        },
         "ipfm63_1": {
             "description": "IPFM63_1 - Professional activities reference (Pole 1)",
             "file_patterns": [
@@ -523,21 +463,6 @@
             },
             "filters": [],
             "location_type": "reference"
-        },
-        "ipfspe_ipfm99": {
-            "description": "IPFSPE IPFM99 - Special product generic activities",
-            "file_patterns": [
-                "*IPFM99_*.csv"
-            ],
-            "schema": "ipfspe_ipfm99",
-            "read_options": {
-                "format": "csv",
-                "sep": "|",
-                "header": true,
-                "encoding": "LATIN9"
-            },
-            "filters": [],
-            "location_type": "monthly"
         },
         "ipfm99_1": {
             "description": "IPFM99_1 - Generic activities reference (Pole 1)",

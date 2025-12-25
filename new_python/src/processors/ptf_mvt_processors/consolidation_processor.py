@@ -742,60 +742,125 @@ class ConsolidationProcessor(BaseProcessor):
             df_tabspec = None
             
             # Try to read IPFM0024 (professional activity codes)
+            # SAS L462-470: Union IPFSPE1.IPFM0024 (Pole 1) + IPFSPE3.IPFM0024 (Pole 3)
             try:
-                df_ipfm0024 = reader.read_file_group('ipfspe_ipfm0024', vision)
-                if df_ipfm0024 is not None:
-                    # Union Pole 1 and Pole 3 (SAS L467-469)
-                    df_spec_0024 = df_ipfm0024.select(
-                        col("nopol"),
-                        col("noint"),
-                        col("cdprod"),
-                        lit("1").alias("cdpole"),  # Assume mixed or add pole detection
-                        col("cdactprf01").alias("cdactconst"),
-                        col("cdactprf02").alias("cdactconst2"),
-                        lit("").cast(StringType()).alias("cdnaf"),
-                        lit(None).cast(DoubleType()).alias("mtca_ris")
-                    )
-                    df_tabspec = df_spec_0024 if df_tabspec is None else df_tabspec.unionByName(df_spec_0024)
-                    self.logger.info("IPFM0024 special products loaded")
+                # Read Pole 1 (Agents)
+                df_ipfm0024_1 = reader.read_file_group('ipfm0024_1', vision)
+                # Read Pole 3 (Brokers)
+                df_ipfm0024_3 = reader.read_file_group('ipfm0024_3', vision)
+                
+                if df_ipfm0024_1 is not None or df_ipfm0024_3 is not None:
+                    # Pole 1 processing
+                    if df_ipfm0024_1 is not None:
+                        df_spec_0024_p1 = df_ipfm0024_1.select(
+                            col("nopol"),
+                            col("noint"),
+                            col("cdprod"),
+                            lit("1").alias("cdpole"),  # Pole 1 = Agents
+                            col("cdactprf01").alias("cdactconst"),
+                            col("cdactprf02").alias("cdactconst2"),
+                            lit("").cast(StringType()).alias("cdnaf"),
+                            lit(None).cast(DoubleType()).alias("mtca_ris")
+                        )
+                        df_tabspec = df_spec_0024_p1 if df_tabspec is None else df_tabspec.unionByName(df_spec_0024_p1)
+                    
+                    # Pole 3 processing
+                    if df_ipfm0024_3 is not None:
+                        df_spec_0024_p3 = df_ipfm0024_3.select(
+                            col("nopol"),
+                            col("noint"),
+                            col("cdprod"),
+                            lit("3").alias("cdpole"),  # Pole 3 = Brokers
+                            col("cdactprf01").alias("cdactconst"),
+                            col("cdactprf02").alias("cdactconst2"),
+                            lit("").cast(StringType()).alias("cdnaf"),
+                            lit(None).cast(DoubleType()).alias("mtca_ris")
+                        )
+                        df_tabspec = df_spec_0024_p3 if df_tabspec is None else df_tabspec.unionByName(df_spec_0024_p3)
+                    
+                    self.logger.info("IPFM0024 special products loaded (Pole 1 + Pole 3)")
             except Exception as e:
                 self.logger.debug(f"IPFM0024 not available: {e}")
             
             # Try to read IPFM63 (activity + NAF + CA)
+            # SAS L474-482: Union IPFSPE1.IPFM63 (Pole 1) + IPFSPE3.IPFM63 (Pole 3)
             try:
-                df_ipfm63 = reader.read_file_group('ipfspe_ipfm63', vision)
-                if df_ipfm63 is not None:
-                    df_spec_63 = df_ipfm63.select(
-                        col("nopol"),
-                        col("noint"),
-                        col("cdprod"),
-                        lit("1").alias("cdpole"),
-                        col("actprin").alias("cdactconst"),
-                        col("actsec1").alias("cdactconst2"),
-                        col("cdnaf"),
-                        col("mtca1").alias("mtca_ris")
-                    )
-                    df_tabspec = df_spec_63 if df_tabspec is None else df_tabspec.unionByName(df_spec_63)
-                    self.logger.info("IPFM63 special products loaded")
+                # Read Pole 1 (Agents)
+                df_ipfm63_1 = reader.read_file_group('ipfm63_1', vision)
+                # Read Pole 3 (Brokers)
+                df_ipfm63_3 = reader.read_file_group('ipfm63_3', vision)
+                
+                if df_ipfm63_1 is not None or df_ipfm63_3 is not None:
+                    # Pole 1 processing
+                    if df_ipfm63_1 is not None:
+                        df_spec_63_p1 = df_ipfm63_1.select(
+                            col("nopol"),
+                            col("noint"),
+                            col("cdprod"),
+                            lit("1").alias("cdpole"),  # Pole 1 = Agents
+                            col("actprin").alias("cdactconst"),
+                            col("actsec1").alias("cdactconst2"),
+                            col("cdnaf"),
+                            col("mtca1").alias("mtca_ris")
+                        )
+                        df_tabspec = df_spec_63_p1 if df_tabspec is None else df_tabspec.unionByName(df_spec_63_p1)
+                    
+                    # Pole 3 processing
+                    if df_ipfm63_3 is not None:
+                        df_spec_63_p3 = df_ipfm63_3.select(
+                            col("nopol"),
+                            col("noint"),
+                            col("cdprod"),
+                            lit("3").alias("cdpole"),  # Pole 3 = Brokers
+                            col("actprin").alias("cdactconst"),
+                            col("actsec1").alias("cdactconst2"),
+                            col("cdnaf"),
+                            col("mtca1").alias("mtca_ris")
+                        )
+                        df_tabspec = df_spec_63_p3 if df_tabspec is None else df_tabspec.unionByName(df_spec_63_p3)
+                    
+                    self.logger.info("IPFM63 special products loaded (Pole 1 + Pole 3)")
             except Exception as e:
                 self.logger.debug(f"IPFM63 not available: {e}")
             
             # Try to read IPFM99 (already partially used in AZ processor)
+            # SAS L486-494: Union IPFSPE1.IPFM99 (Pole 1) + IPFSPE3.IPFM99 (Pole 3)
             try:
-                df_ipfm99 = reader.read_file_group('ipfspe_ipfm99', vision)
-                if df_ipfm99 is not None:
-                    df_spec_99 = df_ipfm99.select(
-                        col("nopol"),
-                        col("noint"),
-                        col("cdprod"),
-                        lit("1").alias("cdpole"),
-                        col("cdacpr1").substr(1, 4).alias("cdactconst"),  # First 4 chars (SAS L491)
-                        col("cdacpr2").alias("cdactconst2"),
-                        lit("").cast(StringType()).alias("cdnaf"),
-                        col("mtca").alias("mtca_ris")
-                    )
-                    df_tabspec = df_spec_99 if df_tabspec is None else df_tabspec.unionByName(df_spec_99)
-                    self.logger.info("IPFM99 special products loaded")
+                # Read Pole 1 (Agents)
+                df_ipfm99_1 = reader.read_file_group('ipfm99_1', vision)
+                # Read Pole 3 (Brokers)
+                df_ipfm99_3 = reader.read_file_group('ipfm99_3', vision)
+                
+                if df_ipfm99_1 is not None or df_ipfm99_3 is not None:
+                    # Pole 1 processing
+                    if df_ipfm99_1 is not None:
+                        df_spec_99_p1 = df_ipfm99_1.select(
+                            col("nopol"),
+                            col("noint"),
+                            col("cdprod"),
+                            lit("1").alias("cdpole"),  # Pole 1 = Agents
+                            col("cdacpr1").substr(1, 4).alias("cdactconst"),  # First 4 chars (SAS L491)
+                            col("cdacpr2").alias("cdactconst2"),
+                            lit("").cast(StringType()).alias("cdnaf"),
+                            col("mtca").alias("mtca_ris")
+                        )
+                        df_tabspec = df_spec_99_p1 if df_tabspec is None else df_tabspec.unionByName(df_spec_99_p1)
+                    
+                    # Pole 3 processing
+                    if df_ipfm99_3 is not None:
+                        df_spec_99_p3 = df_ipfm99_3.select(
+                            col("nopol"),
+                            col("noint"),
+                            col("cdprod"),
+                            lit("3").alias("cdpole"),  # Pole 3 = Brokers
+                            col("cdacpr1").substr(1, 4).alias("cdactconst"),  # First 4 chars (SAS L493)
+                            col("cdacpr2").alias("cdactconst2"),
+                            lit("").cast(StringType()).alias("cdnaf"),
+                            col("mtca").alias("mtca_ris")
+                        )
+                        df_tabspec = df_spec_99_p3 if df_tabspec is None else df_tabspec.unionByName(df_spec_99_p3)
+                    
+                    self.logger.info("IPFM99 special products loaded (Pole 1 + Pole 3)")
             except Exception as e:
                 self.logger.debug(f"IPFM99 not available: {e}")
             
@@ -900,8 +965,8 @@ class ConsolidationProcessor(BaseProcessor):
         
         # Step 2: Client NAF enrichment (extends existing _enrich_client_data)
         try:
-            df_client1 = reader.read_file_group('client1', vision='ref')
-            df_client3 = reader.read_file_group('client3', vision='ref')
+            df_client1 = reader.read_file_group('cliact14', vision='ref')
+            df_client3 = reader.read_file_group('cliact3', vision='ref')
             
             # Extract CDNAF from CLIENT1
             cdnaf_c1 = None

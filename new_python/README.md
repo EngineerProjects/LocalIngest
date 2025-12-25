@@ -104,6 +104,28 @@ new_python/
 
 ---
 
+## Validation (SAS vs Python)
+
+Validate that Python outputs match SAS outputs exactly:
+
+```bash
+# Step 1: Aggregate Python outputs
+python scripts/aggregate_python_outputs.py \
+  --vision 202509 \
+  --gold-path gs://your-bucket/gold \
+  --output-dir ./python_aggregations
+
+# Step 2: Compare with SAS aggregations
+python scripts/validate_outputs.py \
+  --vision 202509 \
+  --sas-dir ./sas_outputs \
+  --python-dir ./python_aggregations
+```
+
+**See**: [scripts/README_VALIDATION.md](scripts/README_VALIDATION.md) for detailed instructions.
+
+---
+
 ## Prerequisites
 
 - Python 3.8+

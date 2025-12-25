@@ -48,3 +48,25 @@
 | **cproduit.csv** | 02/12/2025 | 10:24:53 | 22.07 KiB |
 | **import_catmin.csv** | 02/12/2025 | 10:24:53 | 45.83 KiB |
 | **lob.csv** | 02/12/2025 | 10:24:53 | 23.3 KiB |
+
+---
+
+### ✅ **Fichiers ajoutés le 2025-12-24**
+
+| Fichier | Date | Statut |
+|--------|------|--------|
+| **segmentprdt_202509.csv** | 24/12/2025 | ✅ Disponible |
+| **ref_mig_azec_vs_ims.csv** | 24/12/2025 | ✅ Disponible |
+| **basecli_inv.csv** | 24/12/2025 | ✅ Disponible |
+| **histo_note_risque.csv** | 24/12/2025 | ✅ Disponible |
+| **do_dest.csv** | 24/12/2025 | ✅ Disponible *(nom utilisé, pas do_dest_202110.csv)* |
+| **table_segmentation_azec_mml.csv** | 24/12/2025 | ✅ Disponible |
+
+---
+
+### 📝 **Données générées pour tests locaux**
+
+| Fichier | Emplacement | Statut | Notes |
+|--------|-------------|--------|-------|
+| **indices.csv** | `bronze/ref/` | ✅ Disponible | Données générées |
+| **rf_fr1_prm_dtl_midcorp_m_*.csv** | `bronze/2025/09/` | ✅ Disponible | Données générées |

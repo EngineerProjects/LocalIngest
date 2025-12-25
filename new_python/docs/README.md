@@ -1,67 +1,85 @@
-# Documentation Technique - Construction Data Pipeline
+# 📚 Documentation - Construction Data Pipeline
 
-Ce dossier contient la documentation technique complète du pipeline de données Construction.
-
-## 📚 Documents Disponibles
-
-### 🔢 Calculs Métier
-- **[calculs_assurance_construction.md](calculs_assurance_construction.md)** - Guide technique complet des formules et calculs d'assurance
-  - Mouvements de portefeuille (AFN, RES, PTF)
-  - Expositions et suspensions
-  - Primes et cotisations
-  - Capitaux assurés (SMP, LCI, PE, RD)
-  - Coassurance et quote-part
-  - Emissions et exercice comptable
-
-### 🔄 Workflows
-- **[workflows/PTF_MVT_Workflow.md](workflows/PTF_MVT_Workflow.md)** - Pipeline mouvements de portefeuille
-- **[workflows/Capitaux_Workflow.md](workflows/Capitaux_Workflow.md)** - Pipeline extraction capitaux
-- **[workflows/Emissions_Workflow.md](workflows/Emissions_Workflow.md)** - Pipeline primes émises
-
-### ⚙️ Configuration
-- **[configs/Configuration_Guide.md](configs/Configuration_Guide.md)** - Guide de configuration
-- **[configs/Data_Catalog.md](configs/Data_Catalog.md)** - Catalogue des tables input/output
-
-### 📊 Données
-- **[infos/available_datas.md](infos/available_datas.md)** - Datasets disponibles dans le datalake
+This folder contains **business-focused documentation** that explains what the pipeline does, without technical code details.
 
 ---
 
-## 🎯 Pour Démarrer
+## 🎯 Quick Navigation
 
-**Nouveau dans le projet ?** Commencez par lire dans cet ordre :
+### For Business Users
+Start here if you want to understand **what** the pipeline does:
 
-1. **[Calculs métier](calculs_assurance_construction.md)** - Comprendre les formules et la logique métier
-2. **[Workflows](workflows/)** - Voir comment les pipelines fonctionnent
-3. **[Data Catalog](configs/Data_Catalog.md)** - Connaître les tables disponibles
-4. **[Configuration Guide](configs/Configuration_Guide.md)** - Configurer le pipeline
+1. **[Business Calculations](calculs_assurance_construction.md)** ⭐ Most important
+   - Explains all insurance calculations in plain language
+   - Portfolio movements (new policies, terminations, renewals)
+   - Capital amounts and coverage limits
+   - Premium calculations
+
+2. **[Workflows](workflows/)** - How data flows through each pipeline
+   - Portfolio Movements workflow
+   - Capital Extraction workflow  
+   - Premium Emissions workflow
+
+### For Data / Analytics Users  
+Check these for understanding inputs and outputs:
+
+3. **[Data Catalog](configs/Data_Catalog.md)** - All input/output tables
+   - Monthly files
+   - Reference data
+   - Output datasets
+
+4. **[Available Data](infos/available_datas.md)** - What's currently in the datalake
 
 ---
 
-## 📖 Glossaire Rapide
+## 📖 Documents Available
 
-| Terme | Définition |
-|-------|------------|
-| **AFN** | Affaire Nouvelle - Nouveau contrat souscrit |
-| **RES** | Résiliation - Contrat résilié |
-| **PTF** | Portefeuille - Contrats en vigueur |
-| **SMP** | Sinistre Maximum Possible - Capital max payable |
-| **LCI** | Limite Contractuelle d'Indemnité - Plafond contractuel |
-| **PE** | Perte d'Exploitation - Capital perte de CA |
-| **RD** | Risque Direct - Capital dommages matériels |
-| **PARTCIE** | Part Compagnie - Quote-part conservée |
-
-Pour le glossaire complet, voir [calculs_assurance_construction.md](calculs_assurance_construction.md).
+| Document | Who Should Read | What You'll Learn |
+|----------|----------------|-------------------|
+| [**Business Calculations**](calculs_assurance_construction.md) | Everyone | Insurance formulas and business logic |
+| [PTF_MVT Workflow](workflows/PTF_MVT_Workflow.md) | Analysts, Business | Portfolio movements process |
+| [Capitaux Workflow](workflows/Capitaux_Workflow.md) | Analysts, Business | Capital extraction process |
+| [Emissions Workflow](workflows/Emissions_Workflow.md) | Analysts, Business | Premium emissions process |
+| [Data Catalog](configs/Data_Catalog.md) | Data teams | Input/output table reference |
+| [Available Data](infos/available_datas.md) | Data teams | Current datalake inventory |
 
 ---
 
-## 🚀 Utilisation
+## 🔑 Key Insurance Concepts
 
-**Lire la documentation en local** :
-```bash
-# Depuis la racine du projet
-cd docs
-cat calculs_assurance_construction.md
-```
+| Term | Meaning | Example |
+|------|---------|---------|
+| **AFN** (Affaire Nouvelle) | New policy | Customer signs a new insurance contract |
+| **RES** (Résiliation) | Termination | Customer cancels their contract |
+| **PTF** (Portefeuille) | Active Portfolio | All policies currently in force |
+| **SMP** | Maximum claim amount | Biggest claim we might have to pay |
+| **LCI** | Contract limit | Maximum amount stated in contract |
+| **PE** (Perte d'Exploitation) | Business interruption | Coverage for lost revenue if business stops |
+| **RD** (Risque Direct) | Direct damage | Coverage for physical damage to property |
+| **Coassurance** | Risk sharing | Multiple insurers share the same policy |
 
-**Ou utiliser un viewer Markdown** (VSCode, GitHub, etc.)
+For complete definitions, see [Business Calculations](calculs_assurance_construction.md).
+
+---
+
+## 🚀 How to Use This Documentation
+
+1. **New to the project?**
+   - Start with [Business Calculations](calculs_assurance_construction.md)
+   - Then read the workflow for your area of interest
+
+2. **Need to find a specific table?**
+   - Check [Data Catalog](configs/Data_Catalog.md)
+   - Or [Available Data](infos/available_datas.md)
+
+3. **Want to understand a calculation?**
+   - Go to [Business Calculations](calculs_assurance_construction.md)
+   - Search for the metric (e.g., "AFN", "SMP", "Exposure")
+
+---
+
+## 💡 Important Notes
+
+- All documentation is **business-focused** - no programming code
+- Formulas are explained in **plain language** with examples
+- Technical implementation details are in the code comments, not here

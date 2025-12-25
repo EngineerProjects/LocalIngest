@@ -325,7 +325,7 @@ def load_index_table(
 
         # Try to load index table from bronze/ref/
         # The exact file name should be configured in reading_config.json
-        index_df = reader.read_file_group("construction_indices", vision=None)
+        index_df = reader.read_file_group("indices", vision=None)
 
         if index_df is not None:  # OPTIMIZED: Removed count() for null check
             if logger:
