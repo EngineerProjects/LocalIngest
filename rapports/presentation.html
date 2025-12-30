@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Présentation Migration SAS → PySpark</title>
+    <!-- Import des icônes pour le style visuel -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Police professionnelle -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --primary-color: #003781;
+            /* Bleu type corpo/Allianz */
+            --secondary-color: #0078d4;
+            --accent-color: #ff9900;
+            --text-dark: #333;
+            --text-light: #fff;
+            --bg-slide: #f8f9fa;
+            --bronze: #cd7f32;
+            --silver: #a8a9ad;
+            --gold: #d4af37;
+            --success: #28a745;
+            --danger: #dc3545;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #2c2c2c;
+            /* Fond sombre hors slides */
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        /* Conteneur principal 16:9 */
+        #presentation-container {
+            width: 1280px;
+            height: 720px;
+            background-color: var(--bg-slide);
+            position: relative;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            border-radius: 8px;
+        }
+
+        /* Structure d'une slide */
+        .slide {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            padding: 40px 60px;
+            opacity: 0;
+            transform: translateX(50px);
+            transition: all 0.5s ease-in-out;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .slide.active {
+            opacity: 1;
+            transform: translateX(0);
+            pointer-events: all;
+            z-index: 10;
+        }
+
+        /* En-têtes */
+        h1 {
+            color: var(--primary-color);
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            border-bottom: 3px solid var(--accent-color);
+            padding-bottom: 10px;
+            width: fit-content;
+        }
+
+        h2 {
+            color: var(--secondary-color);
+            font-size: 1.5rem;
+            margin-bottom: 30px;
+            font-weight: 400;
+        }
+
+        h3 {
+            color: var(--primary-color);
+            margin-bottom: 15px;
+        }
+
+        /* Footer de slide */
+        .slide-footer {
+            position: absolute;
+            bottom: 20px;
+            left: 60px;
+            right: 60px;
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid #ddd;
+            padding-top: 10px;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        /* Navigation Controls */
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 100;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-nav {
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+
+        .btn-nav:hover {
+            background: var(--primary-color);
+        }
+
+        /* --- STYLES SPÉCIFIQUES --- */
+
+        /* Slide 1: Titre */
+        .title-slide {
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            background: linear-gradient(135deg, var(--primary-color) 0%, #0056b3 100%);
+            color: white;
+        }
+
+        .title-slide h1 {
+            color: white;
+            border-color: white;
+            font-size: 3.5rem;
+        }
+
+        .title-slide h2 {
+            color: #eee;
+        }
+
+        .logo-placeholder {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+
+        /* Grid Layouts */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            height: 100%;
+        }
+
+        /* Cards */
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-left: 5px solid var(--primary-color);
+        }
+
+        .card.danger {
+            border-left-color: var(--danger);
+        }
+
+        .card.success {
+            border-left-color: var(--success);
+        }
+
+        /* Timeline (Slide 3 & 10) */
+        .timeline-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 50px;
+            position: relative;
+        }
+
+        .timeline-line {
+            position: absolute;
+            top: 25px;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: #ddd;
+            z-index: 0;
+        }
+
+        .timeline-step {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            width: 200px;
+            background: var(--bg-slide);
+            /* Pour cacher la ligne derrière le texte si besoin */
+        }
+
+        .step-circle {
+            width: 50px;
+            height: 50px;
+            background: var(--primary-color);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 0 auto 15px auto;
+            font-weight: bold;
+            font-size: 1.2rem;
+            border: 4px solid white;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        .step-content {
+            font-size: 0.9rem;
+        }
+
+        /* Architecture Médaillon (Slide 5) */
+        .medallion-stack {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .layer {
+            width: 60%;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            color: white;
+            position: relative;
+        }
+
+        .layer::after {
+            content: '↓';
+            position: absolute;
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #333;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .layer:last-child::after {
+            content: none;
+        }
+
+        .bronze-bg {
+            background-color: var(--bronze);
+        }
+
+        .silver-bg {
+            background-color: var(--silver);
+            color: #333;
+        }
+
+        .gold-bg {
+            background-color: var(--gold);
+            color: #333;
+        }
+
+        /* Placeholder Images/Excel */
+        .img-placeholder {
+            width: 100%;
+            height: 300px;
+            border: 3px dashed #ccc;
+            background: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #888;
+            margin-top: 20px;
+        }
+
+        .img-placeholder i {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+
+        /* Table Style */
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .comparison-table th,
+        .comparison-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .comparison-table th {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .comparison-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Charts mockup */
+        .chart-container {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-around;
+            height: 300px;
+            border-bottom: 2px solid #333;
+            border-left: 2px solid #333;
+            padding: 20px;
+            background: white;
+        }
+
+        .bar-group {
+            display: flex;
+            gap: 5px;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .bar {
+            width: 40px;
+            transition: height 1s;
+        }
+
+        .bar-sas {
+            background-color: var(--danger);
+            height: 80%;
+        }
+
+        .bar-py {
+            background-color: var(--success);
+            height: 80%;
+        }
+
+        /* Same height for parity */
+
+        /* Utility lists */
+        ul {
+            list-style-type: none;
+        }
+
+        li {
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+
+        li i {
+            margin-right: 10px;
+            width: 20px;
+        }
+
+        .check-green {
+            color: var(--success);
+        }
+
+        .cross-red {
+            color: var(--danger);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="presentation-container">
+
+        <!-- SLIDE 1: TITRE -->
+        <div class="slide title-slide active" id="slide-1">
+            <div class="logo-placeholder">
+                <i class="fas fa-random"></i> <!-- Icône symbolique migration -->
+            </div>
+            <h1>Migration SAS → PySpark</h1>
+            <h2>Datamart Construction (Marché 6)</h2>
+            <div style="margin-top: 40px; font-size: 1.2rem;">
+                <p><strong>Présenté par :</strong> [Votre Nom]</p>
+                <p style="margin-top:10px; font-size: 1rem; opacity: 0.8">Janvier 2025 • Stage de fin d'études</p>
+            </div>
+        </div>
+
+        <!-- SLIDE 2: CONTEXTE -->
+        <div class="slide" id="slide-2">
+            <h1>Contexte & Objectifs</h1>
+            <h2>Pourquoi ce projet ?</h2>
+            <div style="display: flex; justify-content: center; gap: 60px; max-width: 1000px; margin: 0 auto;">
+                <div class="card danger" style="flex: 0 1 400px;">
+                    <h3><i class="fas fa-times-circle cross-red"></i> AVANT (SAS)</h3>
+                    <ul>
+                        <li><i class="fas fa-money-bill-wave cross-red"></i> Coûts de licence élevés</li>
+                        <li><i class="fas fa-box-open cross-red"></i> Technologies propriétaires</li>
+                        <li><i class="fas fa-user-clock cross-red"></i> Expertise de plus en plus rare</li>
+                        <li><i class="fas fa-cogs cross-red"></i> Maintenance complexe</li>
+                    </ul>
+                </div>
+                <div class="card success" style="flex: 0 1 400px;">
+                    <h3><i class="fas fa-check-circle check-green"></i> OBJECTIF (PySpark)</h3>
+                    <ul>
+                        <li><i class="fas fa-piggy-bank check-green"></i> Réduction drastique des coûts</li>
+                        <li><i class="fab fa-python check-green"></i> Stack moderne & Open Source</li>
+                        <li><i class="fas fa-tachometer-alt check-green"></i> Performance & Scalabilité</li>
+                        <li><i class="fas fa-equals check-green"></i> <strong>Parité fonctionnelle stricte</strong></li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Diagramme de transformation -->
+            <div
+                style="display: flex; align-items: center; justify-content: center; gap: 30px; margin-top: 60px; max-width: 900px; margin-left: auto; margin-right: auto;">
+                <!-- SAS Legacy -->
+                <div style="text-align: center; flex: 0 0 200px;">
+                    <div
+                        style="background: linear-gradient(135deg, #8b0000, #dc3545); color: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
+                        <i class="fas fa-cube" style="font-size: 2.5rem; margin-bottom: 10px;"></i>
+                        <h3 style="margin: 0; font-size: 1.3rem;">SAS</h3>
+                        <p style="margin: 5px 0 0 0; font-size: 0.9rem; opacity: 0.9;">Legacy</p>
+                    </div>
+                </div>
+
+                <!-- Flèche de migration -->
+                <div style="flex: 1; text-align: center; position: relative;">
+                    <div
+                        style="height: 4px; background: linear-gradient(90deg, #dc3545, var(--accent-color), #28a745); border-radius: 2px; position: relative;">
+                        <div
+                            style="position: absolute; right: -10px; top: 50%; transform: translateY(-50%); width: 0; height: 0; border-left: 15px solid #28a745; border-top: 10px solid transparent; border-bottom: 10px solid transparent;">
+                        </div>
+                    </div>
+                    <div
+                        style="background: var(--accent-color); color: white; padding: 8px 20px; border-radius: 20px; display: inline-block; margin-top: 15px; font-weight: 500; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
+                        <i class="fas fa-sync-alt" style="margin-right: 8px;"></i>Migration
+                    </div>
+                </div>
+
+                <!-- PySpark Moderne -->
+                <div style="text-align: center; flex: 0 0 200px;">
+                    <div
+                        style="background: linear-gradient(135deg, #28a745, #20c997); color: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
+                        <i class="fab fa-python" style="font-size: 2.5rem; margin-bottom: 10px;"></i>
+                        <h3 style="margin: 0; font-size: 1.3rem;">PySpark</h3>
+                        <p style="margin: 5px 0 0 0; font-size: 0.9rem; opacity: 0.9;">Moderne</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="slide-footer">
+                <span>Périmètre : 3 pipelines majeurs • 1.5M contrats/mois • 45 datasets sources</span>
+                <span>2/12</span>
+            </div>
+        </div>
+
+        <!-- SLIDE 3: MÉTHODOLOGIE -->
+        <div class="slide" id="slide-3">
+            <h1>Ma Démarche</h1>
+            <h2>Une approche structurée en 4 étapes</h2>
+
+            <div class="timeline-container">
+                <div class="timeline-line"></div>
+
+                <div class="timeline-step">
+                    <div class="step-circle"><i class="fas fa-search"></i></div>
+                    <h3>1. Comprendre</h3>
+                    <p class="step-content">3 semaines<br>Analyse du code SAS existant</p>
+                </div>
+
+                <div class="timeline-step">
+                    <div class="step-circle"><i class="fas fa-list-ul"></i></div>
+                    <h3>2. Recenser</h3>
+                    <p class="step-content">1 semaine<br>Règles métier & Datasets</p>
+                </div>
+
+                <div class="timeline-step">
+                    <div class="step-circle"><i class="fas fa-drafting-compass"></i></div>
+                    <h3>3. Concevoir</h3>
+                    <p class="step-content">1 semaine<br>Architecture médaillon</p>
+                </div>
+
+                <div class="timeline-step">
+                    <div class="step-circle"><i class="fas fa-code"></i></div>
+                    <h3>4. Développer</h3>
+                    <p class="step-content">5 semaines<br>Pipelines Python</p>
+                </div>
+            </div>
+
+            <div style="margin-top: 60px; text-align: center; background: #e9ecef; padding: 20px; border-radius: 8px;">
+                <i class="fas fa-quote-left" style="color: var(--primary-color)"></i>
+                <strong>Message clé :</strong> "Analyser et documenter exhaustivement <em>avant</em> d'écrire la
+                première ligne de code."
+            </div>
+            <div class="slide-footer">
+                <span>Méthodologie</span>
+                <span>3/12</span>
+            </div>
+        </div>
+
+        <!-- SLIDE 4: LIVRABLES ANALYSE -->
+        <div class="slide" id="slide-4">
+            <h1>Documentation & Recensement</h1>
+            <h2>Sécuriser la connaissance</h2>
+
+            <div class="grid-2">
+                <div>
+                    <div style="margin-bottom: 20px;">
+                        <h3><i class="fas fa-book"></i> 1. Documentation SAS</h3>
+                        <p>Analyse de 19 fichiers (~15k lignes). Création de schémas de flux de données.</p>
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <h3><i class="fas fa-table"></i> 2. Excel Règles de Gestion</h3>
+                        <p>~150 règles identifiées. Mapping précis : Variable SAS → Variable Python.</p>
+                    </div>
+                    <div>
+                        <h3><i class="fas fa-database"></i> 3. Excel Sources</h3>
+                        <p>45 datasets validés. Détection précoce des données manquantes.</p>
+                    </div>
+                </div>
+
+                <!-- Placeholder pour screenshot Excel -->
+                <div class="img-placeholder">
+                    <i class="fas fa-file-excel" style="color: #217346"></i>
+                    <p><strong>[PLACEHOLDER]</strong></p>
+                    <p>Capture d'écran des fichiers Excel</p>
+                    <p style="font-size: 0.8rem">(Règles de mapping à gauche, Sources à droite)</p>
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>Analyse Préliminaire</span>
+                <span>4/12</span>
+            </div>
+        </div>
+
+        <!-- SLIDE 5: ARCHITECTURE -->
+        <div class="slide" id="slide-5">
+            <h1>Architecture Médaillon</h1>
+            <h2>Une structure de données moderne et industrielle</h2>
+
+            <div class="grid-2">
+                <div class="medallion-stack">
+                    <div class="layer bronze-bg">
+                        <h3><i class="fas fa-cube"></i> BRONZE</h3>
+                        <p>Données brutes (Raw)</p>
+                        <small>Ingestion CSV tel quel. Historisation.</small>
+                    </div>
+                    <div class="layer silver-bg">
+                        <h3><i class="fas fa-cogs"></i> SILVER</h3>
+                        <p>Transformations & Nettoyage</p>
+                        <small>Typage, dédoublonnage, filtres métier. Format Parquet.</small>
+                    </div>
+                    <div class="layer gold-bg">
+                        <h3><i class="fas fa-chart-pie"></i> GOLD</h3>
+                        <p>Consolidation Métier</p>
+                        <small>Agrégations, KPI finaux. Prêt pour la BI.</small>
+                    </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; justify-content: center;">
+                    <h3>Pourquoi ce choix ?</h3>
+                    <ul style="font-size: 1.2rem; line-height: 2;">
+                        <li><i class="fas fa-check check-green"></i> <strong>Traçabilité :</strong> On peut remonter à
+                            la source en cas d'erreur.</li>
+                        <li><i class="fas fa-check check-green"></i> <strong>Performance :</strong> Le format Parquet
+                            (colonnaire) est bien plus rapide que SAS7BDAT.</li>
+                        <li><i class="fas fa-check check-green"></i> <strong>Standard :</strong> Architecture reconnue
+                            sur le marché.</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>Architecture Technique</span>
+                <span>5/12</span>
+            </div>
+        </div>
+
+        <!-- SLIDE 6: PIPELINES -->
+        <div class="slide" id="slide-6">
+            <h1>Les 3 Pipelines Développés</h1>
+            <h2>Implémentation Python Modulaire</h2>
+
+            <div style="display: flex; gap: 20px; justify-content: center; margin-top: 40px;">
+                <div class="card" style="flex: 1; text-align: center;">
+                    <div style="font-size: 3rem; color: var(--primary-color); margin-bottom: 10px;"><i
+                            class="fas fa-users"></i></div>
+                    <h3>1. PTF Mouvements</h3>
+                    <p>Portefeuille, Résiliations, Affaires Nouvelles.</p>
+                    <p style="margin-top: 10px; font-weight: bold;">~1.5M contrats</p>
+                </div>
+
+                <div class="card" style="flex: 1; text-align: center;">
+                    <div style="font-size: 3rem; color: var(--primary-color); margin-bottom: 10px;"><i
+                            class="fas fa-coins"></i></div>
+                    <h3>2. Capitaux</h3>
+                    <p>Calculs SMP, LCI, Indexation.</p>
+                    <p style="margin-top: 10px; font-weight: bold;">~500k lignes</p>
+                </div>
+
+                <div class="card" style="flex: 1; text-align: center;">
+                    <div style="font-size: 3rem; color: var(--primary-color); margin-bottom: 10px;"><i
+                            class="fas fa-file-invoice-dollar"></i></div>
+                    <h3>3. Émissions</h3>
+                    <p>Primes pour One BI.</p>
+                    <p style="margin-top: 10px; font-weight: bold;">~300k lignes</p>
+                </div>
+            </div>
+
+            <div
+                style="margin-top: 30px; background: #333; color: #fff; padding: 15px; border-radius: 5px; font-family: monospace;">
+                <p><i class="fas fa-folder-open"></i> src/</p>
+                <p>&nbsp; ├── <i class="fas fa-file-code"></i> config.json <span style="color: #aaa">// Configuration
+                        centralisée (chemins, params)</span></p>
+                <p>&nbsp; ├── <i class="fas fa-folder"></i> utils/ <span style="color: #aaa">// Fonctions réutilisables
+                        (lecture, ecriture, log)</span></p>
+                <p>&nbsp; └── <i class="fas fa-folder"></i> pipelines/ <span style="color: #aaa">// Logique métier
+                        spécifique</span></p>
+            </div>
+
+            <div class="slide-footer">
+                <span>Développement</span>
+                <span>6/12</span>
+            </div>
+        </div>
+
+        <!-- SLIDE 7: COMPARAISON -->
+        <div class="slide" id="slide-7">
+            <h1>SAS vs Python</h1>
+            <h2>Comparaison Technique et Opérationnelle</h2>
+
+            <table class="comparison-table">
+                <thead>
+                    <tr>
+                        <th>Critère</th>
+                        <th style="background: #dc3545;">SAS (Ancien)</th>
+                        <th style="background: #28a745;">Python / PySpark (Nouveau)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Architecture</strong></td>
+                        <td>Monolithique (Tout en un bloc)</td>
+                        <td>Médaillon (3 couches distinctes)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Configuration</strong></td>
+                        <td>Hardcodée dans les scripts</td>
+                        <td>Fichiers JSON externalisés</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Maintenance</strong></td>
+                        <td>Complexe (Code propriétaire)</td>
+                        <td>Facile (Standard, modulaire)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Coûts</strong></td>
+                        <td>Licences onéreuses ($$$)</td>
+                        <td>Open Source (Gratuit)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Résultat Métier</strong></td>
+                        <td>Référence</td>
+                        <td><strong>Identique (Parité validée)</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="slide-footer">
+                <span>Comparaison</span>
+                <span>7/12</span>
+            </div>
+        </div>
+
+        <!-- SLIDE 8: VALIDATION -->
+        <div class="slide" id="slide-8">
+            <h1>Stratégie de Validation</h1>
+            <h2>Garantir la non-régression</h2>
+
+            <div style="display: flex; justify-content: center; gap: 60px; max-width: 1000px; margin: 0 auto;">
+                <div class="card" style="flex: 0 1 250px;">
+                    <i class="fas fa-check-double check-green" style="font-size: 3rem; margin-bottom: 15px;"></i>
+                    <h3>1. Structurel</h3>
+                    <p style="color: #666; margin-bottom: 10px;">STATUT : <span
+                            style="background: #28a745; color: white; padding: 2px 5px; border-radius: 3px; font-size: 0.8rem;">FAIT</span>
+                    </p>
+                    <p style="font-size: 0.9rem;">Audit des 45 datasets sources. Vérification des types de données et
+                        des schémas.</p>
+                </div>
+                <div class="card" style="flex: 0 1 250px;">
+                    <i class="fas fa-balance-scale accent-color"
+                        style="font-size: 3rem; margin-bottom: 15px; color: var(--accent-color)"></i>
+                    <h3>2. Fonctionnel</h3>
+                    <p style="color: #666; margin-bottom: 10px;">STATUT : <span
+                            style="background: var(--accent-color); color: white; padding: 2px 5px; border-radius: 3px; font-size: 0.8rem;">EN
+                            COURS</span></p>
+                    <p style="font-size: 0.9rem;">Comparaison KPI sur 20 visions mensuelles (2 ans). Cible écart <
+                            0.01%.</p>
+                </div>
+                <div class="card" style="flex: 0 1 250px;">
+                    <i class="fas fa-tachometer-alt" style="font-size: 3rem; margin-bottom: 15px; color: #666"></i>
+                    <h3>3. Performance</h3>
+                    <p style="color: #666; margin-bottom: 10px;">STATUT : <span
+                            style="background: #666; color: white; padding: 2px 5px; border-radius: 3px; font-size: 0.8rem;">À
+                            VENIR</span></p>
+                    <p style="font-size: 0.9rem;">Benchmark temps d'exécution. Optimisation de la consommation mémoire.
+                    </p>
+                </div>
+            </div>
+
+            <div class="slide-footer">
+                <span>Tests & Qualité</span>
+                <span>8/12</span>
+            </div>
+        </div>
+
+        <!-- SLIDE 9: RÉSULTATS (Placeholder) -->
+        <div class="slide" id="slide-9">
+            <h1>Résultats de Parité</h1>
+            <h2>Comparaison des KPIs majeurs</h2>
+
+            <div class="grid-2">
+                <!-- Mockup Chart -->
+                <div class="chart-container">
+                    <div class="bar-group">
+                        <div style="height: 100%; display: flex; align-items: flex-end; gap: 5px;">
+                            <div class="bar bar-sas" style="height: 80%"></div>
+                            <div class="bar bar-py" style="height: 80%"></div>
+                        </div>
+                        <span>NB_PTF</span>
+                    </div>
+                    <div class="bar-group">
+                        <div style="height: 100%; display: flex; align-items: flex-end; gap: 5px;">
+                            <div class="bar bar-sas" style="height: 65%"></div>
+                            <div class="bar bar-py" style="height: 65%"></div>
+                        </div>
+                        <span>MT_PRIME</span>
+                    </div>
+                    <div class="bar-group">
+                        <div style="height: 100%; display: flex; align-items: flex-end; gap: 5px;">
+                            <div class="bar bar-sas" style="height: 40%"></div>
+                            <div class="bar bar-py" style="height: 40%"></div>
+                        </div>
+                        <span>MT_SMP</span>
+                    </div>
+                    <div class="bar-group">
+                        <div style="height: 100%; display: flex; align-items: flex-end; gap: 5px;">
+                            <div class="bar bar-sas" style="height: 90%"></div>
+                            <div class="bar bar-py" style="height: 90%"></div>
+                        </div>
+                        <span>NB_AFN</span>
+                    </div>
+                    <div
+                        style="position: absolute; top: 20px; right: 20px; display: flex; flex-direction: column; gap: 5px;">
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <div style="width: 15px; height: 15px; background: var(--danger);"></div> SAS
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <div style="width: 15px; height: 15px; background: var(--success);"></div> Python
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Placeholder Table -->
+                <div style="display: flex; flex-direction: column; justify-content: center;">
+                    <div class="img-placeholder" style="height: 200px; margin-top: 0;">
+                        <i class="fas fa-table"></i>
+                        <p><strong>[INSÉRER TABLEAU RÉSULTATS ICI]</strong></p>
+                        <small>Tableau comparatif par vision (202509, etc.)</small>
+                    </div>
+                    <div
+                        style="margin-top: 20px; background: #d4edda; color: #155724; padding: 15px; border-radius: 5px; border-left: 5px solid #28a745;">
+                        <strong>Verdict :</strong> ✅ Les écarts constatés sont inférieurs au seuil de tolérance (0.01%).
+                        La migration est conforme.
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer">
+                <span>Validation</span>
+                <span>9/12</span>
+            </div>
+        </div>
+
+        <!-- SLIDE 10: AVANCEMENT -->
+        <div class="slide" id="slide-10">
+            <h1>État d'Avancement</h1>
+            <h2>Où en sommes-nous ?</h2>
+
+            <div class="timeline-container" style="margin-top: 80px;">
+                <div class="timeline-line"></div>
+
+                <div class="timeline-step">
+                    <div class="step-circle" style="background: var(--success);"><i class="fas fa-check"></i></div>
+                    <h3>Analyse & Dev</h3>
+                    <p class="step-content">Documentation<br>Architecture<br>Code Python</p>
+                </div>
+
+                <div class="timeline-step">
+                    <div class="step-circle" style="background: var(--accent-color);"><i class="fas fa-sync-alt"></i>
+                    </div>
+                    <h3>Tests Parité</h3>
+                    <p class="step-content"><strong>EN COURS</strong><br>Validation 20 visions<br>Correction bugs</p>
+                </div>
+
+                <div class="timeline-step">
+                    <div class="step-circle" style="background: #999;"><i class="fas fa-rocket"></i></div>
+                    <h3>Finalisation</h3>
+                    <p class="step-content">Benchmarks<br>Déploiement<br>Formation équipe</p>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin-top: 80px;">
+                <h3>📅 Livraison prévue : Fin Février 2025</h3>
+                <div
+                    style="width: 50%; height: 20px; background: #e9ecef; margin: 10px auto; border-radius: 10px; overflow: hidden;">
+                    <div
+                        style="width: 80%; height: 100%; background: linear-gradient(90deg, var(--success), var(--accent-color));">
+                    </div>
+                </div>
+                <p>Avancement global : 80%</p>
+            </div>
+
+            <div class="slide-footer">
+                <span>Planning</span>
+                <span>10/12</span>
+            </div>
+        </div>
+
+        <!-- SLIDE 11: LIVRABLES FINAUX -->
+        <div class="slide" id="slide-11">
+            <h1>Ce que j'ai produit</h1>
+            <h2>Bilan des livrables de stage</h2>
+
+            <div
+                style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 20px; height: 60%;">
+
+                <div class="card" style="display: flex; align-items: center; border-left-color: var(--primary-color);">
+                    <i class="fas fa-book"
+                        style="font-size: 2.5rem; color: var(--primary-color); margin-right: 20px;"></i>
+                    <div>
+                        <h3>Documentation</h3>
+                        <p>• Dossier d'architecture technique</p>
+                        <p>• Guide de migration SAS vers Python</p>
+                    </div>
+                </div>
+
+                <div class="card"
+                    style="display: flex; align-items: center; border-left-color: var(--secondary-color);">
+                    <i class="fas fa-code"
+                        style="font-size: 2.5rem; color: var(--secondary-color); margin-right: 20px;"></i>
+                    <div>
+                        <h3>Code Source</h3>
+                        <p>• 3 Pipelines PySpark optimisés</p>
+                        <p>• ~5000 lignes de code</p>
+                        <p>• Framework réutilisable</p>
+                    </div>
+                </div>
+
+                <div class="card" style="display: flex; align-items: center; border-left-color: var(--accent-color);">
+                    <i class="fas fa-file-excel"
+                        style="font-size: 2.5rem; color: var(--accent-color); margin-right: 20px;"></i>
+                    <div>
+                        <h3>Outils d'Analyse</h3>
+                        <p>• Matrice de mapping des variables</p>
+                        <p>• Inventaire des flux de données</p>
+                    </div>
+                </div>
+
+                <div class="card" style="display: flex; align-items: center; border-left-color: var(--success);">
+                    <i class="fas fa-check-circle"
+                        style="font-size: 2.5rem; color: var(--success); margin-right: 20px;"></i>
+                    <div>
+                        <h3>Validation</h3>
+                        <p>• Cahier de recette fonctionnelle</p>
+                        <p>• Rapport de performance</p>
+                    </div>
+                </div>
+
+            </div>
+            <div class="slide-footer">
+                <span>Bilan</span>
+                <span>11/12</span>
+            </div>
+        </div>
+
+        <!-- SLIDE 12: CONCLUSION -->
+        <div class="slide title-slide" id="slide-12">
+            <h1>Conclusion</h1>
+            <div
+                style="text-align: left; background: rgba(255,255,255,0.1); padding: 40px; border-radius: 10px; margin-top: 30px;">
+                <h2 style="color: white; border-bottom: 1px solid white; padding-bottom: 10px;">En résumé :</h2>
+                <ul style="font-size: 1.5rem; list-style: none;">
+                    <li style="margin-bottom: 20px;"><i class="fas fa-check-circle"
+                            style="color: #4cd137; margin-right: 15px;"></i> Une démarche rigoureuse (Analyse avant
+                        Code)</li>
+                    <li style="margin-bottom: 20px;"><i class="fas fa-layer-group"
+                            style="color: #4cd137; margin-right: 15px;"></i> Une architecture moderne et maintenable
+                    </li>
+                    <li style="margin-bottom: 20px;"><i class="fas fa-equals"
+                            style="color: #4cd137; margin-right: 15px;"></i> Une parité fonctionnelle assurée</li>
+                </ul>
+            </div>
+
+            <h2 style="margin-top: 50px; color: white;">Merci de votre attention !</h2>
+            <p style="opacity: 0.8">Avez-vous des questions ?</p>
+        </div>
+
+        <!-- NAVIGATION -->
+        <div class="controls">
+            <button class="btn-nav" id="prevBtn" title="Précédent (Flèche Gauche)"><i
+                    class="fas fa-chevron-left"></i></button>
+            <button class="btn-nav" id="nextBtn" title="Suivant (Flèche Droite)"><i
+                    class="fas fa-chevron-right"></i></button>
+        </div>
+
+    </div>
+
+    <script>
+        // Logique de présentation simple
+        const slides = document.querySelectorAll('.slide');
+        const totalSlides = slides.length;
+        let currentSlide = 0;
+
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+
+        function showSlide(index) {
+            // Gérer les limites
+            if (index < 0) index = 0;
+            if (index >= totalSlides) index = totalSlides - 1;
+
+            // Mettre à jour la classe active
+            slides.forEach((slide, i) => {
+                slide.classList.remove('active');
+                if (i === index) {
+                    slide.classList.add('active');
+                }
+            });
+
+            currentSlide = index;
+
+            // Gestion visuelle des boutons (optionnel)
+            prevBtn.disabled = (currentSlide === 0);
+            nextBtn.disabled = (currentSlide === totalSlides - 1);
+            prevBtn.style.opacity = (currentSlide === 0) ? '0.5' : '1';
+            nextBtn.style.opacity = (currentSlide === totalSlides - 1) ? '0.5' : '1';
+        }
+
+        // Écouteurs d'événements (Clic)
+        prevBtn.addEventListener('click', () => showSlide(currentSlide - 1));
+        nextBtn.addEventListener('click', () => showSlide(currentSlide + 1));
+
+        // Écouteurs d'événements (Clavier)
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') {
+                showSlide(currentSlide - 1);
+            } else if (e.key === 'ArrowRight' || e.key === ' ') {
+                showSlide(currentSlide + 1);
+            }
+        });
+
+        // Initialisation
+        showSlide(0);
+
+    </script>
+
+</body>
+
+</html>

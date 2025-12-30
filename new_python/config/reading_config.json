@@ -7,12 +7,12 @@
         "rf_fr1_prm_dtl_midcorp_m": {
             "description": "One BI Premium Detail - Construction market emissions data",
             "file_patterns": [
-                "rf_fr1_prm_dtl_midcorp_m_*.csv"
+                "rf_fr1_prm_dtl_midcorp_m*.csv"
             ],
             "schema": "rf_fr1_prm_dtl_midcorp_m",
             "read_options": {
                 "format": "csv",
-                "sep": ",",
+                "sep": "|",
                 "header": true,
                 "encoding": "LATIN9",
                 "dateFormat": "yyyy-MM-dd"
@@ -532,7 +532,7 @@
             "schema": "ref_mig_azec_vs_ims",
             "read_options": {
                 "format": "csv",
-                "sep": ",",
+                "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
             },
@@ -540,16 +540,17 @@
             "location_type": "reference"
         },
         "indices": {
-            "description": "Construction cost index table - SAS $INDICE format for capital indexation",
+            "description": "Construction cost index table - SAS INDICES library source data",
             "file_patterns": [
-                "indices.csv"
+                "indice.csv"
             ],
             "schema": "indices",
             "read_options": {
                 "format": "csv",
-                "sep": ",",
+                "sep": "|",
                 "header": true,
-                "encoding": "LATIN9"
+                "encoding": "LATIN9",
+                "dateFormat": "dd/MM/yyyy"
             },
             "filters": [],
             "location_type": "reference"
@@ -668,7 +669,7 @@
             "schema": "do_dest",
             "read_options": {
                 "format": "csv",
-                "sep": ",",
+                "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
             },
@@ -684,7 +685,7 @@
             "schema": "table_segmentation_azec_mml",
             "read_options": {
                 "format": "csv",
-                "sep": ",",
+                "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
             },
@@ -699,7 +700,7 @@
             "schema": "typrd_2",
             "read_options": {
                 "format": "csv",
-                "sep": ",",
+                "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
             },

@@ -572,6 +572,8 @@ REF_MIG_AZEC_VS_IMS_SCHEMA = StructType([
 # =============================================================================
 # INDEXATION - Construction cost indices
 # SAS: indexation_v2.sas - $INDICE format table for capital adjustment
+# Note: SAS uses OPTIONS FMTSEARCH=(INDICES) + PUT($INDICE.) format lookup
+#       Python must replicate this lookup logic
 # =============================================================================
 INDICES_SCHEMA = StructType([
     StructField("annee", StringType(), True),  # Year

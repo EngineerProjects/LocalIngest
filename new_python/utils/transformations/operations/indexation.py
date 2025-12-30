@@ -5,6 +5,10 @@ Implements the indexation logic from indexation_v2.sas macro.
 Indexes capital amounts based on construction cost indices.
 
 Based on: indexation_v2.sas (109 lines)
+
+IMPORTANT: SAS has TWO distinct indexation modes:
+  - CASE 1 (DATE = .): Use existing PRPRVC coefficients (1st year indices)
+  - CASE 2 (DATE specified): Lookup indices from INDICES table via $INDICE format
 """
 
 from pyspark.sql import DataFrame # type: ignore
@@ -25,17 +29,26 @@ def index_capitals(
     index_prefix: str = "prprvc",
     reference_date: Optional[str] = None,
     index_table_df: Optional[DataFrame] = None,
+    use_index_table: bool = True,
     logger: Optional[Any] = None
 ) -> DataFrame:
     """
     Index capital amounts using construction cost indices.
 
-    Implements indexation_v2.sas macro logic (L32-108):
-    - Calculates anniversary date from dtechamm
-    - Retrieves origin index from DTEFSITT + nature code
-    - Retrieves target index from anniversary date + nature code
-    - Applies indexation formula: mtcapi_indexed = mtcapi * (indx_target / indx_origin)
-    - If target date < origin date: no indexation (ratio = 1)
+    Implements indexation_v2.sas macro with TWO DISTINCT MODES:
+    
+    CASE 1 (use_index_table=False):
+      SAS: %IF &DATE EQ . (L42-55)
+      - Uses existing PRPRVC coefficients as origin indices (1st year indices)
+      - No lookup in INDICES table
+      - Target index = 1.0 (no re-indexation)
+      - Formula: mtcapi_indexed = mtcapi / prprvc (de-indexation to base year)
+    
+    CASE 2 (use_index_table=True):
+      SAS: %ELSE (L56-78)
+      - Looks up origin index using CDPRVB + DTEFSITT in INDICES table
+      - Looks up target index using CDPRVB + reference_date in INDICES table
+      - Formula: mtcapi_indexed = mtcapi * (target_index / origin_index)
 
     Args:
         df: Input DataFrame
@@ -47,7 +60,8 @@ def index_capitals(
         index_prefix: Index column prefix from existing data (default 'prprvc')
         reference_date: Reference date for indexation (YYYY-MM-DD format)
                        If None, uses current date
-        index_table_df: Optional index reference table (structure: nature_code, index_date, index_value)
+        index_table_df: Optional index reference table (required for CASE 2)
+        use_index_table: If True, use CASE 2 (lookup in INDICES). If False, use CASE 1 (PRPRVC)
         logger: Optional logger instance
 
     Returns:
@@ -55,11 +69,16 @@ def index_capitals(
         and index tracking columns (indxorig1i, indxintg1i, ..., indxorig14i, indxintg14i)
 
     Example:
-        >>> df = index_capitals(df, 14, 'dtechamm', 'dtefsitt', 'mtcapi', 'cdprvb',
-        ...                     reference_date='2025-09-30', index_table_df=index_df)
+        >>> # CASE 1: Use existing PRPRVC coefficients
+        >>> df = index_capitals(df, use_index_table=False)
+        >>> 
+        >>> # CASE 2: Lookup indices from INDICES table
+        >>> df = index_capitals(df, reference_date='2025-09-30', 
+        ...                     index_table_df=indices_df, use_index_table=True)
 
     SAS Logic (indexation_v2.sas):
-        L42-78: Determine origin date and index
+        L42-55: CASE 1 - Use PRPRVC directly
+        L56-78: CASE 2 - Lookup in $INDICE format
         L80-86: Determine target date index
         L88-96: Apply indexation logic (no indexation if target < origin)
         L98-105: Calculate indexed capital amount
@@ -143,35 +162,73 @@ def index_capitals(
         )
 
         # =====================================================================
-        # RETRIEVE INDICES FROM INDEX TABLE OR EXISTING DATA
-        # SAS L54, L75-77, L84-86: Lookup indices from $INDICE format table
+        # RETRIEVE INDICES - TWO CASES BASED ON SAS LOGIC
         # =====================================================================
 
-        if index_table_df is not None and nature_col in df.columns:
-            # Join with index table to get origin and target indices
+        if not use_index_table or index_table_df is None:
+            # ═════════════════════════════════════════════════════════════════
+            # CASE 1: Use existing PRPRVC coefficients
+            # SAS L42-55: %IF &DATE EQ . %THEN %DO; INDXORIG = &NOMIND&IND.; ...
+            # ═════════════════════════════════════════════════════════════════
+            if index_col in df.columns:
+                # SAS L54: INDXORIG = PRPRVC{i} (already in data from IPF table)
+                # These are "coefficients d'évolution" = 1st year indices
+                df = df.withColumn(
+                    index_origin_col,
+                    coalesce(col(index_col), lit(1.0))
+                )
+                # SAS: No target index lookup in this case
+                # Target is implicitly 1.0 (indexed amount = original / prprvc)
+                df = df.withColumn(
+                    index_target_col,
+                    lit(1.0)
+                )
+
+                if logger:
+                    logger.debug(f"{capital_col}: CASE 1 - Using PRPRVC{i} directly (no INDICES lookup)")
+            else:
+                # No index data available - use ratio of 1.0 (no indexation)
+                df = df.withColumn(index_origin_col, lit(1.0))
+                df = df.withColumn(index_target_col, lit(1.0))
+
+                if logger:
+                    logger.debug(f"{capital_col}: No PRPRVC column found - no indexation")
+
+        elif nature_col in df.columns:
+            # ═════════════════════════════════════════════════════════════════
+            # CASE 2: Lookup indices from INDICES table
+            # SAS L56-78: %ELSE %DO; ... INDXORIG = PUT(VAL1, $INDICE.); ...
+            # ═════════════════════════════════════════════════════════════════
+            if logger:
+                logger.debug(f"{capital_col}: CASE 2 - Looking up indices from INDICES table")
+
             # SAS L75: VAL1 = &NOMNAT&IND. !! PUT(DTEFSITT, Z5.)
             # SAS L76: IF SUBSTR(VAL1,1,1)='0' THEN INDXORIG = PUT(VAL1,$INDICE.)
-
-            # Build lookup key for origin index: nature_code + DTEFSITT (MMDDYY format)
+            # 
+            # WARNING: Format currently incorrect - see plan_correction_indexation.md
+            # TODO: Correct date format after INDICES structure is clarified
+            
+            # Build lookup key for origin index: nature_code + DTEFSITT
             df = df.withColumn(
                 f"_temp_origin_key_{i}",
                 concat(
                     col(nature_col),
-                    date_format(col(contract_start_col), "MMddyy")
+                    date_format(col(contract_start_col), "MMddyy")  # TODO: Fix format
                 )
             )
 
-            # Build lookup key for target index: nature_code + target_date (MMDDYY format)
+            # Build lookup key for target index: nature_code + target_date
             # SAS L84: VAL2 = &NOMNAT&IND. !! PUT(DATE, Z5.)
             df = df.withColumn(
                 f"_temp_target_key_{i}",
                 concat(
                     col(nature_col),
-                    date_format(col(f"_temp_target_date_{i}"), "MMddyy")
+                    date_format(col(f"_temp_target_date_{i}"), "MMddyy")  # TODO: Fix format
                 )
             )
 
             # Join for origin index
+            # TODO: Update after INDICES structure clarification
             index_origin_alias = f"idx_orig_{i}"
             df = df.join(
                 index_table_df.select(
@@ -213,27 +270,13 @@ def index_capitals(
             # Clean up temporary key columns
             df = df.drop(f"_temp_origin_key_{i}", f"_temp_target_key_{i}")
 
-        elif index_col in df.columns:
-            # SAS L54: INDXORIG = &NOMIND&IND. (use existing evolution coefficient)
-            # Fallback: Use existing index column as origin (from PRPRVC)
-            df = df.withColumn(
-                index_origin_col,
-                coalesce(col(index_col), lit(1.0))
-            )
-            df = df.withColumn(
-                index_target_col,
-                lit(1.0)  # Default target index (no indexation)
-            )
-
-            if logger:
-                logger.debug(f"{capital_col}: Using existing {index_col} as origin index (index table not provided)")
         else:
-            # No index data available - use ratio of 1.0 (no indexation)
+            # Nature column not found - default to no indexation
             df = df.withColumn(index_origin_col, lit(1.0))
             df = df.withColumn(index_target_col, lit(1.0))
 
             if logger:
-                logger.debug(f"{capital_col}: No index data - using ratio 1.0 (no indexation)")
+                logger.warning(f"{capital_col}: Nature column {nature_col} not found - no indexation")
 
         # =====================================================================
         # APPLY INDEXATION LOGIC
