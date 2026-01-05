@@ -7,7 +7,7 @@
         "rf_fr1_prm_dtl_midcorp_m": {
             "description": "One BI Premium Detail - Construction market emissions data",
             "file_patterns": [
-                "rf_fr1_prm_dtl_midcorp_m*.csv"
+                "rf_fr1_prm_dtl_midcorp_m_*.csv"
             ],
             "schema": "rf_fr1_prm_dtl_midcorp_m",
             "read_options": {

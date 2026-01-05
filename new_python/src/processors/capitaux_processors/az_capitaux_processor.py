@@ -140,6 +140,10 @@ class AZCapitauxProcessor(BaseProcessor):
         self.logger.step(3, "Extracting capitals WITH indexation")
         
         # Apply indexation to mtcapi1-14
+        # STRATEGY: Use PRPRVC-based indexation (no indices table)
+        # - Uses existing PRPRVC coefficients from IPF data
+        # - No dependency on indices table or $INDICE format lookup
+        # - Corresponds to SAS indexation_v2 CASE 1 (when &DATE EQ .)
         from utils.transformations.operations.indexation import index_capitals
         df = index_capitals(
             df,
@@ -150,7 +154,8 @@ class AZCapitauxProcessor(BaseProcessor):
             nature_prefix='cdprvb',
             index_prefix='prprvc',
             reference_date=None,  # Use current date
-            index_table_df=None,  # Will use prprvc coefficients
+            use_index_table=False,  # EXPLICIT: Use PRPRVC mode, not indices table
+            index_table_df=None,  # No indices table needed
             logger=self.logger
         )
         
