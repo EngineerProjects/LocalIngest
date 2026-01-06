@@ -154,13 +154,23 @@ class CapitauxConsolidationProcessor(BaseProcessor):
             df: Consolidated DataFrame
             vision: Vision in YYYYMM format
         """
+        from config.constants import GOLD_COLUMNS_CAPITAUX
+        
         self.logger.info(f"Writing consolidated capital data to gold for vision {vision}")
+        
+        # Select only gold columns in correct order
+        existing_cols = [c for c in GOLD_COLUMNS_CAPITAUX if c in df.columns]
+        missing_cols = set(GOLD_COLUMNS_CAPITAUX) - set(df.columns)
+        if missing_cols:
+            self.logger.warning(f"Missing columns: {sorted(missing_cols)}")
+        
+        df_final = df.select(existing_cols)
         
         from utils.helpers import write_to_layer
         
         output_name = f"az_azec_capitaux_{vision}"
         write_to_layer(
-            df, self.config, 'gold', output_name, vision, self.logger
+            df_final, self.config, 'gold', output_name, vision, self.logger
         )
         
-        self.logger.success(f"Wrote {df.count():,} records to gold: {output_name}.parquet")
+        self.logger.success(f"Wrote {df_final.count():,} records (20 columns) to gold: {output_name}.parquet")

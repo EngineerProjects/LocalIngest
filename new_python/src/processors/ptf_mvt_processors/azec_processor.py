@@ -19,7 +19,7 @@ from pyspark.sql.types import (
 
 from src.processors.base_processor import BaseProcessor
 from utils.loaders import get_default_loader
-from config.constants import DIRCOM, EXCLUDED_AZEC_INTERMED, EXCLUDED_AZEC_POLICE
+from config.constants import DIRCOM
 from utils.helpers import build_layer_path, extract_year_month_int, compute_date_ranges
 from utils.transformations import (
     apply_column_config,
@@ -208,7 +208,7 @@ class AZECProcessor(BaseProcessor):
         """
         from utils.helpers import write_to_layer
         write_to_layer(
-            df, self.config, 'silver', 'azec_ptf', vision, self.logger
+            df, self.config, 'silver', f'azec_ptf_{vision}', vision, self.logger
         )
 
     def _handle_migration(self, df: DataFrame, vision: str, azec_config: dict) -> DataFrame:
@@ -422,6 +422,43 @@ class AZECProcessor(BaseProcessor):
         self.logger.info("✓ Capital data joined successfully")
         return df
 
+    def _apply_business_filters(self, df: DataFrame) -> DataFrame:
+        """
+        Apply business filters to AZEC data.
+        Filters are now loaded from azec_transformations.json for easier maintenance.
+        
+        Based on SAS: PTF_MVTS_AZEC_MACRO.sas L37-39, L81-85
+        
+        Args:
+            df: AZEC DataFrame
+        
+        Returns:
+            Filtered DataFrame
+        """
+        # Read exclusion lists from config (SAS L37)
+        business_filters = self.transformations.get('business_filters', {})
+        excluded_intermed = business_filters.get('excluded_intermed', {}).get('values', [])
+        excluded_police = business_filters.get('excluded_police', {}).get('values', [])
+        
+        self.logger.info(f"Excluding {len(excluded_intermed)} intermediaries, {len(excluded_police)} policies")
+        
+        # Apply filters (SAS L37-39)
+        df = df.filter(~col('intermed').isin(excluded_intermed))
+        df = df.filter(~col('police').isin(excluded_police))
+        
+        # Standard filters (SAS L81-85)
+        df = df.filter(
+            ~((col('duree') == '00') & ~col('produit').isin(['DO0', 'TRC', 'CTR', 'CNR']))
+        )
+        df = df.filter(col('datfin') != col('effetpol'))
+        df = df.filter(
+            (col('gestsit') != 'MIGRAZ') | 
+            ((col('gestsit') == 'MIGRAZ') & (col('etatpol') == 'R'))
+        )
+        
+        self.logger.info("✓ AZEC business filters applied")
+        return df
+    
     def _adjust_nbres(self, df: DataFrame) -> DataFrame:
         """
         Apply AZEC-specific NBRES and NBAFN adjustments (SAS L448-466).
@@ -478,45 +515,159 @@ class AZECProcessor(BaseProcessor):
 
     def _enrich_segmentation(self, df: DataFrame) -> DataFrame:
         """
-        Add SEGMENT, CMARCH, CSEG, CSSSEG columns to AZEC data.
+        Add SEGMENT, CMARCH, CSEG, CSSSEG from LOB reference table.
+        Also enriches Type_Produit from CONSTRCU_AZEC.
         
-        TABLE_SEGMENTATION_AZEC_MML is REQUIRED (SAS L259).
-        Processing will fail if table is missing (matching SAS behavior).
+        CRITICAL FIX: Uses LOB table (construction products) instead of
+        TABLE_SEGMENTATION_AZEC_MML to match SAS behavior.
+        
+        Based on: REF_segmentation_azec.sas L77-336
         
         Args:
             df: AZEC DataFrame with produit column
         
         Returns:
-            DataFrame with segmentation columns
+            DataFrame with segmentation columns (cmarch, cseg, cssseg, segment, type_produit_2)
         
         Raises:
-            RuntimeError: If required segmentation table is unavailable
+            RuntimeError: If LOB table is unavailable (required reference data)
         """
         reader = get_bronze_reader(self)
         
+        # ================================================================
+        # STEP 1: Read LOB table (SAS L132-135)
+        # ================================================================
+        # SAS uses HASH table from LOB dataset filtered for construction (cmarch='6')
+        # Python equivalent: read LOB and join on produit
+        
         try:
-            seg_ref = reader.read_file_group('table_segmentation_azec_mml', 'ref').cache()  # Cache for reuse
+            lob_ref = reader.read_file_group('lob', 'ref')
         except FileNotFoundError as e:
-            self.logger.error("CRITICAL: TABLE_SEGMENTATION_AZEC_MML is REQUIRED for AZEC processing")
-            self.logger.error(f"Cannot find segmentation table: {e}")
+            self.logger.error("CRITICAL: LOB table is REQUIRED for AZEC segmentation")
+            self.logger.error(f"Cannot find LOB: {e}")
             self.logger.error("This matches SAS behavior which would fail with 'File does not exist'")
-            raise RuntimeError("Missing required reference: TABLE_SEGMENTATION_AZEC_MML") from e
+            raise RuntimeError("Missing required LOB reference table for segmentation") from e
         
-        if seg_ref is None:
-            self.logger.error("CRITICAL: TABLE_SEGMENTATION_AZEC_MML returned None")
-            raise RuntimeError("TABLE_SEGMENTATION_AZEC_MML reference data is unavailable")
+        if lob_ref is None:
+            self.logger.error("CRITICAL: LOB returned None")
+            raise RuntimeError("LOB reference data is unavailable")
         
-        # Select needed columns
-        seg_ref = seg_ref.select(
-            col('produit').alias('produit_ref'),
-            'segment', 'cmarch', 'cseg', 'cssseg', 'lmarch', 'lseg', 'lssseg'
+        # Filter for construction market only (SAS L134: IF cmarch IN ('6'))
+        lob_ref = lob_ref.filter(col('cmarch') == '6')
+        
+        # Select segmentation columns from LOB (SAS L80-83)
+        # LOB provides: CDPROD, CPROD, cmarch, lmarch, cseg, lseg, cssseg, lssseg, segment
+        lob_select = lob_ref.select(
+            'produit',  # Join key
+            'cdprod',   # Product code
+            'cprod',    # Product code variant
+            'cmarch',   # Market code (='6' for construction)
+            'lmarch',   # Market label
+            'cseg',     # Segment code
+            'lseg',     # Segment label
+            'cssseg',   # Sub-segment code
+            'lssseg',   # Sub-segment label
+            'segment'   # Segment name
+        ).dropDuplicates(['produit'])
+        
+        # ================================================================
+        # STEP 2: Join LOB on PRODUIT (SAS L228-230, L288-289)
+        # ================================================================
+        # SAS: Uses HASH table lookup in DATA step
+        # Python: LEFT JOIN to preserve all AZEC records
+        
+        df = df.alias('a').join(
+            lob_select.alias('l'),
+            col('a.produit') == col('l.produit'),
+            how='left'
+        ).select(
+            'a.*',  # Keep all AZEC columns
+            'l.cdprod', 'l.cprod', 'l.cmarch', 'l.lmarch',
+            'l.cseg', 'l.lseg', 'l.cssseg', 'l.lssseg', 'l.segment'
         )
         
-        # Left join on PRODUIT
-        df = df.join(seg_ref, col('produit') == col('produit_ref'), 'left')
-        df = df.drop('produit_ref')
+        self.logger.info("✓ LOB segmentation joined (cmarch, cseg, cssseg, segment)")
         
-        self.logger.info("✓ SEGMENT enriched from TABLE_SEGMENTATION_AZEC_MML")
+        # ================================================================
+        # STEP 3: Enrich Type_Produit from CONSTRCU_AZEC (SAS L305-336)
+        # ================================================================
+        # CONSTRCU provides product-specific attributes for construction contracts
+        # Especially Type_Produit classification (Artisans, TRC, DO, Entreprises, etc.)
+        
+        try:
+            constrcu_ref = reader.read_file_group('constrcu_azec', vision='ref')
+            
+            if constrcu_ref is not None:
+                # Select Type_Produit and Segment columns (SAS L326-327)
+                constrcu_select = constrcu_ref.select(
+                    'police',
+                    'produit',  # Also join on produit for accuracy
+                    col('type_produit').alias('type_produit_constr'),
+                    col('segment').alias('segment_constr')
+                ).dropDuplicates(['police', 'produit'])
+                
+                # Left join on police AND produit (SAS L484-486)
+                df = df.alias('a').join(
+                    constrcu_select.alias('c'),
+                    (col('a.police') == col('c.police')) & 
+                    (col('a.produit') == col('c.produit')),
+                    how='left'
+                ).select(
+                    'a.*',
+                    col('c.type_produit_constr').alias('type_produit_2'),
+                    col('c.segment_constr').alias('segment_2')
+                )
+                
+                # ================================================================
+                # STEP 4: Apply Business Rules for Type_Produit (SAS L328-335)
+                # ================================================================
+                # These rules override CONSTRCU values based on product characteristics
+                
+                df = df.withColumn('type_produit_2',
+                    # Rule 1: TRC products (SAS L329)
+                    when(col('lssseg') == 'TOUS RISQUES CHANTIERS', lit('TRC'))
+                    # Rule 2: DO products (SAS L330)
+                    .when(col('lssseg') == 'DOMMAGES OUVRAGES', lit('DO'))
+                    # Rule 3: RCC = Entreprises (SAS L333)
+                    .when(col('produit') == 'RCC', lit('Entreprises'))
+                    # Rule 4: RCD with specific CSSSEG = 7 → Artisans (SAS L334-335)
+                    # (This is handled separately in a second pass)
+                    # Rule 5: If still null, default to 'Autres' (SAS L331)
+                    .when(col('type_produit_2').isNull(), lit('Autres'))
+                    # Otherwise keep CONSTRCU value
+                    .otherwise(col('type_produit_2'))
+                )
+                
+                # Special rule for RC DECENNALE Artisans (SAS L334-335)
+                # IF LSSSEG = "RC DECENNALE" AND Type_Produit IN ("Artisans") THEN cssseg = 7;
+                # Note: This modifies CSSSEG, not Type_Produit
+                df = df.withColumn('cssseg',
+                    when(
+                        (col('lssseg') == 'RC DECENNALE') & 
+                        (col('type_produit_2') == 'Artisans'),
+                        lit('7')
+                    ).otherwise(col('cssseg'))
+                )
+                
+                self.logger.info("✓ CONSTRCU_AZEC enriched (type_produit_2, segment_2)")
+                
+            else:
+                self.logger.warning("CONSTRCU_AZEC not available - type_produit_2 will be NULL")
+                from utils.processor_helpers import add_null_columns
+                df = add_null_columns(df, {
+                    'type_produit_2': StringType,
+                    'segment_2': StringType
+                })
+                
+        except Exception as e:
+            self.logger.warning(f"CONSTRCU_AZEC enrichment failed: {e}")
+            from utils.processor_helpers import add_null_columns
+            df = add_null_columns(df, {
+                'type_produit_2': StringType,
+                'segment_2': StringType
+            })
+        
+        self.logger.info("✓ AZEC segmentation complete (LOB + CONSTRCU_AZEC)")
         return df
 
     def _enrich_region(self, df: DataFrame) -> DataFrame:

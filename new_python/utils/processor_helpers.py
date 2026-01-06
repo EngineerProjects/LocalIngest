@@ -252,6 +252,7 @@ def enrich_segmentation(
     vision: str,
     market_filter: str = "6",
     join_key: str = "cdprod",
+    include_cdpole: bool = False,
     logger=None
 ) -> DataFrame:
     """
@@ -268,6 +269,7 @@ def enrich_segmentation(
         vision: Vision string
         market_filter: Market code filter (default: '6' for construction)
         join_key: Column to join on (default: 'cdprod')
+        include_cdpole: If True, join on BOTH cdprod AND cdpole (SAS emissions logic)
         logger: Logger instance
     
     Returns:
@@ -275,6 +277,8 @@ def enrich_segmentation(
         
     Example:
         df = enrich_segmentation(df, reader, vision, logger=self.logger)
+        # For emissions (requires cdpole join):
+        df = enrich_segmentation(df, reader, vision, include_cdpole=True, logger=self.logger)
     """
     if logger:
         logger.debug("Enriching with segmentation data (SEGMENTPRDT)")
@@ -294,18 +298,42 @@ def enrich_segmentation(
         if 'cprod' in df_seg.columns and join_key == 'cdprod':
             df_seg = df_seg.withColumnRenamed('cprod', 'cdprod')
         
-        # Select needed columns
-        df_seg = df_seg.select(join_key, 'cmarch', 'cseg', 'cssseg').dropDuplicates([join_key])
-        
-        # Join with broadcast
-        df_result = df.join(
-            broadcast(df_seg),
-            on=join_key,
-            how="left"
-        )
-        
-        if logger:
-            logger.info("Segmentation enrichment successful")
+        # Prepare join columns based on SAS logic
+        if include_cdpole:
+            # EMISSIONS logic (SAS L264-265): Join on BOTH cdprod AND cdpole
+            # This ensures correct segmentation for each product+channel combination
+            if 'cdpole' not in df.columns:
+                if logger:
+                    logger.error("cdpole column required for emissions segmentation join!")
+                return _add_seg_null_columns(df)
+            
+            # Select needed columns including cdpole
+            df_seg = df_seg.select(join_key, 'cdpole', 'cmarch', 'cseg', 'cssseg') \
+                           .dropDuplicates([join_key, 'cdpole'])
+            
+            # Join on BOTH cdprod AND cdpole
+            df_result = df.join(
+                broadcast(df_seg),
+                on=[join_key, 'cdpole'],
+                how="left"
+            )
+            
+            if logger:
+                logger.info("Segmentation enrichment successful (joined on cdprod + cdpole)")
+        else:
+            # CAPITAUX logic: Join on cdprod only
+            df_seg = df_seg.select(join_key, 'cmarch', 'cseg', 'cssseg') \
+                           .dropDuplicates([join_key])
+            
+            # Join with broadcast
+            df_result = df.join(
+                broadcast(df_seg),
+                on=join_key,
+                how="left"
+            )
+            
+            if logger:
+                logger.info("Segmentation enrichment successful (joined on cdprod only)")
         
         return df_result
         
@@ -313,6 +341,7 @@ def enrich_segmentation(
         if logger:
             logger.warning(f"Segmentation enrichment failed: {e}. Using NULL values.")
         return _add_seg_null_columns(df)
+
 
 
 # ============================================================================

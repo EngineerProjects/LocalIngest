@@ -304,9 +304,9 @@ def write_to_layer(
     
     # Delta tables do NOT use file extensions (they are directories)
     if output_format == "delta":
-        output_path = f"{layer_path}/{filename}_{vision}"
+        output_path = f"{layer_path}/{filename}"
     else:
-        output_path = f"{layer_path}/{filename}_{vision}.{output_format}"
+        output_path = f"{layer_path}/{filename}.{output_format}"
 
     if logger:
         logger.info(f"Writing {layer} data to: {output_path}")

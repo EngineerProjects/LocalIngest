@@ -53,12 +53,16 @@
         "num_indices": 14
     },
     "limite_rc_100_par_sin": {
-        "_comment": "SAS L146-150: RC par sinistre - TOUS DOMMAGES CONFONDUS matches without (AL) or / ANN)",
+        "_comment": "SAS L146-150: RC par sinistre - includes TOUS DOMMAGES CONFONDUS (non-annual)",
         "keywords": [
             "DOMMAGES CORPORELS",
-            "DOMM. MAT/IMMAT CONSEC EN COURS"
+            "DOMM. MAT/IMMAT CONSEC EN COURS",
+            "TOUS DOMMAGES CONFONDUS"
         ],
-        "exclude_keywords": [],
+        "exclude_keywords": [
+            "(AL)",
+            "/ ANN)"
+        ],
         "label_prefix": "lbcapi",
         "amount_prefix": "mtcapi",
         "num_indices": 14

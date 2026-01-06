@@ -368,15 +368,15 @@ class SilverReader:
         
         # Build full file path (Delta = directory, others = file with extension)
         if output_format == "delta":
-            full_path = f"{silver_path}/{filename}_{vision}"
+            full_path = f"{silver_path}/{filename}"
             df = self.spark.read.format("delta").load(full_path)
             
         elif output_format == "parquet":
-            full_path = f"{silver_path}/{filename}_{vision}.parquet"
+            full_path = f"{silver_path}/{filename}.parquet"
             df = self.spark.read.parquet(full_path)
             
         elif output_format == "csv":
-            full_path = f"{silver_path}/{filename}_{vision}.csv"
+            full_path = f"{silver_path}/{filename}.csv"
             df = self.spark.read.option("header", True).option("delimiter", ";").csv(full_path)
             
         else:

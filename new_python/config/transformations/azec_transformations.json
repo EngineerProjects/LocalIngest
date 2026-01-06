@@ -298,7 +298,20 @@
     "default": 0
   },
   "business_filters": {
-    "description": "Filters to apply on AZEC data - from SAS PTF_MVTS_AZEC_MACRO.sas L81-85",
+    "description": "Business filters to apply during AZEC processing - SAS: PTF_MVTS_AZEC_MACRO.sas",
+    "excluded_intermed": {
+      "description": "Excluded AZEC intermediaries (SAS L37: codes courtiers fictifs)",
+      "values": [
+        "24050",
+        "40490"
+      ]
+    },
+    "excluded_police": {
+      "description": "Excluded AZEC policies (SAS L37: police fictive)",
+      "values": [
+        "012684940"
+      ]
+    },
     "filters": [
       {
         "type": "not_in",

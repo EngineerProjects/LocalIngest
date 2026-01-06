@@ -58,7 +58,7 @@ def copy_ird_risk_to_gold(spark, config, vision: str, logger):
                 continue
 
             # Write to gold layer
-            write_to_layer(df_ird, config, 'gold', ird_file_group, vision, logger)
+            write_to_layer(df_ird, config, 'gold', f'{ird_file_group}_{vision}', vision, logger)
 
             logger.success(f"{ird_file_group} copied to gold ({df_ird.count()} rows)")
             copied_count += 1

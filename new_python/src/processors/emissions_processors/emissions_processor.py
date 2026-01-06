@@ -198,7 +198,8 @@ class EmissionsProcessor(BaseProcessor):
         reader = BronzeReader(self.spark, self.config, reading_config_path)
         
         # Use enrich_segmentation helper to replace 21 lines of duplicate code
-        df = enrich_segmentation(df, reader, vision, logger=self.logger)
+        # CRITICAL: Emissions requires join on BOTH cdprod AND cdpole (SAS L264-265)
+        df = enrich_segmentation(df, reader, vision, include_cdpole=True, logger=self.logger)
         
         # Filter for construction market
         if 'cmarch' in df.columns:
@@ -252,22 +253,42 @@ class EmissionsProcessor(BaseProcessor):
             dfs: Tuple of (df_pol_garp, df_pol)
             vision: Vision in YYYYMM format
         """
+        from config.constants import GOLD_COLUMNS_EMISSIONS_POL_GARP, GOLD_COLUMNS_EMISSIONS_POL
+        
         df_pol_garp, df_pol = dfs
         
         from utils.helpers import write_to_layer
         
-        # Write POL_GARP (by guarantee)
+        # Write POL_GARP (by guarantee) - 14 columns
         self.logger.info(f"Writing POL_GARP to gold for vision {vision}")
+        
+        # Select only gold columns in correct order
+        existing_cols_garp = [c for c in GOLD_COLUMNS_EMISSIONS_POL_GARP if c in df_pol_garp.columns]
+        missing_cols_garp = set(GOLD_COLUMNS_EMISSIONS_POL_GARP) - set(df_pol_garp.columns)
+        if missing_cols_garp:
+            self.logger.warning(f"POL_GARP: Missing columns {sorted(missing_cols_garp)}")
+        
+        df_pol_garp_final = df_pol_garp.select(existing_cols_garp)
+        
         output_name_garp = f"primes_emises_{vision}_pol_garp"
         write_to_layer(
-            df_pol_garp, self.config, 'gold', output_name_garp, vision, self.logger
+            df_pol_garp_final, self.config, 'gold', output_name_garp, vision, self.logger
         )
-        self.logger.success(f"Wrote {df_pol_garp.count():,} records to gold: {output_name_garp}.parquet")
+        self.logger.success(f"Wrote {df_pol_garp_final.count():,} records (14 columns) to gold: {output_name_garp}.parquet")
         
-        # Write POL (aggregated)
+        # Write POL (aggregated) - 12 columns
         self.logger.info(f"Writing POL to gold for vision {vision}")
+        
+        # Select only gold columns in correct order
+        existing_cols_pol = [c for c in GOLD_COLUMNS_EMISSIONS_POL if c in df_pol.columns]
+        missing_cols_pol = set(GOLD_COLUMNS_EMISSIONS_POL) - set(df_pol.columns)
+        if missing_cols_pol:
+            self.logger.warning(f"POL: Missing columns {sorted(missing_cols_pol)}")
+        
+        df_pol_final = df_pol.select(existing_cols_pol)
+        
         output_name_pol = f"primes_emises_{vision}_pol"
         write_to_layer(
-            df_pol, self.config, 'gold', output_name_pol, vision, self.logger
+            df_pol_final, self.config, 'gold', output_name_pol, vision, self.logger
         )
-        self.logger.success(f"Wrote {df_pol.count():,} records to gold: {output_name_pol}.parquet")
+        self.logger.success(f"Wrote {df_pol_final.count():,} records (12 columns) to gold: {output_name_pol}.parquet")

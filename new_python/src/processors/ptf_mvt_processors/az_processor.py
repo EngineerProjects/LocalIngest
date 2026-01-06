@@ -293,7 +293,7 @@ class AZProcessor(BaseProcessor):
         """
         from utils.helpers import write_to_layer
         write_to_layer(
-            df, self.config, 'silver', 'mvt_const_ptf', vision, self.logger
+            df, self.config, 'silver', f'mvt_const_ptf_{vision}', vision, self.logger
         )
 
 
