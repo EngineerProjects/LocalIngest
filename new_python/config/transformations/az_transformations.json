@@ -382,8 +382,29 @@
       {
         "type": "not_in",
         "column": "noint",
-        "value": "@EXCLUDED_NOINT",
-        "description": "Exclude specific intermediaries (SAS L42-44) - 20 unique values"
+        "value": [
+          "H90061",
+          "482001",
+          "489090",
+          "102030",
+          "H90036",
+          "H90059",
+          "H99045",
+          "H99059",
+          "5B2000",
+          "446000",
+          "5R0001",
+          "446118",
+          "4F1004",
+          "4A1400",
+          "4A1500",
+          "4A1600",
+          "4A1700",
+          "4A1800",
+          "4A1900",
+          "4L1010"
+        ],
+        "description": "Exclude specific intermediaries (NOINT)"
       },
       {
         "type": "not_in",
