@@ -1,19 +1,16 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "description": "Consolidation schema harmonization mappings - AZ and AZEC to common schema",
-
   "az_harmonization": {
     "description": "AZ data is already in target schema - minimal mapping needed",
     "rename": {
       "nopol": "nopol",
       "noint": "noint",
-      "cdprod": "cdprod",
       "cseg": "cseg",
       "cssseg": "cssseg"
     },
     "computed": {}
   },
-
   "azec_harmonization": {
     "description": "Map AZEC columns to match AZ schema for consolidation",
     "rename": {
@@ -176,7 +173,6 @@
       }
     }
   },
-
   "common_transformations": {
     "description": "Transformations applied to both AZ and AZEC after harmonization - SAS PTF_MVTS_CONSOLIDATION_MACRO.sas",
     "cdtre_cleanup": {
@@ -202,7 +198,6 @@
       ]
     }
   },
-
   "azec_specific_transformations": {
     "description": "AZEC-specific transformations before consolidation",
     "cdmotres_mapping": {
@@ -218,16 +213,17 @@
       "default": "X"
     }
   },
-
   "fallback_logic": {
     "description": "Fallback coalescing for missing columns",
     "dtrcppr_fallback": {
       "column": "dtrcppr",
       "type": "coalesce",
-      "sources": ["dtrcppr", "dtreffin"]
+      "sources": [
+        "dtrcppr",
+        "dtreffin"
+      ]
     }
   },
-
   "movement_column_mapping": {
     "description": "Column mapping for movement calculations (AFN, RES, RPT, RPC)",
     "az": {
@@ -257,7 +253,6 @@
       "type_date3": null
     }
   },
-
   "exposure_column_mapping": {
     "description": "Column mapping for exposure calculations (expo_ytd, expo_gli)",
     "az": {

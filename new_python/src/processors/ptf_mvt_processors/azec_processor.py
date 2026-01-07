@@ -582,37 +582,42 @@ class AZECProcessor(BaseProcessor):
             how='left'
         ).select(
             'a.*',  # Keep all AZEC columns
-            'l.cdprod', 'l.cprod', 'l.cmarch', 'l.lmarch',
+            # CRITICAL: Do NOT select 'l.cdprod' here!
+            # AZEC keeps 'produit' which gets renamed to 'cdprod' during consolidation
+            # Adding 'cdprod' here causes duplication error during union with AZ
+            'l.cprod', 'l.cmarch', 'l.lmarch',
             'l.cseg', 'l.lseg', 'l.cssseg', 'l.lssseg', 'l.segment'
         )
         
         self.logger.info("✓ LOB segmentation joined (cmarch, cseg, cssseg, segment)")
         
+        # ================================================================        
         # ================================================================
-        # STEP 3: Enrich Type_Produit from CONSTRCU_AZEC (SAS L305-336)
+        # STEP 3: Enrich Type_Produit from CONSTRCU_AZEC (SAS L341-343, PTF_MVTS_AZEC_MACRO.sas L484)
         # ================================================================
-        # CONSTRCU provides product-specific attributes for construction contracts
-        # Especially Type_Produit classification (Artisans, TRC, DO, Entreprises, etc.)
+        # CONSTRCU_AZEC provides product type classification (Artisans, TRC, DO, Entreprises, etc.)
+        # This is a PREPROCESSED reference table created by REF_segmentation_azec.sas
+        # Contains: POLICE, CDPROD, SEGMENT, TYPE_PRODUIT
         
         try:
             constrcu_ref = reader.read_file_group('constrcu_azec', vision='ref')
             
             if constrcu_ref is not None:
-                # Select Type_Produit and Segment columns (SAS L341-343)
-                # CONSTRCU_AZEC has: POLICE, CDPROD, SEGMENT, TYPE_PRODUIT
+                # Select columns from CONSTRCU_AZEC (SAS L341-343)
+                # IMPORTANT: CONSTRCU_AZEC has CDPROD, but AZEC DataFrame has PRODUIT
+                # Join condition: a.produit = b.cdprod (SAS PTF_MVTS_AZEC_MACRO.sas L484)
                 constrcu_select = constrcu_ref.select(
                     'police',
-                    'cdprod',  # CRITICAL: CONSTRCU_AZEC uses CDPROD not PRODUIT (SAS L343)
+                    'cdprod',  # CONSTRCU_AZEC has CDPROD
                     col('type_produit').alias('type_produit_constr'),
                     col('segment').alias('segment_constr')
                 ).dropDuplicates(['police', 'cdprod'])
                 
-                # Left join on police AND cdprod (SAS L484-486)
-                # Note: Join using 'produit' from df and 'cdprod' from CONSTRCU_AZEC
+                # Left join: AZEC.produit = CONSTRCU_AZEC.cdprod (SAS L484)
                 df = df.alias('a').join(
                     constrcu_select.alias('c'),
                     (col('a.police') == col('c.police')) & 
-                    (col('a.produit') == col('c.cdprod')),  # df has 'produit', CONSTRCU_AZEC has 'cdprod'
+                    (col('a.produit') == col('c.cdprod')),  # AZEC has produit, CONSTRCU_AZEC has cdprod
                     how='left'
                 ).select(
                     'a.*',
@@ -620,41 +625,10 @@ class AZECProcessor(BaseProcessor):
                     col('c.segment_constr').alias('segment_2')
                 )
                 
-                # ================================================================
-                # STEP 4: Apply Business Rules for Type_Produit (SAS L328-335)
-                # ================================================================
-                # These rules override CONSTRCU values based on product characteristics
-                
-                df = df.withColumn('type_produit_2',
-                    # Rule 1: TRC products (SAS L329)
-                    when(col('lssseg') == 'TOUS RISQUES CHANTIERS', lit('TRC'))
-                    # Rule 2: DO products (SAS L330)
-                    .when(col('lssseg') == 'DOMMAGES OUVRAGES', lit('DO'))
-                    # Rule 3: RCC = Entreprises (SAS L333)
-                    .when(col('produit') == 'RCC', lit('Entreprises'))
-                    # Rule 4: RCD with specific CSSSEG = 7 → Artisans (SAS L334-335)
-                    # (This is handled separately in a second pass)
-                    # Rule 5: If still null, default to 'Autres' (SAS L331)
-                    .when(col('type_produit_2').isNull(), lit('Autres'))
-                    # Otherwise keep CONSTRCU value
-                    .otherwise(col('type_produit_2'))
-                )
-                
-                # Special rule for RC DECENNALE Artisans (SAS L334-335)
-                # IF LSSSEG = "RC DECENNALE" AND Type_Produit IN ("Artisans") THEN cssseg = 7;
-                # Note: This modifies CSSSEG, not Type_Produit
-                df = df.withColumn('cssseg',
-                    when(
-                        (col('lssseg') == 'RC DECENNALE') & 
-                        (col('type_produit_2') == 'Artisans'),
-                        lit('7')
-                    ).otherwise(col('cssseg'))
-                )
-                
                 self.logger.info("✓ CONSTRCU_AZEC enriched (type_produit_2, segment_2)")
                 
             else:
-                self.logger.warning("CONSTRCU_AZEC not available - type_produit_2 will be NULL")
+                self.logger.warning("CONSTRCU_AZEC reference not available - type_produit_2 will be NULL")
                 from utils.processor_helpers import add_null_columns
                 df = add_null_columns(df, {
                     'type_produit_2': StringType,
@@ -663,6 +637,7 @@ class AZECProcessor(BaseProcessor):
                 
         except Exception as e:
             self.logger.warning(f"CONSTRCU_AZEC enrichment failed: {e}")
+            self.logger.info("Adding NULL columns for type_produit_2 and segment_2")
             from utils.processor_helpers import add_null_columns
             df = add_null_columns(df, {
                 'type_produit_2': StringType,
