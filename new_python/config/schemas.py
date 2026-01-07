@@ -292,15 +292,17 @@ CONSTRCU_SCHEMA = StructType([
 ])
 
 # =============================================================================
-# REFERENCE FILES - CONSTRCU_AZEC (Product Type Classification for AZEC)
-# Based on: REF_segmentation_azec.sas L341-343
-# File: constrcu.csv (simplified - only 4 columns kept by SAS)
+# REFERENCE FILES - CONSTRCU_AZEC (Raw CONSTRCU for AZEC)
+# NOTE: We read RAW constrcu.csv and enrich it on-the-fly in the pipeline
+# This matches SAS but done automatically (no separate preprocessing needed)
 # =============================================================================
 CONSTRCU_AZEC_SCHEMA = StructType([
     StructField("POLICE", StringType(), True),
-    StructField("CDPROD", StringType(), True),      # Note: CDPROD not PRODUIT!
-    StructField("SEGMENT", StringType(), True),
-    StructField("TYPE_PRODUIT", StringType(), True),
+    StructField("PRODUIT", StringType(), True),      # Raw file has PRODUIT
+    StructField("TYPMARC1", StringType(), True),     # Optional: for TYPE_PRODUIT logic
+    StructField("LTYPMAR1", StringType(), True),     # Optional
+    StructField("FORMULE", StringType(), True),      # Optional
+    StructField("NAT_CNT", StringType(), True),      # Optional: for DPC products
 ])
 
 

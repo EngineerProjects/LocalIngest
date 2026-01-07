@@ -555,6 +555,10 @@ class AZECProcessor(BaseProcessor):
         # Filter for construction market only (SAS L134: IF cmarch IN ('6'))
         lob_ref = lob_ref.filter(col('cmarch') == '6')
         
+        # OPTIMIZATION: Store lob_ref for CONSTRCU enrichment to avoid re-reading
+        # SAS creates HASH table once and reuses it (L227: %SEGMENTA)
+        self._lob_construction_ref = lob_ref  # Cache for CONSTRCU enrichment
+        
         # Select segmentation columns from LOB (SAS L80-83)
         # LOB provides: CDPROD, CPROD, cmarch, lmarch, cseg, lseg, cssseg, lssseg, segment
         lob_select = lob_ref.select(
@@ -593,31 +597,56 @@ class AZECProcessor(BaseProcessor):
         
         # ================================================================        
         # ================================================================
-        # STEP 3: Enrich Type_Produit from CONSTRCU_AZEC (SAS L341-343, PTF_MVTS_AZEC_MACRO.sas L484)
+        # STEP 3: Enrich Type_Produit from CONSTRCU (built on-the-fly)
         # ================================================================
-        # CONSTRCU_AZEC provides product type classification (Artisans, TRC, DO, Entreprises, etc.)
-        # This is a PREPROCESSED reference table created by REF_segmentation_azec.sas
-        # Contains: POLICE, CDPROD, SEGMENT, TYPE_PRODUIT
+        # Instead of reading a preprocessed CONSTRCU_AZEC file, we build it automatically
+        # This matches SAS REF_segmentation_azec.sas logic but done in the pipeline
         
         try:
-            constrcu_ref = reader.read_file_group('constrcu_azec', vision='ref')
+            # Read raw CONSTRCU data
+            constrcu_raw = reader.read_file_group('constrcu_azec', vision='ref')
             
-            if constrcu_ref is not None:
-                # Select columns from CONSTRCU_AZEC (SAS L341-343)
-                # IMPORTANT: CONSTRCU_AZEC has CDPROD, but AZEC DataFrame has PRODUIT
-                # Join condition: a.produit = b.cdprod (SAS PTF_MVTS_AZEC_MACRO.sas L484)
-                constrcu_select = constrcu_ref.select(
+            if constrcu_raw is not None:
+                self.logger.info("Building CONSTRCU enrichment on-the-fly (SAS REF_segmentation_azec.sas)")
+                
+                # OPTIMIZATION: Reuse LOB reference from above instead of reading again
+                # SAS does this efficiently with HASH table (L227: %SEGMENTA) - created once, used multiple times
+                # Python: Reuse self._lob_construction_ref that was already filtered for construction market
+                
+                # Join CONSTRCU with LOB to get CDPROD and SEGMENT (SAS L227: %SEGMENTA)
+                constrcu_enriched = constrcu_raw.alias('c').join(
+                    self._lob_construction_ref.alias('l').select('produit', 'cdprod', 'segment', 'lssseg'),
+                    col('c.produit') == col('l.produit'),
+                    how='left'
+                ).select(
+                    col('c.police'),
+                    col('c.produit'),
+                    col('l.cdprod'),     # From LOB
+                    col('l.segment'),    # From LOB
+                    col('l.lssseg')      # For TYPE_PRODUIT calculation
+                )
+                
+                # Calculate TYPE_PRODUIT (SAS L329-333)
+                constrcu_enriched = constrcu_enriched.withColumn('type_produit',
+                    when(col('lssseg') == 'TOUS RISQUES CHANTIERS', lit('TRC'))
+                    .when(col('lssseg') == 'DOMMAGES OUVRAGES', lit('DO'))
+                    .when(col('produit') == 'RCC', lit('Entreprises'))
+                    .otherwise(lit('Autres'))
+                )
+                
+                # Select final columns for join
+                constrcu_select = constrcu_enriched.select(
                     'police',
-                    'cdprod',  # CONSTRCU_AZEC has CDPROD
+                    'cdprod',
                     col('type_produit').alias('type_produit_constr'),
                     col('segment').alias('segment_constr')
                 ).dropDuplicates(['police', 'cdprod'])
                 
-                # Left join: AZEC.produit = CONSTRCU_AZEC.cdprod (SAS L484)
+                # Left join: AZEC.produit = CONSTRCU.cdprod (SAS L484)
                 df = df.alias('a').join(
                     constrcu_select.alias('c'),
                     (col('a.police') == col('c.police')) & 
-                    (col('a.produit') == col('c.cdprod')),  # AZEC has produit, CONSTRCU_AZEC has cdprod
+                    (col('a.produit') == col('c.cdprod')),
                     how='left'
                 ).select(
                     'a.*',
@@ -625,10 +654,10 @@ class AZECProcessor(BaseProcessor):
                     col('c.segment_constr').alias('segment_2')
                 )
                 
-                self.logger.info("✓ CONSTRCU_AZEC enriched (type_produit_2, segment_2)")
+                self.logger.info("✓ CONSTRCU enrichment built and applied (type_produit_2, segment_2)")
                 
             else:
-                self.logger.warning("CONSTRCU_AZEC reference not available - type_produit_2 will be NULL")
+                self.logger.warning("CONSTRCU not available - type_produit_2 will be NULL")
                 from utils.processor_helpers import add_null_columns
                 df = add_null_columns(df, {
                     'type_produit_2': StringType,
@@ -636,7 +665,7 @@ class AZECProcessor(BaseProcessor):
                 })
                 
         except Exception as e:
-            self.logger.warning(f"CONSTRCU_AZEC enrichment failed: {e}")
+            self.logger.warning(f"CONSTRCU enrichment failed: {e}")
             self.logger.info("Adding NULL columns for type_produit_2 and segment_2")
             from utils.processor_helpers import add_null_columns
             df = add_null_columns(df, {
