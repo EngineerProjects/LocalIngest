@@ -92,6 +92,16 @@ class ConsolidationProcessor(BaseProcessor):
         # Step 5: Union AZ + AZEC
         self.logger.step(4, "Consolidating AZ + AZEC")
         df_consolidated = df_az.unionByName(df_azec, allowMissingColumns=True)
+        
+        # Step 4.1: Extract MOIS_ECHEANCE and JOUR_ECHEANCE from dtechann
+        # SAS L49-50 (AZ): input(substr(put(DTECHANN, 5.), ...) AS MOIS_ECHEANCE
+        # SAS L76 (AZEC): month(DTECHANN) AS MOIS_ECHEANCE, day(DTECHANN) AS JOUR_ECHEANCE
+        from pyspark.sql.functions import month, dayofmonth
+        
+        df_consolidated = df_consolidated.withColumn('mois_echeance', month(col('dtechann')))
+        df_consolidated = df_consolidated.withColumn('jour_echeance', dayofmonth(col('dtechann')))
+        
+        self.logger.info("✓ Extracted MOIS_ECHEANCE and JOUR_ECHEANCE from dtechann")
 
         # Step 5b: Apply common transformations (CDTRE, etc.)
         self.logger.step(4.5, "Applying common transformations")

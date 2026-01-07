@@ -394,4 +394,12 @@ class AZProcessor(BaseProcessor):
             required=False
         )
         
+        # Debug: Check if upper_mid was successfully enriched
+        if 'upper_mid' in df.columns:
+            upper_mid_count = df.filter(col('upper_mid').isNotNull()).count()
+            total_count = df.count()
+            self.logger.info(f"✓ upper_mid enrichment: {upper_mid_count}/{total_count} non-null ({100*upper_mid_count/total_count:.1f}%)")
+        else:
+            self.logger.warning("⚠️ upper_mid column not found after join!")
+        
         return df

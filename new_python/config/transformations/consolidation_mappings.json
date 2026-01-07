@@ -7,7 +7,11 @@
       "nopol": "nopol",
       "noint": "noint",
       "cseg": "cseg",
-      "cssseg": "cssseg"
+      "cssseg": "cssseg",
+      "cdcoas": "cdcoass",
+      "partcie": "part_cie",
+      "primeto": "primes_ptf_intemp",
+      "cotis_100": "primes_ptf_100_intemp"
     },
     "computed": {}
   },
@@ -17,6 +21,10 @@
       "police": "nopol",
       "produit": "cdprod",
       "intermed": "noint",
+      "codecoas": "cdcoass",
+      "partcie": "part_cie",
+      "primeto": "primes_ptf_intemp",
+      "cotis_100": "primes_ptf_100_intemp",
       "effectrol": "dtechdm",
       "datepin": "dtreslip",
       "datresli": "dttramm",
