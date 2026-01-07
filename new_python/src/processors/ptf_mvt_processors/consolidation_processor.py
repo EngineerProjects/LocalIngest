@@ -113,12 +113,12 @@ class ConsolidationProcessor(BaseProcessor):
 
         # Step 5d: Apply DESTINAT consolidation logic
         self.logger.step(4.7, "Applying DESTINAT consolidation logic")
-        from utils.transformations.base.destinat_calculation import apply_destinat_consolidation_logic
+        from utils.transformations.enrichment import apply_destinat_consolidation_logic
         df_consolidated = apply_destinat_consolidation_logic(df_consolidated)
 
         # Step 5e: Calculate DESTINAT for Chantiers (pattern matching)
         self.logger.step(5, "Calculating DESTINAT for construction sites")
-        from utils.transformations.base.destinat_calculation import calculate_destinat
+        from utils.transformations.enrichment import calculate_destinat
         df_consolidated = calculate_destinat(df_consolidated, self.logger)
 
         # Step 6: Enrich with IRD risk data
@@ -151,7 +151,7 @@ class ConsolidationProcessor(BaseProcessor):
         
         # Step 6i: Apply ISIC code corrections (manual fixes for known bad codes)
         self.logger.step(6.2, "Applying ISIC code corrections")
-        from utils.transformations.base.isic_codification import apply_isic_corrections
+        from utils.transformations.enrichment import apply_isic_corrections
         df_consolidated = apply_isic_corrections(df_consolidated)
         
         # Step 6j: Add ISIC global code (SAS L563-570)
@@ -506,13 +506,7 @@ class ConsolidationProcessor(BaseProcessor):
         
         Based on: SAS PTF_MVTS_CONSOLIDATION_MACRO.sas L154-258
         
-        CRITICAL: Uses SEQUENTIAL processing (not parallel):
-        1. Join Q46 → Coalesce → Drop _risk columns
-        2. Join Q45 → Coalesce → Drop _risk columns (reuses suffix)
-        3. Join QAN → Coalesce → Drop _risk columns (reuses suffix)
-        
-        All sources use SAME suffix '_risk' but are processed sequentially
-        to avoid column name collisions.
+        Uses refactored risk_enrichment module to eliminate code duplication.
         
         Args:
             df: Consolidated DataFrame
@@ -521,138 +515,18 @@ class ConsolidationProcessor(BaseProcessor):
         Returns:
             DataFrame enriched with IRD risk data
         """
-        # Initialize dtreffin upfront
-        if 'dtreffin' not in df.columns:
-            from utils.processor_helpers import add_null_columns
-            df = add_null_columns(df, {'dtreffin': DateType})
+        from utils.transformations.enrichment.risk_enrichment import enrich_with_risk_data
         
         reader = get_bronze_reader(self)
         
-        # Sequential processing (SAS L154-258)
-        # Q46 → Coalesce → Drop (SAS L158-188)
-        df = self._join_ird_and_coalesce(df, reader, vision, 'q46')
-        
-        # Q45 → Coalesce → Drop (SAS L194-224)
-        df = self._join_ird_and_coalesce(df, reader, vision, 'q45')
-        
-        # QAN → Coalesce → Drop (SAS L230-258)
-        df = self._join_ird_and_coalesce(df, reader, vision, 'qan')
-        
-        self.logger.info("IRD risk data enrichment completed")
-        return df
-    
-    def _join_ird_and_coalesce(
-        self,
-        df: DataFrame,
-        reader,
-        vision: str,
-        source: str
-    ) -> DataFrame:
-        """
-        Join one IRD source, coalesce values, and drop temp columns immediately.
-        
-        This matches SAS pattern of sequential join-coalesce-drop for each source.
-        All sources use '_risk' suffix but are processed one at a time.
-        
-        Args:
-            df: Main DataFrame
-            reader: BronzeReader instance
-            vision: Vision string
-            source: 'q46', 'q45', or 'qan'
-            
-        Returns:
-            DataFrame with IRD data coalesced and temp columns dropped
-        """
-        cfg = self.IRD_JOIN_CONFIG[source]
-        
-        try:
-            df_ird = reader.read_file_group(cfg['file_group'], vision)
-            if df_ird is None or df_ird.count() == 0:
-                self.logger.debug(f"IRD {source.upper()}: No data found")
-                return df
-            
-            # QUALITY IMPROVEMENT: Detect and remove duplications (not done in SAS)
-            # This ensures gold layer data quality
-            # OPTIMIZATION: Cache before multiple operations to avoid re-scanning
-            df_ird.cache()
-            
-            total_count = df_ird.count()
-            distinct_nopol_count = df_ird.select("nopol").distinct().count()
-            
-            if total_count > distinct_nopol_count:
-                dup_count = total_count - distinct_nopol_count
-                self.logger.warning(
-                    f"IRD {source.upper()}: {dup_count} duplications detected on NOPOL - "
-                    f"keeping most recent entry (total={total_count}, unique={distinct_nopol_count})"
-                )
-                
-                # Keep most recent entry per NOPOL based on available date columns
-                from pyspark.sql.window import Window
-                from pyspark.sql.functions import row_number, desc
-                
-                # Build ordering: prioritize by latest dates (nulls last)
-                order_cols = []
-                for date_col in cfg['date_columns']:
-                    if date_col in df_ird.columns:
-                        order_cols.append(col(date_col).desc_nulls_last())
-                
-                # If no date columns, just take first row
-                if not order_cols:
-                    order_cols = [lit(1)]
-                
-                window_spec = Window.partitionBy("nopol").orderBy(*order_cols)
-                df_ird = df_ird.withColumn("_row_num", row_number().over(window_spec)) \
-                               .filter(col("_row_num") == 1) \
-                               .drop("_row_num")
-                
-                self.logger.info(f"IRD {source.upper()}: Deduplication complete - kept {distinct_nopol_count} unique records")
-            
-            select_cols = ['nopol']
-            
-            for col_name in cfg['date_columns']:
-                if col_name in df_ird.columns:
-                    select_cols.append(to_date(col(col_name)).alias(f"{col_name}_risk"))
-            
-            for col_name in cfg['text_columns']:
-                if col_name in df_ird.columns:
-                    select_cols.append(col(col_name).alias(f"{col_name}_risk"))
-                else:
-                    select_cols.append(lit(None).cast(StringType()).alias(f"{col_name}_risk"))
-            
-            df_ird_select = df_ird.select(*select_cols)
-            
-            # LEFT JOIN
-            df = df.join(broadcast(df_ird_select), on='nopol', how='left')
-            
-            # Coalesce immediately
-            for col_name in cfg['date_columns'] + cfg['text_columns']:
-                risk_col = f"{col_name}_risk"
-                
-                # Map lbdstcsc_risk → dstcsc
-                target_col = 'dstcsc' if col_name == 'lbdstcsc' else col_name
-                
-                if risk_col in df.columns:
-                    # DTREFFIN assignment for Q46
-                    if col_name == 'dtreffin' and source == 'q46':
-                        df = df.withColumn('dtreffin', col(risk_col))
-                    # Standard coalesce
-                    else:
-                        df = df.withColumn(target_col,
-                            when(col(target_col).isNull(), col(risk_col)).otherwise(col(target_col)))
-            
-            # Drop _risk columns
-            risk_cols_to_drop = [f"{c}_risk" for c in cfg['date_columns'] + cfg['text_columns']]
-            risk_cols_existing = [c for c in risk_cols_to_drop if c in df.columns]
-            if risk_cols_existing:
-                df = df.drop(*risk_cols_existing)
-            
-            # OPTIMIZATION: Unpersist cached data after use
-            df_ird.unpersist()
-            
-            self.logger.debug(f"IRD {source.upper()}: Joined and coalesced successfully")
-            
-        except Exception as e:
-            self.logger.warning(f"IRD {source.upper()} enrichment failed: {e}")
+        # Use refactored module (eliminates ~100 lines of duplicate code)
+        df = enrich_with_risk_data(
+            df, 
+            risk_sources=['q46', 'q45', 'qan'],
+            vision=vision,
+            bronze_reader=reader,
+            logger=self.logger
+        )
         
         return df
 
@@ -687,7 +561,7 @@ class ConsolidationProcessor(BaseProcessor):
         Returns:
             DataFrame with ISIC columns added (may be NULL if data missing)
         """
-        from utils.transformations.base.isic_codification import (
+        from utils.transformations.enrichment import (
             join_isic_reference_tables,
             assign_isic_codes,
             add_partenariat_berlitz_flags

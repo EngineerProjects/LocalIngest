@@ -152,3 +152,4 @@ def get_logger(
         >>> logger.success('Data loaded successfully')
     """
     return PipelineLogger(name, log_file, level)
+

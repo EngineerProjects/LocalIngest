@@ -118,6 +118,16 @@ class AZECProcessor(BaseProcessor):
         # Step 8: Calculate exposures
         self.logger.step(7, "Calculating exposures")
         df = self._calculate_exposures(df, dates)
+        
+        # Step 8.5: Cleanup DT_DEB_EXPO/DT_FIN_EXPO when EXPO_YTD = 0 (SAS L374-380)
+        self.logger.step(7.5, "Cleaning up exposure dates when EXPO_YTD = 0")
+        df = df.withColumn('dt_deb_expo',
+            when(col('expo_ytd') == 0, lit(None).cast(DateType())).otherwise(col('dt_deb_expo'))
+        )
+        df = df.withColumn('dt_fin_expo',
+            when(col('expo_ytd') == 0, lit(None).cast(DateType())).otherwise(col('dt_fin_expo'))
+        )
+
 
         # Step 10: Join capitals from CAPITXCU
         self.logger.step(8, "Joining capital data (CAPITXCU)")

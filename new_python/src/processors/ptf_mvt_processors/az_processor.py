@@ -202,6 +202,12 @@ class AZProcessor(BaseProcessor):
         self.logger.step(8, "Calculating movement indicators")
         movement_cols = az_config['movements']['column_mapping']
         df = calculate_movements(df, dates, year_int, movement_cols)
+        
+        # STEP 8.5: Set TOP_TEMP flag (SAS L288-291)
+        self.logger.step(8.5, "Setting TOP_TEMP flag for temporary policies")
+        df = df.withColumn('top_temp',
+            when(col('cdnatp') == 'T', lit(1)).otherwise(lit(0))
+        )
 
         # STEP 9: Calculate exposures (SAS L298-311)
         self.logger.step(9, "Calculating exposures")

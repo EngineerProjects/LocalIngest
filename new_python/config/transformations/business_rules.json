@@ -123,8 +123,8 @@
           "column": "noint",
           "value": [
             "H90061",
-            "4B2001",
-            "4B0000",
+            "482001",
+            "489090",
             "102030",
             "H90036",
             "H90059",
@@ -139,14 +139,11 @@
             "4A1500",
             "4A1600",
             "4A1700",
-            "4A1860",
+            "4A1800",
             "4A1900",
-            "4B2001",
-            "4B9090",
-            "4F1004",
             "4L1010"
           ],
-          "description": "Exclude specific intermediaries (SAS L42-44)"
+          "description": "Exclude specific intermediaries (SAS L42-44) - FIXED to match SAS exactly"
         },
         {
           "type": "not_equals",
@@ -324,52 +321,6 @@
       "QBK",
       "QBB",
       "QBM"
-    ]
-  },
-  "constants": {
-    "description": "Business constants used across transformations",
-    "excluded_noint": [
-      "H90061",
-      "4B2001",
-      "4B0000",
-      "102030",
-      "H90036",
-      "H90059",
-      "H99045",
-      "H99059",
-      "5B2000",
-      "446000",
-      "5R0001",
-      "446118",
-      "4F1004",
-      "4A1400",
-      "4A1500",
-      "4A1600",
-      "4A1700",
-      "4A1860",
-      "4A1900",
-      "4B2001",
-      "4B9090",
-      "4F1004",
-      "4L1010"
-    ],
-    "excluded_azec_intermed": [
-      "100000",
-      "100001",
-      "100002",
-      "100003",
-      "100004",
-      "100005",
-      "100006",
-      "100007",
-      "100008",
-      "100009",
-      "100010",
-      "100011"
-    ],
-    "excluded_azec_police": [
-      "0000000000",
-      "9999999999"
     ]
   }
 }
