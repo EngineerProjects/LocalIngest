@@ -598,19 +598,21 @@ class AZECProcessor(BaseProcessor):
             constrcu_ref = reader.read_file_group('constrcu_azec', vision='ref')
             
             if constrcu_ref is not None:
-                # Select Type_Produit and Segment columns (SAS L326-327)
+                # Select Type_Produit and Segment columns (SAS L341-343)
+                # CONSTRCU_AZEC has: POLICE, CDPROD, SEGMENT, TYPE_PRODUIT
                 constrcu_select = constrcu_ref.select(
                     'police',
-                    'produit',  # Also join on produit for accuracy
+                    'cdprod',  # CRITICAL: CONSTRCU_AZEC uses CDPROD not PRODUIT (SAS L343)
                     col('type_produit').alias('type_produit_constr'),
                     col('segment').alias('segment_constr')
-                ).dropDuplicates(['police', 'produit'])
+                ).dropDuplicates(['police', 'cdprod'])
                 
-                # Left join on police AND produit (SAS L484-486)
+                # Left join on police AND cdprod (SAS L484-486)
+                # Note: Join using 'produit' from df and 'cdprod' from CONSTRCU_AZEC
                 df = df.alias('a').join(
                     constrcu_select.alias('c'),
                     (col('a.police') == col('c.police')) & 
-                    (col('a.produit') == col('c.produit')),
+                    (col('a.produit') == col('c.cdprod')),  # df has 'produit', CONSTRCU_AZEC has 'cdprod'
                     how='left'
                 ).select(
                     'a.*',

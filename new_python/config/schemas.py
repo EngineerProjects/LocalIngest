@@ -291,6 +291,19 @@ CONSTRCU_SCHEMA = StructType([
     StructField("TYPMARC1", StringType(), True),
 ])
 
+# =============================================================================
+# REFERENCE FILES - CONSTRCU_AZEC (Product Type Classification for AZEC)
+# Based on: REF_segmentation_azec.sas L341-343
+# File: constrcu.csv (simplified - only 4 columns kept by SAS)
+# =============================================================================
+CONSTRCU_AZEC_SCHEMA = StructType([
+    StructField("POLICE", StringType(), True),
+    StructField("CDPROD", StringType(), True),      # Note: CDPROD not PRODUIT!
+    StructField("SEGMENT", StringType(), True),
+    StructField("TYPE_PRODUIT", StringType(), True),
+])
+
+
 
 # =============================================================================
 # REFERENCE FILES - Product Segmentation
@@ -713,7 +726,7 @@ SCHEMA_REGISTRY = {
     "polic_cu_azec": POLIC_CU_SCHEMA,  # FIXED: Now using POLIC_CU_SCHEMA which includes DATEXPIR
     "capitxcu_azec": CAPITXCU_SCHEMA,
     "incendcu_azec": INCENDCU_SCHEMA,
-    "constrcu_azec": CONSTRCU_SCHEMA,
+    "constrcu_azec": CONSTRCU_AZEC_SCHEMA,
     "rcentcu_azec": AZEC_FORMULE_SCHEMA,  # Consolidated
     "risteccu_azec": AZEC_FORMULE_SCHEMA,  # Consolidated
     "mulprocu_azec": MULPROCU_SCHEMA,
