@@ -38,12 +38,14 @@ class ConsolidationProcessor(BaseProcessor):
             vision: Vision in YYYYMM format
 
         Returns:
-            AZ silver DataFrame (lowercase columns)
         """
-        silver_reader = SilverReader(self.spark, self.config)
-        
         self.logger.info("Reading AZ silver data (mvt_const_ptf)")
-        df_az = silver_reader.read_silver_file('mvt_const_ptf', vision)
+        
+        from src.reader import SilverReader
+        reader = SilverReader(self.spark, self.config)
+        
+        # Read AZ silver file (with vision suffix)
+        df_az = reader.read_silver_file(f"mvt_const_ptf_{vision}", vision)
         # Columns already lowercase from silver
         
         return df_az
@@ -68,7 +70,7 @@ class ConsolidationProcessor(BaseProcessor):
         # Step 1: Read AZEC silver data
         self.logger.step(1, "Reading AZEC silver data")
         silver_reader = SilverReader(self.spark, self.config)
-        df_azec = silver_reader.read_silver_file('azec_ptf', vision)
+        df_azec = silver_reader.read_silver_file(f'azec_ptf_{vision}', vision)
 
         # Step 2: Harmonize AZ schema (rename if needed)
         self.logger.step(2, "Harmonizing AZ schema")
