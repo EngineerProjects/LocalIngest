@@ -41,11 +41,11 @@ components:
     description: "Portfolio Movements (AZ + AZEC)"
 
   capitaux:
-    enabled: true
+    enabled: false
     description: "Capitaux domain (SMP/LCI extraction)"
 
   emissions:
-    enabled: true
+    enabled: false
     description: "Emissions domain (future)"
 
 # Spark configuration

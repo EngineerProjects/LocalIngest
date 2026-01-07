@@ -595,6 +595,19 @@ class AZECProcessor(BaseProcessor):
         
         self.logger.info("✓ LOB segmentation joined (cmarch, cseg, cssseg, segment)")
         
+        # ================================================================
+        # CRITICAL: Filter for construction market ONLY (SAS L134)
+        # ================================================================
+        # After LOB join, filter to keep only construction market products
+        # SAS does this via LOB hash table that only contains cmarch='6' products
+        # Python: Explicit filter after join
+        
+        rows_before = df.count()
+        df = df.filter(col('cmarch') == '6')
+        rows_after = df.count()
+        
+        self.logger.info(f"✓ Construction market filter applied: {rows_before:,} → {rows_after:,} rows ({100*(rows_before-rows_after)/rows_before:.1f}% filtered)")
+        
         # ================================================================        
         # ================================================================
         # STEP 3: Enrich Type_Produit from CONSTRCU (built on-the-fly)
