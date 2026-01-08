@@ -17,7 +17,7 @@ from pyspark.sql.types import StringType, DateType, DoubleType
 from src.processors.base_processor import BaseProcessor
 from src.reader import SilverReader, BronzeReader
 from utils.loaders import get_default_loader
-from config.constants import DIRCOM
+from config.constants import DIRCOM, MARKET_CODE
 from utils.helpers import build_layer_path, extract_year_month_int
 from utils.processor_helpers import safe_reference_join, get_bronze_reader
 
@@ -93,10 +93,33 @@ class ConsolidationProcessor(BaseProcessor):
         self.logger.step(4, "Consolidating AZ + AZEC")
         df_consolidated = df_az.unionByName(df_azec, allowMissingColumns=True)
         
+        # CRITICAL: Defensive check for NULL cmarch values
+        # All rows should have cmarch='6' for construction market
+        
+        
+        # Count NULL cmarch rows BEFORE fix
+        null_count_before = df_consolidated.filter(col('cmarch').isNull()).count()
+        total_count = df_consolidated.count()
+        
+        if null_count_before > 0:
+            self.logger.warning(f"Found {null_count_before:,} rows with NULL cmarch out of {total_count:,} total rows ({100*null_count_before/total_count:.1f}%)")
+            self.logger.warning("This indicates segmentation enrichment failed for some products")
+            
+            # Apply defensive fix: Set cmarch='6' for NULLs (construction market default)
+            df_consolidated = df_consolidated.withColumn(
+                'cmarch',
+                when(col('cmarch').isNull(), lit(MARKET_CODE.MARKET)).otherwise(col('cmarch'))
+            )
+            
+            null_count_after = df_consolidated.filter(col('cmarch').isNull()).count()
+            self.logger.info(f"✓ Applied defensive fix: NULL cmarch count: {null_count_before:,} → {null_count_after:,}")
+        else:
+            self.logger.info(f"✓ All {total_count:,} rows have valid cmarch values")
+        
         # Step 4.1: Extract MOIS_ECHEANCE and JOUR_ECHEANCE from dtechann
         # SAS L49-50 (AZ): input(substr(put(DTECHANN, 5.), ...) AS MOIS_ECHEANCE
         # SAS L76 (AZEC): month(DTECHANN) AS MOIS_ECHEANCE, day(DTECHANN) AS JOUR_ECHEANCE
-        from pyspark.sql.functions import month, dayofmonth
+        
         
         df_consolidated = df_consolidated.withColumn('mois_echeance', month(col('dtechann')))
         df_consolidated = df_consolidated.withColumn('jour_echeance', dayofmonth(col('dtechann')))

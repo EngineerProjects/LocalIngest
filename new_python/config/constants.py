@@ -22,15 +22,57 @@ class POLE:
     AGENT = "1"      # PTF16
     COURTAGE = "3"   # PTF36
 
+
+# =========================================================================
+# MARKET CODE
+# =========================================================================
+# 
+# IMPORTANT: File naming convention vs Data filtering
+# -----------------------------------------------------
+# 
+# FILE NAMING (Bronze layer):
+#   - IPFE16 = Agent channel (1) + Construction market (6)
+#   - IPFE36 = Courtier channel (3) + Construction market (6)
+#   - First digit: Distribution channel (1=Agent, 3=Courtier)
+#   - Second digit: Market/Product line (6=Construction, 7=Healthcare, etc.)
+# 
+# Example for different markets:
+#   - Construction: IPFE16_*.csv.gz, IPFE36_*.csv.gz
+#   - Healthcare:   IPFE17_*.csv.gz, IPFE37_*.csv.gz  (if existed)
+# 
+# DATA FILTERING (this constant):
+#   - MARKET_CODE.MARKET filters the DATA by the 'cmarch' column
+#   - Applied AFTER reading the files
+#   - Matches the market code in the file naming
+#   - cmarch="6" means we only process Construction market records
+# 
+# TO CHANGE MARKETS:
+#   1. Update file patterns in reading_config.json (e.g., IPFE17/IPFE37)
+#   2. Update MARKET constant to match the new market code
+#   3. No code changes needed - just configuration!
+# =========================================================================
+
+class MARKET_CODE:
+    """Market codes."""
+    MARKET = "6"  # Construction market (matches IPFE1**6**, IPFE3**6**)
+
+
+# =========================================================================
+# LONG-TERM CONTRACT TYPES
+# =========================================================================
+
+# Long-term contract types (tydrisi) used for special processing
+# Fixed: QAM→QAW per SAS L243
+LTA_TYPES = ["QAW", "QBJ", "QBK", "QBB", "QBM"]
+
+
 # =========================================================================
 # GOLD LAYER OUTPUT SCHEMA - PTF_MVT PIPELINE
 # =========================================================================
 
 # PTF_MVT Gold layer output columns (exact SAS schema)
 # Based on: PTF_MVTS_CONSOLIDATION_MACRO.sas L441-442 (RETAIN statement)
-# NOTE: Future pipelines (EMISSIONS, CAPITAUX) will have their own column lists:
-#       - GOLD_COLUMNS_EMISSIONS
-#       - GOLD_COLUMNS_CAPITAUX
+# 93 columns total
 GOLD_COLUMNS_PTF_MVT = [
     # Primary keys (SAS L441)
     'nopol', 'nopolli1', 'dircom', 'cdpole', 'noint', 'cdprod',
@@ -116,93 +158,6 @@ GOLD_COLUMNS_EMISSIONS_POL = [
 ]
 
 
-
-# =========================================================================
-# MARKET & SEGMENT CODES
-# =========================================================================
-# 
-# IMPORTANT: File naming convention vs Data filtering
-# -----------------------------------------------------
-# 
-# FILE NAMING (Bronze layer):
-#   - IPFE16 = Agent channel (1) + Construction market (6)
-#   - IPFE36 = Courtier channel (3) + Construction market (6)
-#   - First digit: Distribution channel (1=Agent, 3=Courtier)
-#   - Second digit: Market/Product line (6=Construction, 7=Healthcare, etc.)
-# 
-# Example for different markets:
-#   - Construction: IPFE16_*.csv.gz, IPFE36_*.csv.gz
-#   - Healthcare:   IPFE17_*.csv.gz, IPFE37_*.csv.gz  (if existed)
-# 
-# DATA FILTERING (this constant):
-#   - The values below filter the DATA by the 'cmarch' and 'csegt' columns
-#   - These are applied AFTER reading the files
-#   - The filter matches the market code in the file naming
-#   - cmarch="6" means we only process Construction market records
-# 
-# TO CHANGE MARKETS:
-#   1. Update file patterns in reading_config.json (e.g., IPFE17/IPFE37)
-#   2. Update these constants to match the new market code
-#   3. No code changes needed - just configuration!
-# =========================================================================     
-
-class MARKET_CODE:
-    """Market codes."""
-    MARKET = "6"  # market code (matches IPFE1**6**, IPFE3**6**)
-    SEGMENT = "2"  # segment code
-
-# =========================================================================
-# POLICY STATUS CODES
-# =========================================================================
-
-class POLICY_STATUS:
-    """Policy status codes (cdsitp)."""
-    EXCLUDED = ["4", "5"]  # Status to exclude
-
-
-# =========================================================================
-# POLICY NATURE CODES
-# =========================================================================
-
-class POLICY_NATURE:
-    """Policy nature codes (cdnatp)."""
-    VALID = ["R", "O", "T", "C"]  # Valid nature codes
-    TEMPORARY = "T"                # Temporary contracts
-
-
-# =========================================================================
-# RISK INDICATOR
-# =========================================================================
-
-class RISK_INDICATOR:
-    """Risk indicator (cdri)."""
-    EXCLUDED = "X"
-
-
-# =========================================================================
-# COASSURANCE TYPES
-# =========================================================================
-
-class COASSURANCE_TYPE:
-    """Coassurance type codes."""
-    APERITION_CODES = ["3", "6"]
-    ACCEPTEE_CODES = ["4", "5"]
-    INTERNATIONALE_CODE = "8"
-    
-    APERITION_LABEL = "APERITION"
-    ACCEPTEE_LABEL = "COASS. ACCEPTEE"
-    INTERNATIONALE_LABEL = "ACCEPTATION INTERNATIONALE"
-    AUTRES_LABEL = "AUTRES"
-    SANS_LABEL = "SANS COASSURANCE"
-    COASSURANCE_LABEL = "COASSURANCE"
-
-
-# =========================================================================
-# LONG-TERM CONTRACT TYPES
-# =========================================================================
-
-LTA_TYPES = ["QAW", "QBJ", "QBK", "QBB", "QBM"]  # Long-term contract types (tydrisi) - Fixed: QAM→QAW per SAS L243
-
 # =========================================================================
 # GOLD LAYER OUTPUT SCHEMA - CAPITAUX PIPELINE
 # =========================================================================
@@ -224,4 +179,3 @@ GOLD_COLUMNS_CAPITAUX = [
     'value_insured_100', 'perte_exp_100', 'risque_direct_100',
     'smp_100', 'lci_100'
 ]
-

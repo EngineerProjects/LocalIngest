@@ -250,7 +250,7 @@ def enrich_segmentation(
     df: DataFrame,
     reader,
     vision: str,
-    market_filter: str = "6",
+    market_filter: str = None,  # Changed: defaults to MARKET_CODE.MARKET if None
     join_key: str = "cdprod",
     include_cdpole: bool = False,
     logger=None
@@ -267,7 +267,7 @@ def enrich_segmentation(
         df: Input DataFrame
         reader: BronzeReader instance
         vision: Vision string
-        market_filter: Market code filter (default: '6' for construction)
+        market_filter: Market code filter (default: MARKET_CODE.MARKET for construction)
         join_key: Column to join on (default: 'cdprod')
         include_cdpole: If True, join on BOTH cdprod AND cdpole (SAS emissions logic)
         logger: Logger instance
@@ -280,6 +280,11 @@ def enrich_segmentation(
         # For emissions (requires cdpole join):
         df = enrich_segmentation(df, reader, vision, include_cdpole=True, logger=self.logger)
     """
+    # Use MARKET_CODE.MARKET constant if not specified
+    if market_filter is None:
+        from config.constants import MARKET_CODE
+        market_filter = MARKET_CODE.MARKET
+    
     if logger:
         logger.debug("Enriching with segmentation data (SEGMENTPRDT)")
     
