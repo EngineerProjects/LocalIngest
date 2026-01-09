@@ -62,7 +62,7 @@ except Exception as e:
     AZEC_PRODUIT_LIST = []
     AZEC_MIGRATION_CONFIG = {'vision_threshold': 202009, 'transformations': []}
     AZEC_DATE_STATE_UPDATES = []
-    AZEC_MOVEMENT_CONFIG = {'nbafn': {}, 'nbres': {}, 'nbptf': {}'}
+    AZEC_MOVEMENT_CONFIG = {'nbafn': {}, 'nbres': {}, 'nbptf': {}}
     AZEC_SUSPENSION_CALC = {'column': 'nbj_susp_ytd', 'type': 'conditional', 'conditions': [], 'default': 0}
 
     CONSOLIDATION_AZ_HARMONIZATION = {'rename': {}, 'computed': {}}

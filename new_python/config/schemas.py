@@ -432,6 +432,7 @@ CAPITXCU_SCHEMA = StructType([
 # =============================================================================
 AZEC_FORMULE_SCHEMA = StructType([
     StructField("POLICE", StringType(), True),
+    StructField("PRODUIT", StringType(), True),
     StructField("COD_NAF", StringType(), True),
     StructField("FORMULE", StringType(), True),
     StructField("FORMULE2", StringType(), True),
