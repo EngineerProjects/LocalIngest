@@ -19,7 +19,7 @@ from pyspark.sql.types import (
 
 from src.processors.base_processor import BaseProcessor
 from utils.loaders import get_default_loader
-from config.constants import DIRCOM
+from config.constants import DIRCOM, MARKET_CODE
 from utils.helpers import build_layer_path, extract_year_month_int, compute_date_ranges
 from utils.transformations import (
     apply_column_config,
@@ -563,7 +563,7 @@ class AZECProcessor(BaseProcessor):
             raise RuntimeError("LOB reference data is unavailable")
         
         # Filter for construction market only (SAS L134: IF cmarch IN ('6'))
-        lob_ref = lob_ref.filter(col('cmarch') == '6')
+        lob_ref = lob_ref.filter(col('cmarch') == MARKET_CODE.MARKET)
         
         # OPTIMIZATION: Store lob_ref for CONSTRCU enrichment to avoid re-reading
         # SAS creates HASH table once and reuses it (L227: %SEGMENTA)
@@ -613,7 +613,7 @@ class AZECProcessor(BaseProcessor):
         # Python: Explicit filter after join
         
         rows_before = df.count()
-        df = df.filter(col('cmarch') == '6')
+        df = df.filter(col('cmarch') == MARKET_CODE.MARKET)
         rows_after = df.count()
         
         self.logger.info(f"✓ Construction market filter applied: {rows_before:,} → {rows_after:,} rows ({100*(rows_before-rows_after)/rows_before:.1f}% filtered)")

@@ -250,7 +250,7 @@ def enrich_segmentation(
     df: DataFrame,
     reader,
     vision: str,
-    market_filter: str = "6",
+    market_filter: str = None,  # Will default to MARKET_CODE.MARKET if None
     join_key: str = "cdprod",
     include_cdpole: bool = False,
     logger=None
@@ -282,6 +282,11 @@ def enrich_segmentation(
     """
     if logger:
         logger.debug("Enriching with segmentation data (SEGMENTPRDT)")
+    
+    # Default to construction market if not specified
+    if market_filter is None:
+        from config.constants import MARKET_CODE
+        market_filter = MARKET_CODE.MARKET
     
     try:
         df_seg = reader.read_file_group('segmentprdt', vision)
