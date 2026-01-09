@@ -37,6 +37,11 @@ class AZECProcessor(BaseProcessor):
     Reads POLIC_CU/CAPITXCU from bronze, applies transformations, writes to silver.
     All columns are lowercase.
     """
+    
+    def __init__(self, config_loader):
+        """Initialize AZEC processor."""
+        super().__init__(config_loader)
+        self.vision = None  # Will be set in read()
 
     def read(self, vision: str) -> DataFrame:
         """
@@ -48,6 +53,7 @@ class AZECProcessor(BaseProcessor):
         Returns:
             POLIC_CU DataFrame with DTECHANM calculated (lowercase columns)
         """
+        self.vision = vision  # Store for use in transform()
         reader = get_bronze_reader(self)
 
         self.logger.info("Reading POLIC_CU file")
