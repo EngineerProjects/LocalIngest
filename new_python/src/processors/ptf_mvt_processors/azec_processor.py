@@ -117,7 +117,7 @@ class AZECProcessor(BaseProcessor):
 
         # Step 8: Calculate exposures
         self.logger.step(7, "Calculating exposures")
-        df = self._calculate_exposures(df, dates)
+        df = self._calculate_exposures(df, dates, vision)
         
         # Step 8.5: Cleanup DT_DEB_EXPO/DT_FIN_EXPO when EXPO_YTD = 0 (SAS L374-380)
         self.logger.step(7.5, "Cleaning up exposure dates when EXPO_YTD = 0")
@@ -337,13 +337,14 @@ class AZECProcessor(BaseProcessor):
 
         return df
 
-    def _calculate_exposures(self, df: DataFrame, dates: dict) -> DataFrame:
+    def _calculate_exposures(self, df: DataFrame, dates: dict, vision: str) -> DataFrame:
         """
         Calculate exposure metrics (config-driven).
         
         Args:
             df: AZEC DataFrame
             dates: Date range dictionary
+            vision: Vision in YYYYMM format
         
         Returns:
             DataFrame with exposure metrics calculated
@@ -351,7 +352,7 @@ class AZECProcessor(BaseProcessor):
         from config.variables import EXPOSURE_COLUMN_MAPPING
         from utils.transformations import calculate_exposures
         
-        year_int, _ = extract_year_month_int(dates.get('vision', '202509'))
+        year_int, _ = extract_year_month_int(vision)
         return calculate_exposures(df, dates, year_int, EXPOSURE_COLUMN_MAPPING['azec'])
 
     def _join_capitals(self, df: DataFrame, vision: str) -> DataFrame:
