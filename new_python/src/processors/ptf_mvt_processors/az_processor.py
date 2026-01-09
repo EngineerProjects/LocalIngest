@@ -401,23 +401,11 @@ class AZProcessor(BaseProcessor):
         )
         
         # Debug: Check if upper_mid was successfully enriched
-        # Handle both 'upper_mid' (lowercase) and 'Upper_MID' (SAS case)
-        upper_mid_col = None
-        for col_name in df.columns:
-            if col_name.lower() == 'upper_mid':
-                upper_mid_col = col_name
-                break
-        
-        if upper_mid_col:
-            upper_mid_count = df.filter(col(upper_mid_col).isNotNull()).count()
+        if 'upper_mid' in df.columns:
+            upper_mid_count = df.filter(col('upper_mid').isNotNull()).count()
             total_count = df.count()
             self.logger.info(f"✓ upper_mid enrichment: {upper_mid_count}/{total_count} non-null ({100*upper_mid_count/total_count:.1f}%)")
-            # Normalize to lowercase if needed
-            if upper_mid_col != 'upper_mid':
-                df = df.withColumnRenamed(upper_mid_col, 'upper_mid')
-                self.logger.debug(f"Normalized column: {upper_mid_col} → upper_mid")
         else:
             self.logger.warning("⚠️ upper_mid column not found after join!")
-        
         
         return df

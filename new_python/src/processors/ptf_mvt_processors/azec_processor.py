@@ -19,7 +19,7 @@ from pyspark.sql.types import (
 
 from src.processors.base_processor import BaseProcessor
 from utils.loaders import get_default_loader
-from config.constants import DIRCOM, MARKET_CODE
+from config.constants import DIRCOM
 from utils.helpers import build_layer_path, extract_year_month_int, compute_date_ranges
 from utils.transformations import (
     apply_column_config,
@@ -37,11 +37,6 @@ class AZECProcessor(BaseProcessor):
     Reads POLIC_CU/CAPITXCU from bronze, applies transformations, writes to silver.
     All columns are lowercase.
     """
-    
-    def __init__(self, config_loader):
-        """Initialize AZEC processor."""
-        super().__init__(config_loader)
-        self.vision = None  # Will be set in read()
 
     def read(self, vision: str) -> DataFrame:
         """
@@ -53,7 +48,6 @@ class AZECProcessor(BaseProcessor):
         Returns:
             POLIC_CU DataFrame with DTECHANM calculated (lowercase columns)
         """
-        self.vision = vision  # Store for use in transform()
         reader = get_bronze_reader(self)
 
         self.logger.info("Reading POLIC_CU file")
@@ -556,32 +550,39 @@ class AZECProcessor(BaseProcessor):
         # SAS uses HASH table from LOB dataset filtered for construction (cmarch='6')
         # Python equivalent: read LOB and join on produit
         
-        # CRITICAL FIX: Use segmentprdt instead of LOB (like AZ processor)
-        # segmentprdt_202509.csv exists on server, LOB might not
         try:
-            lob_ref = reader.read_file_group('segmentprdt', self.vision)
-            self.logger.info(f"✓ Read segmentprdt for vision {self.vision}")
+            lob_ref = reader.read_file_group('lob', 'ref')
         except FileNotFoundError as e:
-            self.logger.error("CRITICAL: segmentprdt table is REQUIRED for AZEC segmentation")
-            self.logger.error(f"Cannot find segmentprdt for vision {self.vision}: {e}")
-            raise RuntimeError(f"Missing required segmentprdt reference table for vision {self.vision}") from e
+            self.logger.error("CRITICAL: LOB table is REQUIRED for AZEC segmentation")
+            self.logger.error(f"Cannot find LOB: {e}")
+            self.logger.error("This matches SAS behavior which would fail with 'File does not exist'")
+            raise RuntimeError("Missing required LOB reference table for segmentation") from e
         
         if lob_ref is None:
             self.logger.error("CRITICAL: LOB returned None")
             raise RuntimeError("LOB reference data is unavailable")
         
         # Filter for construction market only (SAS L134: IF cmarch IN ('6'))
-        lob_ref = lob_ref.filter(col('cmarch') == MARKET_CODE.MARKET)
+        lob_ref = lob_ref.filter(col('cmarch') == '6')
         
-        # Select segmentation columns from segmentprdt
-        # segmentprdt provides: cprod, cdpole, cmarch, cseg, cssseg
-        # AZEC doesn't have cdpole yet (added in consolidation), so join on cprod only
+        # OPTIMIZATION: Store lob_ref for CONSTRCU enrichment to avoid re-reading
+        # SAS creates HASH table once and reuses it (L227: %SEGMENTA)
+        self._lob_construction_ref = lob_ref  # Cache for CONSTRCU enrichment
+        
+        # Select segmentation columns from LOB (SAS L80-83)
+        # LOB provides: CDPROD, CPROD, cmarch, lmarch, cseg, lseg, cssseg, lssseg, segment
         lob_select = lob_ref.select(
-            'cprod',    # Join key (product code)
+            'produit',  # Join key
+            'cdprod',   # Product code
+            'cprod',    # Product code variant
             'cmarch',   # Market code (='6' for construction)
+            'lmarch',   # Market label
             'cseg',     # Segment code
-            'cssseg'    # Sub-segment code
-        ).dropDuplicates(['cprod'])
+            'lseg',     # Segment label
+            'cssseg',   # Sub-segment code
+            'lssseg',   # Sub-segment label
+            'segment'   # Segment name
+        ).dropDuplicates(['produit'])
         
         # ================================================================
         # STEP 2: Join LOB on PRODUIT (SAS L228-230, L288-289)
@@ -589,20 +590,20 @@ class AZECProcessor(BaseProcessor):
         # SAS: Uses HASH table lookup in DATA step
         # Python: LEFT JOIN to preserve all AZEC records
         
-        # Join segmentprdt on produit (AZEC) = cprod (segmentprdt)
         df = df.alias('a').join(
-            lob_select.alias('s'),
-            col('a.produit') == col('s.cprod'),
+            lob_select.alias('l'),
+            col('a.produit') == col('l.produit'),
             how='left'
         ).select(
             'a.*',  # Keep all AZEC columns
-            # Add segmentation columns from segmentprdt
-            's.cmarch',   # Market code
-            's.cseg',     # Segment code
-            's.cssseg'    # Sub-segment code
+            # CRITICAL: Do NOT select 'l.cdprod' here!
+            # AZEC keeps 'produit' which gets renamed to 'cdprod' during consolidation
+            # Adding 'cdprod' here causes duplication error during union with AZ
+            'l.cprod', 'l.cmarch', 'l.lmarch',
+            'l.cseg', 'l.lseg', 'l.cssseg', 'l.lssseg', 'l.segment'
         )
         
-        self.logger.info("✓ segmentprdt joined (cmarch, cseg, cssseg)")
+        self.logger.info("✓ LOB segmentation joined (cmarch, cseg, cssseg, segment)")
         
         # ================================================================
         # CRITICAL: Filter for construction market ONLY (SAS L134)
@@ -612,28 +613,90 @@ class AZECProcessor(BaseProcessor):
         # Python: Explicit filter after join
         
         rows_before = df.count()
-        df = df.filter(col('cmarch') == MARKET_CODE.MARKET)
+        df = df.filter(col('cmarch') == '6')
         rows_after = df.count()
         
         self.logger.info(f"✓ Construction market filter applied: {rows_before:,} → {rows_after:,} rows ({100*(rows_before-rows_after)/rows_before:.1f}% filtered)")
         
-        # IMPORTANT: CONSTRCU enrichment requires LOB table with segment/lssseg columns
-        # Since we switched to segmentprdt (which only has cmarch/cseg/cssseg),
-        # we cannot enrich Type_Produit_2 from CONSTRCU here
-        # This is acceptable because:
-        # 1. Type_Produit_2 is NOT in the final GOLD output columns
-        # 2. It's only used for internal segmentation (Segment_3)
-        # 3. Consolidation processor doesn't require it
+        # ================================================================        
+        # ================================================================
+        # STEP 3: Enrich Type_Produit from CONSTRCU (built on-the-fly)
+        # ================================================================
+        # Instead of reading a preprocessed CONSTRCU_AZEC file, we build it automatically
+        # This matches SAS REF_segmentation_azec.sas logic but done in the pipeline
         
-        # Add NULL columns as placeholders
-        self.logger.info("Adding NULL placeholders for type_produit_2, segment_2 (CONSTRCU enrichment skipped)")
-        from utils.processor_helpers import add_null_columns
-        df = add_null_columns(df, {
-            'type_produit_2': StringType,
-            'segment_2': StringType
-        })
+        try:
+            # Read raw CONSTRCU data
+            constrcu_raw = reader.read_file_group('constrcu_azec', vision='ref')
+            
+            if constrcu_raw is not None:
+                self.logger.info("Building CONSTRCU enrichment on-the-fly (SAS REF_segmentation_azec.sas)")
+                
+                # OPTIMIZATION: Reuse LOB reference from above instead of reading again
+                # SAS does this efficiently with HASH table (L227: %SEGMENTA) - created once, used multiple times
+                # Python: Reuse self._lob_construction_ref that was already filtered for construction market
+                
+                # Join CONSTRCU with LOB to get CDPROD and SEGMENT (SAS L227: %SEGMENTA)
+                constrcu_enriched = constrcu_raw.alias('c').join(
+                    self._lob_construction_ref.alias('l').select('produit', 'cdprod', 'segment', 'lssseg'),
+                    col('c.produit') == col('l.produit'),
+                    how='left'
+                ).select(
+                    col('c.police'),
+                    col('c.produit'),
+                    col('l.cdprod'),     # From LOB
+                    col('l.segment'),    # From LOB
+                    col('l.lssseg')      # For TYPE_PRODUIT calculation
+                )
+                
+                # Calculate TYPE_PRODUIT (SAS L329-333)
+                constrcu_enriched = constrcu_enriched.withColumn('type_produit',
+                    when(col('lssseg') == 'TOUS RISQUES CHANTIERS', lit('TRC'))
+                    .when(col('lssseg') == 'DOMMAGES OUVRAGES', lit('DO'))
+                    .when(col('produit') == 'RCC', lit('Entreprises'))
+                    .otherwise(lit('Autres'))
+                )
+                
+                # Select final columns for join
+                constrcu_select = constrcu_enriched.select(
+                    'police',
+                    'cdprod',
+                    col('type_produit').alias('type_produit_constr'),
+                    col('segment').alias('segment_constr')
+                ).dropDuplicates(['police', 'cdprod'])
+                
+                # Left join: AZEC.produit = CONSTRCU.cdprod (SAS L484)
+                df = df.alias('a').join(
+                    constrcu_select.alias('c'),
+                    (col('a.police') == col('c.police')) & 
+                    (col('a.produit') == col('c.cdprod')),
+                    how='left'
+                ).select(
+                    'a.*',
+                    col('c.type_produit_constr').alias('type_produit_2'),
+                    col('c.segment_constr').alias('segment_2')
+                )
+                
+                self.logger.info("✓ CONSTRCU enrichment built and applied (type_produit_2, segment_2)")
+                
+            else:
+                self.logger.warning("CONSTRCU not available - type_produit_2 will be NULL")
+                from utils.processor_helpers import add_null_columns
+                df = add_null_columns(df, {
+                    'type_produit_2': StringType,
+                    'segment_2': StringType
+                })
+                
+        except Exception as e:
+            self.logger.warning(f"CONSTRCU enrichment failed: {e}")
+            self.logger.info("Adding NULL columns for type_produit_2 and segment_2")
+            from utils.processor_helpers import add_null_columns
+            df = add_null_columns(df, {
+                'type_produit_2': StringType,
+                'segment_2': StringType
+            })
         
-        self.logger.info("✓ AZEC segmentation complete (segmentprdt)")
+        self.logger.info("✓ AZEC segmentation complete (LOB + CONSTRCU_AZEC)")
         return df
 
     def _enrich_region(self, df: DataFrame) -> DataFrame:
