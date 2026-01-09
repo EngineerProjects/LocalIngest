@@ -22,7 +22,7 @@ runtime:
 # Azure Data Lake Storage configuration
 datalake:
   # Base path (override via environment: DATALAKE_BASE_PATH)
-  base_path: "dfs://datalake"
+  base_path: abfs://shared@azfrdatalab.dfs.core.windows.net/ABR/P4D/ADC/DATAMARTS/CONSTRUCTION/
 
   # Path template for all layers : {base_path}, {layer}, {year}, {month}
   path_template: "{base_path}/{layer}/{year}/{month}"

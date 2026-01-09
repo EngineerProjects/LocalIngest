@@ -553,12 +553,12 @@ class AZECProcessor(BaseProcessor):
         # CRITICAL FIX: Use segmentprdt instead of LOB (like AZ processor)
         # segmentprdt_202509.csv exists on server, LOB might not
         try:
-            lob_ref = reader.read_file_group('segmentprdt', vision)
-            self.logger.info(f"✓ Read segmentprdt for vision {vision}")
+            lob_ref = reader.read_file_group('segmentprdt', self.vision)
+            self.logger.info(f"✓ Read segmentprdt for vision {self.vision}")
         except FileNotFoundError as e:
             self.logger.error("CRITICAL: segmentprdt table is REQUIRED for AZEC segmentation")
-            self.logger.error(f"Cannot find segmentprdt for vision {vision}: {e}")
-            raise RuntimeError(f"Missing required segmentprdt reference table for vision {vision}") from e
+            self.logger.error(f"Cannot find segmentprdt for vision {self.vision}: {e}")
+            raise RuntimeError(f"Missing required segmentprdt reference table for vision {self.vision}") from e
         
         if lob_ref is None:
             self.logger.error("CRITICAL: LOB returned None")
