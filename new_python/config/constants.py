@@ -37,34 +37,46 @@ class POLE:
     COURTAGE = "3"      # Courtage
 
 
-# ============================================================================
-# Market Code
-# ============================================================================
+# =========================================================================
+# MARKET & SEGMENT CODES
+# =========================================================================
+# 
+# IMPORTANT: File naming convention vs Data filtering
+# -----------------------------------------------------
+# 
+# FILE NAMING (Bronze layer):
+#   - IPFE16 = Agent channel (1) + Construction market (6)
+#   - IPFE36 = Courtier channel (3) + Construction market (6)
+#   - First digit: Distribution channel (1=Agent, 3=Courtier)
+#   - Second digit: Market/Product line (6=Construction, 7=Healthcare, etc.)
+# 
+# Example for different markets:
+#   - Construction: IPFE16_*.csv.gz, IPFE36_*.csv.gz
+#   - Healthcare:   IPFE17_*.csv.gz, IPFE37_*.csv.gz  (if existed)
+# 
+# DATA FILTERING (this constant):
+#   - The values below filter the DATA by the 'cmarch' and 'csegt' columns
+#   - These are applied AFTER reading the files
+#   - The filter matches the market code in the file naming
+#   - cmarch="6" means we only process Construction market records
+# 
+# TO CHANGE MARKETS:
+#   1. Update file patterns in reading_config.json (e.g., IPFE17/IPFE37)
+#   2. Update these constants to match the new market code
+#   3. No code changes needed - just configuration!
+# =========================================================================     
 
 class MARKET_CODE:
-    """
-    Market codes - SAS: CMARCH column values.
-    
-    '6' = Construction market (only market we process)
-    """
-    MARKET = "6"  # Construction market
+    """Market codes."""
+    MARKET = "6"  # market code (matches IPFE1**6**, IPFE3**6**)
+    SEGMENT = "2"  # segment code
 
+# =========================================================================
+# LONG-TERM CONTRACT TYPES
+# =========================================================================
 
-# ============================================================================
-# LTA Types (Ligne de Travaux Assurés)
-# ============================================================================
+LTA_TYPES = ["QAW", "QBJ", "QBK", "QBB", "QBM"]  # Long-term contract types (tydrisi) - Fixed: QAM→QAW per SAS L243
 
-class LTA_TYPES:
-    """
-    LTA (Ligne de Travaux Assurés) type codes.
-    
-    Used in AZ processor for filtering specific line types.
-    Based on SAS CDTYPLI columns.
-    """
-    AFN = "AFN"  # Affaires Nouvelles
-    RES = "RES"  # Résiliations
-    RPT = "RPT"  # Remplacements
-    RPC = "RPC"  # Remplacements Complets
 
 
 # ============================================================================

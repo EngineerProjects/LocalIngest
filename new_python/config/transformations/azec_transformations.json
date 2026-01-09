@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "description": "AZEC transformation configurations - extracted from variables.py",
+  "description": "AZEC transformation configurations - matches SAS PTF_MVTS_AZEC_MACRO.sas",
   "column_selection": {
-    "description": "Columns to select from AZEC bronze data",
+    "description": "Columns to select from AZEC bronze data - SAS L55-79",
     "passthrough": [
       "police",
       "produit",
@@ -42,15 +42,18 @@
     "computed": {
       "partcie": {
         "type": "arithmetic",
-        "expression": "partbrut / 100.0"
+        "expression": "partbrut / 100.0",
+        "comment": "SAS L62"
       },
       "top_lta": {
         "type": "flag",
-        "condition": "duree not in ['00', '01', '', ' ']"
+        "condition": "duree not in ['00', '01', '', ' ']",
+        "comment": "SAS L76"
       },
       "top_revisable": {
         "type": "flag",
-        "condition": "indregul == 'O'"
+        "condition": "indregul == 'O'",
+        "comment": "SAS L77"
       }
     },
     "metadata": {
@@ -60,7 +63,7 @@
     }
   },
   "date_state_updates": {
-    "description": "Date and state corrections for AZEC contracts",
+    "description": "Date and state corrections for AZEC contracts - SAS L113-137",
     "updates": [
       {
         "column": "datexpir",
@@ -68,7 +71,8 @@
         "conditions": [
           {
             "check": "(datfin > datexpir) & (etatpol.isin(['X', 'R']))",
-            "result_col": "datterme"
+            "result_col": "datterme",
+            "comment": "SAS L113-115"
           }
         ],
         "default": null
@@ -80,12 +84,12 @@
           {
             "check": "(duree == '01') and (finpol is null) and (datterme is not null) and (datterme < DATE_ONE_YEAR_AGO)",
             "result": "R",
-            "description": "Tacit renewal contracts not invoiced for >1 year → mark as terminated"
+            "description": "Tacit renewal contracts not invoiced for >1 year → mark as terminated - SAS L127-132"
           },
           {
             "check": "(finpol is not null) and (datfin is null)",
             "result": "R",
-            "description": "Temporary contracts - set ETATPOL = R"
+            "description": "Temporary contracts - set ETATPOL = R - SAS L135-137"
           }
         ],
         "default": null
@@ -96,11 +100,13 @@
         "conditions": [
           {
             "check": "(duree == '01') and (finpol is null) and (datterme is not null) and (datterme < DATE_ONE_YEAR_AGO)",
-            "result_col": "datterme"
+            "result_col": "datterme",
+            "comment": "SAS L127-132"
           },
           {
             "check": "(finpol is not null) and (datfin is null)",
-            "result_col": "finpol"
+            "result_col": "finpol",
+            "comment": "SAS L135-137"
           }
         ],
         "default": null
@@ -111,11 +117,13 @@
         "conditions": [
           {
             "check": "(duree == '01') and (finpol is null) and (datterme is not null) and (datterme < DATE_ONE_YEAR_AGO)",
-            "result_col": "datterme"
+            "result_col": "datterme",
+            "comment": "SAS L127-132"
           },
           {
             "check": "(finpol is not null) and (datfin is null)",
-            "result_col": "finpol"
+            "result_col": "finpol",
+            "comment": "SAS L135-137"
           }
         ],
         "default": null
@@ -123,7 +131,7 @@
     ]
   },
   "migration_handling": {
-    "description": "AZEC migration from AZ - applied only for vision > 202009",
+    "description": "AZEC migration from AZ - applied only for vision > 202009 - SAS L94-106",
     "vision_threshold": 202009,
     "transformations": [
       {
@@ -134,7 +142,7 @@
     ]
   },
   "capital_mapping": {
-    "description": "AZEC capital extraction from branch-specific data",
+    "description": "AZEC capital extraction from CAPITXCU - SAS L387-408",
     "mappings": [
       {
         "target": "lci_pe_100",
@@ -195,7 +203,7 @@
     ]
   },
   "product_list": {
-    "description": "AZEC-specific product codes for movement calculations (SAS L43: %let produit)",
+    "description": "AZEC-specific product codes for movement calculations - SAS L43",
     "products": [
       "A00",
       "A01",
@@ -247,7 +255,7 @@
     ]
   },
   "movement_calculation": {
-    "description": "AZEC movement logic (AFN, RES, PTF) - product-specific rules",
+    "description": "AZEC movement logic (AFN, RES, PTF) - product-specific rules - SAS L144-172",
     "nbafn": {
       "base_conditions": [
         "etatpol == 'R'",
@@ -257,7 +265,8 @@
       "produit_specific": {
         "in_produit_list": "month(datafn) <= MOIS and year(datafn) == ANNEE",
         "not_in_produit_list": "((DTDEB_AN <= effetpol <= DTFINMN) and (datafn <= DTFINMN)) OR ((effetpol < DTDEB_AN) and (DTDEB_AN <= datafn <= DTFINMN))"
-      }
+      },
+      "comment": "SAS L144-152"
     },
     "nbres": {
       "base_conditions": [
@@ -268,7 +277,8 @@
       "produit_specific": {
         "in_produit_list": "month(datresil) <= MOIS and year(datresil) == ANNEE",
         "not_in_produit_list": "((DTDEB_AN <= datfin <= DTFINMN) and (datresil <= DTFINMN)) OR ((datfin <= DTFINMN) and (DTDEB_AN <= datresil <= DTFINMN))"
-      }
+      },
+      "comment": "SAS L154-163"
     },
     "nbptf": {
       "conditions": [
@@ -278,11 +288,12 @@
         "(datfin is null) OR (datfin > DTFINMN) OR (datresil > DTFINMN)",
         "(etatpol == 'E') OR ((etatpol == 'R') and (datfin >= DTFINMN))",
         "produit not in ['DO0', 'TRC', 'CTR', 'CNR']"
-      ]
+      ],
+      "comment": "SAS L166-172"
     }
   },
   "suspension_calculation": {
-    "description": "Number of days suspended during year-to-date period",
+    "description": "Number of days suspended during year-to-date period - SAS L189-196",
     "column": "nbj_susp_ytd",
     "type": "conditional",
     "conditions": [
@@ -298,16 +309,16 @@
     "default": 0
   },
   "business_filters": {
-    "description": "Business filters to apply during AZEC processing - SAS: PTF_MVTS_AZEC_MACRO.sas",
+    "description": "Business filters to apply during AZEC processing - SAS L81-85",
     "excluded_intermed": {
-      "description": "Excluded AZEC intermediaries (SAS L37: codes courtiers fictifs)",
+      "description": "Excluded AZEC intermediaries",
       "values": [
         "24050",
         "40490"
       ]
     },
     "excluded_police": {
-      "description": "Excluded AZEC policies (SAS L37: police fictive)",
+      "description": "Excluded AZEC policies",
       "values": [
         "012684940"
       ]
@@ -320,7 +331,7 @@
           "24050",
           "40490"
         ],
-        "description": "Exclude fictitious intermediaries (SAS L81) - FIXED to match SAS exactly"
+        "description": "Exclude fictitious intermediaries - SAS L81"
       },
       {
         "type": "not_in",
@@ -328,28 +339,28 @@
         "values": [
           "012684940"
         ],
-        "description": "Exclude specific policies (SAS: Not In ('012684940'))"
+        "description": "Exclude fictitious policies - SAS L82"
       },
       {
         "type": "complex",
         "expression": "~((duree == '00') & ~produit.isin(['DO0', 'TRC', 'CTR', 'CNR']))",
-        "description": "Exclude temporaries except specific products"
+        "description": "Exclude temporaries except specific products - SAS L83"
       },
       {
         "type": "not_equals_column",
         "column": "datfin",
         "compare_column": "effetpol",
-        "description": "Exclude contracts without effect"
+        "description": "Exclude contracts without effect - SAS L84"
       },
       {
         "type": "complex",
         "expression": "(gestsit != 'MIGRAZ') | ((gestsit == 'MIGRAZ') & (etatpol == 'R'))",
-        "description": "Gestsit migration logic"
+        "description": "Gestsit migration logic - SAS L85"
       }
     ]
   },
   "initialization": {
-    "description": "Initialize columns with default values",
+    "description": "Initialize columns with default values - SAS L64-79",
     "columns": {
       "nbptf": 0,
       "nbafn": 0,

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "description": "Business rules and filters for AZ and AZEC data processing",
   "coassurance_config": {
-    "description": "Coassurance calculation rules",
+    "description": "Coassurance calculation rules - SAS PTF_MVTS_AZ_MACRO.sas L63-77",
     "top_coass": {
       "description": "Flag to indicate if contract is in coassurance",
       "conditions": [
@@ -71,7 +71,7 @@
       "description": "Company participation percentage calculation",
       "conditions": [
         {
-          "col": "cdpolgp1",
+          "col": "cdpolqpl",
           "op": "!=",
           "value": "1",
           "result": 1.0
@@ -80,7 +80,7 @@
           "col": "cdpolqpl",
           "op": "==",
           "value": "1",
-          "result_expr": "prcdci / 100.0"
+          "result_expr": "prcdcie / 100.0"
         }
       ],
       "default": 1.0
@@ -101,7 +101,7 @@
   "business_filters": {
     "description": "Business filters to apply on AZ and AZEC data",
     "az": {
-      "description": "AZ (Agent + Courtage) business filters - Construction market",
+      "description": "AZ (Agent + Courtage) business filters - SAS PTF_MVTS_AZ_MACRO.sas L40-48",
       "filters": [
         {
           "type": "not_equals",
@@ -143,7 +143,7 @@
             "4A1900",
             "4L1010"
           ],
-          "description": "Exclude specific intermediaries (SAS L42-44) - FIXED to match SAS exactly"
+          "description": "Exclude specific intermediaries"
         },
         {
           "type": "not_equals",
@@ -217,104 +217,8 @@
       ]
     }
   },
-  "az_transform_steps": {
-    "description": "Generic transformation steps for AZ processor",
-    "steps": [
-      {
-        "column": "primeto",
-        "type": "arithmetic",
-        "expression": "mtprprto * (1 - tx / 100.0)",
-        "description": "Calculate net premium"
-      },
-      {
-        "column": "top_lta",
-        "type": "flag",
-        "condition": "ctduree > 1 and tydrisi in LTA_TYPES",
-        "description": "Long term agreement flag"
-      },
-      {
-        "column": "mtca",
-        "type": "coalesce_default",
-        "source": "mtca",
-        "default": 0,
-        "description": "Coalesce CA to 0 if null"
-      },
-      {
-        "column": "mtcaf",
-        "type": "coalesce_default",
-        "source": "mtcaf",
-        "default": 0,
-        "description": "Coalesce CAF to 0 if null"
-      },
-      {
-        "column": "mtca_",
-        "type": "arithmetic",
-        "expression": "mtcaf + mtca",
-        "description": "Total CA calculation"
-      },
-      {
-        "column": "top_aop",
-        "type": "flag",
-        "condition": "opapoffr == 'O'",
-        "description": "AOP flag (Offre Apporteur)"
-      },
-      {
-        "column": "top_temp",
-        "type": "flag",
-        "condition": "cdnatp == 'T'",
-        "description": "Temporary policy flag (SAS L288-291)"
-      },
-      {
-        "column": "nbafn_anticipe",
-        "type": "flag",
-        "condition": "(dteffan > FINMOIS or dtcrepol > FINMOIS) and not (cdtypli1 == 'RE' or cdtypli2 == 'RE' or cdtypli3 == 'RE')",
-        "description": "Anticipated new business flag"
-      },
-      {
-        "column": "nbres_anticipe",
-        "type": "flag",
-        "condition": "dtresilp > FINMOIS and not (cdtypli1 == 'RP' or cdtypli2 == 'RP' or cdtypli3 == 'RP' or cdmotres == 'R' or cdcasres == '2R')",
-        "description": "Anticipated termination flag - excludes replacements and specific resolution codes (SAS L352-355)"
-      },
-      {
-        "column": "nmclt",
-        "type": "cleanup",
-        "source": "nmclt",
-        "null_values": [
-          null,
-          " "
-        ],
-        "replacement": "nmacta",
-        "description": "Client name cleanup - use actor name if client name is null"
-      },
-      {
-        "column": "prcdcie",
-        "type": "conditional",
-        "conditions": [
-          {
-            "check": "prcdcie is null or prcdcie == 0",
-            "result": 100.0
-          }
-        ],
-        "default": null,
-        "description": "Default company percentage to 100 when null/0"
-      },
-      {
-        "column": "cotis_100",
-        "type": "conditional",
-        "conditions": [
-          {
-            "check": "top_coass == 1 and cdcoas in ['4', '5']",
-            "result_expr": "(mtprprto * 100.0) / coalesce(prcdcie, 100.0)"
-          }
-        ],
-        "default_expr": "mtprprto",
-        "description": "100% premium calculation for accepted coassurance (safe division with coalesce)"
-      }
-    ]
-  },
   "lta_types": {
-    "description": "Long term agreement risk types - SAS L243: tydris1 in (QAW, QBJ, QBK, QBB, QBM)",
+    "description": "Long term agreement risk types - SAS L242-243",
     "types": [
       "QAW",
       "QBJ",

@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "description": "AZ transformation configurations - extracted from variables.py",
+  "description": "AZ transformation configurations - Corrected to match SAS PTF_MVTS_AZ_MACRO.sas",
   "column_selection": {
-    "description": "Columns to select from AZ bronze data - SAS: PTF_MVTS_AZ_MACRO.sas L30-80",
+    "description": "Columns to select from AZ bronze data - SAS: PTF_MVTS_AZ_MACRO.sas L54-115",
     "passthrough": [
       "cdprod",
       "nopol",
@@ -26,43 +26,16 @@
       "cmarch",
       "cdsitp",
       "mtprprto",
-      "prdccie",
+      "prcdcie",
       "cdri",
+      "cdcieori",
+      "cdsitmgr",
       "cdgecent",
       "cdmotres",
       "cdpolrvi",
       "nopolli1",
       "cdcasres",
       "dtechann",
-      "dtefsitt",
-      "cdprvb1",
-      "cdprvb2",
-      "cdprvb3",
-      "cdprvb4",
-      "cdprvb5",
-      "cdprvb6",
-      "cdprvb7",
-      "cdprvb8",
-      "cdprvb9",
-      "cdprvb10",
-      "cdprvb11",
-      "cdprvb12",
-      "cdprvb13",
-      "cdprvb14",
-      "prprvc1",
-      "prprvc2",
-      "prprvc3",
-      "prprvc4",
-      "prprvc5",
-      "prprvc6",
-      "prprvc7",
-      "prprvc8",
-      "prprvc9",
-      "prprvc10",
-      "prprvc11",
-      "prprvc12",
-      "prprvc13",
-      "prprvc14",
       "cdfract",
       "quarisq",
       "nmrisq",
@@ -73,38 +46,6 @@
       "posrisq",
       "vilrisq",
       "cdreg",
-      "ctdefttra",
-      "ctprvtrv",
-      "dtouchm",
-      "dtrcppr",
-      "dtrectrx",
-      "dtrcppre",
-      "lbnattrv",
-      "dstcsc",
-      "lbolisou",
-      "actprim",
-      "mtsmpr",
-      "cdnaf",
-      "cdtre",
-      "cdactpro",
-      "fncmaca",
-      "mtcaf",
-      "tydris1",
-      "opapoffr",
-      "lbcapi1",
-      "lbcapi2",
-      "lbcapi3",
-      "lbcapi4",
-      "lbcapi5",
-      "lbcapi6",
-      "lbcapi7",
-      "lbcapi8",
-      "lbcapi9",
-      "lbcapi10",
-      "lbcapi11",
-      "lbcapi12",
-      "lbcapi13",
-      "lbcapi14",
       "mtcapi1",
       "mtcapi2",
       "mtcapi3",
@@ -119,8 +60,39 @@
       "mtcapi12",
       "mtcapi13",
       "mtcapi14",
+      "lbcapi1",
+      "lbcapi2",
+      "lbcapi3",
+      "lbcapi4",
+      "lbcapi5",
+      "lbcapi6",
+      "lbcapi7",
+      "lbcapi8",
+      "lbcapi9",
+      "lbcapi10",
+      "lbcapi11",
+      "lbcapi12",
+      "lbcapi13",
+      "lbcapi14",
+      "ctdeftra",
+      "ctprvtrv",
+      "dtouchan",
+      "dtrcppr",
+      "dtrectrx",
+      "dtrcpre",
+      "lbnattrv",
+      "dstcsc",
+      "lbqltsou",
+      "actprin",
+      "mtsmpr",
+      "cdnaf",
+      "cdtre",
+      "cdactpro",
+      "fncmaca",
+      "mtcaf",
+      "tydris1",
+      "opapoffr",
       "cdpolqpl",
-      "prcdcie",
       "cdgrev"
     ],
     "rename": {
@@ -131,7 +103,6 @@
       "csegt": "cseg",
       "cssegt": "cssseg",
       "cdtpcoa": "cdcoas",
-      "prdccie": "prcie",
       "fncmaca": "mtca"
     },
     "computed": {
@@ -160,49 +131,29 @@
         "SMP RETENU",
         "SINISTRE MAXIMUM POSSIBLE"
       ],
-      "exclude_keywords": [
-        "RISQUE DIRECT",
-        "PERTE EXPLOIT"
-      ],
       "label_prefix": "lbcapi",
       "amount_prefix": "mtcapi",
-      "num_indices": 14,
-      "comment": "SAS L195-199: SMP extraction without RISQUE DIRECT or PERTE EXPLOIT variants"
+      "num_indices": 14
     },
     "lci_100": {
       "keywords": [
         "LCI GLOBAL DU CONTRAT",
         "CAPITAL REFERENCE OU LCI",
         "LCI IRD (DOM. DIRECTS+P.EXPLOIT)",
-        "LIMITE CONTRACTUELLE INDEMNITE",
-        "LCI GLOBALE",
-        "LCI TOTAL"
+        "LIMITE CONTRACTUELLE INDEMNITE"
       ],
-      "exclude_keywords": [],
       "label_prefix": "lbcapi",
       "amount_prefix": "mtcapi",
       "num_indices": 14
     },
-    "smp_cie": {
+    "risque_direct": {
       "keywords": [
-        "SMP COMPAGNIE",
-        "SMP CIE",
-        "SINIS MAX POSSIBLE COMPAGNIE"
+        "RISQUE DIRECT",
+        "CAPITAUX DOMMAGES DIR"
       ],
       "exclude_keywords": [
-        "RISQUE DIRECT"
+        "SINIS MAX POSSIBLE RISQUE DIRECT"
       ],
-      "label_prefix": "lbcapi",
-      "amount_prefix": "mtcapi",
-      "num_indices": 14
-    },
-    "lci_cie": {
-      "keywords": [
-        "LCI COMPAGNIE",
-        "LCI CIE",
-        "LIMITE CONTRACTUELLE CIE"
-      ],
-      "exclude_keywords": [],
       "label_prefix": "lbcapi",
       "amount_prefix": "mtcapi",
       "num_indices": 14
@@ -216,128 +167,17 @@
         "CAPITAUX TOTAUX P.E.",
         "PERTE EXPLOITATION/AUT. DOM. MAT",
         "PERTES D'EXPLOITATION",
-        "PERTES EXPLOITATION",
-        "PE TOTALE",
-        "CAPITAUX PE"
+        "PERTES EXPLOITATION"
       ],
-      "exclude_keywords": [],
-      "label_prefix": "lbcapi",
-      "amount_prefix": "mtcapi",
-      "num_indices": 14,
-      "comment": "SAS L220-230: All PERTE EXPLOITATION variants including /AUT. DOM. MAT (added 2020.02.18)"
-    },
-    "risque_direct": {
-      "keywords": [
-        "RISQUE DIRECT",
-        "CAPITAUX DOMMAGES DIR",
-        "DOMMAGES DIRECTS",
-        "RD TOTAL",
-        "CAPITAUX RD"
-      ],
-      "exclude_keywords": [
-        "SINIS MAX POSSIBLE RISQUE DIRECT"
-      ],
-      "label_prefix": "lbcapi",
-      "amount_prefix": "mtcapi",
-      "num_indices": 14
-    },
-    "valeur_a_neuf": {
-      "keywords": [
-        "VALEUR A NEUF",
-        "VAN",
-        "VALEUR NEUF",
-        "VAL A NEUF"
-      ],
-      "exclude_keywords": [],
-      "label_prefix": "lbcapi",
-      "amount_prefix": "mtcapi",
-      "num_indices": 14
-    },
-    "valeur_vena": {
-      "keywords": [
-        "VALEUR VENA",
-        "VENA",
-        "VALEUR ECONOMIQUE NEUF",
-        "VAL ECO NEUF"
-      ],
-      "exclude_keywords": [],
-      "label_prefix": "lbcapi",
-      "amount_prefix": "mtcapi",
-      "num_indices": 14
-    },
-    "capital_rcpro": {
-      "keywords": [
-        "RC PRO",
-        "RCPRO",
-        "RESPONSABILITE CIVILE PROFESSIONNELLE",
-        "RC PROFESSIONNELLE"
-      ],
-      "exclude_keywords": [],
-      "label_prefix": "lbcapi",
-      "amount_prefix": "mtcapi",
-      "num_indices": 14
-    },
-    "capital_rcexp": {
-      "keywords": [
-        "RC EXPLOITATION",
-        "RCEXP",
-        "RC EXPLOITAT"
-      ],
-      "exclude_keywords": [],
-      "label_prefix": "lbcapi",
-      "amount_prefix": "mtcapi",
-      "num_indices": 14
-    },
-    "capital_rcd": {
-      "keywords": [
-        "RC DECENNALE",
-        "RCD",
-        "RESPONSABILITE DECENNALE"
-      ],
-      "exclude_keywords": [],
-      "label_prefix": "lbcapi",
-      "amount_prefix": "mtcapi",
-      "num_indices": 14
-    },
-    "capital_do": {
-      "keywords": [
-        "DOMMAGES OUVRAGE",
-        "DO",
-        "D.O.",
-        "DOMM OUVRAGE"
-      ],
-      "exclude_keywords": [],
-      "label_prefix": "lbcapi",
-      "amount_prefix": "mtcapi",
-      "num_indices": 14
-    },
-    "capital_trc": {
-      "keywords": [
-        "TOUS RISQUES CHANTIER",
-        "TRC",
-        "T.R.C."
-      ],
-      "exclude_keywords": [],
-      "label_prefix": "lbcapi",
-      "amount_prefix": "mtcapi",
-      "num_indices": 14
-    },
-    "capital_montage": {
-      "keywords": [
-        "MONTAGE",
-        "TOUS RISQUES MONTAGE",
-        "TRM"
-      ],
-      "exclude_keywords": [],
       "label_prefix": "lbcapi",
       "amount_prefix": "mtcapi",
       "num_indices": 14
     }
   },
   "business_filters": {
-    "description": "Business filters to apply during processing - SAS: PTF_MVTS_AZ_MACRO.sas",
+    "description": "Business filters to apply during processing - SAS: PTF_MVTS_AZ_MACRO.sas L40-48",
     "excluded_noint": {
-      "description": "Excluded intermediaries (NOINT) - SAS L42-44",
+      "description": "Excluded intermediaries (NOINT)",
       "values": [
         "H90061",
         "482001",
@@ -363,11 +203,9 @@
     },
     "filters": [
       {
-        "type": "not_in",
+        "type": "not_equals",
         "column": "cdri",
-        "values": [
-          "X"
-        ],
+        "value": "X",
         "description": "Exclude cdri = X"
       },
       {
@@ -440,23 +278,23 @@
     ]
   },
   "coassurance": {
-    "description": "Coassurance type and part company calculation",
+    "description": "Coassurance type and part company calculation - SAS L64-74",
     "column": "coass",
     "conditions": [
       {
-        "check": "cdpolqpl == '1' and cdtpcoa in ['3', '6']",
+        "check": "cdpolqpl == '1' and cdcoas in ['3', '6']",
         "result": "APERITION"
       },
       {
-        "check": "cdpolqpl == '1' and cdtpcoa in ['4', '5']",
+        "check": "cdpolqpl == '1' and cdcoas in ['4', '5']",
         "result": "COASS. ACCEPTEE"
       },
       {
-        "check": "cdpolqpl == '1' and cdtpcoa == '8'",
+        "check": "cdpolqpl == '1' and cdcoas == '8'",
         "result": "ACCEPTATION INTERNATIONALE"
       },
       {
-        "check": "cdpolqpl == '1' and cdtpcoa not in ['3', '4', '5', '6', '8']",
+        "check": "cdpolqpl == '1' and cdcoas not in ['3', '4', '5', '6', '8']",
         "result": "AUTRES"
       },
       {
@@ -471,17 +309,17 @@
     }
   },
   "revision_criteria": {
-    "description": "Revision criteria mapping from CDGREV",
+    "description": "Revision criteria mapping from CDGREV - SAS L78-96",
     "source_col": "cdgrev",
     "mapping": {
       "20": "20_SANS_PROV_MANUEL ",
       "21": "21_PROV_FIXE_MANUEL ",
-      "22": "22_PROV_VAR_MANUEL  ",
-      "23": "23_SANS_REVISION    ",
+      "22": "22_PROV_VAR_MANUEL ",
+      "23": "23_SANS_REVISION ",
       "24": "24_REV_FIN_CHANTIER ",
       "30": "30_SANS_PROV_MANUEL ",
       "31": "31_PROV_FIXE_MANUEL ",
-      "32": "32_PROV_VAR_MANUEL  ",
+      "32": "32_PROV_VAR_MANUEL ",
       "40": "40_SANS_PROV_AUTOMAT",
       "41": "41_PROV_FIXE_AUTOMAT",
       "42": "42_PROV_VAR_AUTOMAT ",
@@ -494,7 +332,7 @@
     "default": ""
   },
   "movements": {
-    "description": "Movement calculations (AFN, RES, RPT, RPC, NBPTF)",
+    "description": "Movement calculations (AFN, RES, RPT, RPC, NBPTF) - SAS L249-292",
     "column_mapping": {
       "creation_date": "dtcrepol",
       "effective_date": "dteffan",
@@ -510,14 +348,14 @@
     }
   },
   "exposures": {
-    "description": "Exposure calculations (expo_ytd, expo_gli)",
+    "description": "Exposure calculations (expo_ytd, expo_gli) - SAS L298-311",
     "column_mapping": {
       "creation_date": "dtcrepol",
       "termination_date": "dtresilp"
     }
   },
   "initialization": {
-    "description": "Initialize columns with default values",
+    "description": "Initialize columns with default values - SAS L106-114",
     "columns": {
       "primeto": 0,
       "primes_ptf": 0,

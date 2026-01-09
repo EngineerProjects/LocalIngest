@@ -1,52 +1,72 @@
 {
     "_comment": "Emissions extraction configuration - Business filters and exclusions",
-    "_based_on": "EMISSIONS_RUN.sas L145-198",
-    "excluded_intermediaries": [
-        "102030",
-        "446000",
-        "446118",
-        "446218",
-        "482001",
-        "489090",
-        "500150",
-        "4A1400",
-        "4A1500",
-        "4A1600",
-        "4A1700",
-        "4A1800",
-        "4A1900",
-        "4F1004",
-        "5B2000",
-        "5R0001",
-        "H90036",
-        "H90037",
-        "H90059",
-        "H90061",
-        "H99045",
-        "H99059"
-    ],
-    "excluded_guarantees": [
-        "180",
-        "183",
-        "184",
-        "185"
-    ],
-    "excluded_categories": [
-        "792",
-        "793"
-    ],
-    "excluded_guarantee_category": "00400",
-    "product_guarantee_exclusions": [
-        {
-            "product_prefix": "19",
-            "guarantee": "220",
-            "description": "Product 19* with guarantee 220"
-        },
-        {
-            "intermediary": "567ME0",
-            "product": "00200",
-            "description": "Intermediary 567ME0 with product 00200"
-        }
-    ],
-    "excluded_product": "01073"
+    "_based_on": "SAS EMISSIONS_RUN.sas L145-198",
+    "excluded_intermediaries": {
+        "description": "Excluded intermediaries (NOINT) - SAS L145, L185",
+        "values": [
+            "102030",
+            "446000",
+            "446118",
+            "446218",
+            "482001",
+            "489090",
+            "500150",
+            "4A1400",
+            "4A1500",
+            "4A1600",
+            "4A1700",
+            "4A1800",
+            "4A1900",
+            "4F1004",
+            "5B2000",
+            "5R0001",
+            "H90036",
+            "H90037",
+            "H90059",
+            "H90061",
+            "H99045",
+            "H99059"
+        ]
+    },
+    "excluded_guarantees": {
+        "description": "Excluded guarantee codes (CD_GAR_PROSPCTIV) - SAS L188",
+        "values": [
+            "180",
+            "183",
+            "184",
+            "185"
+        ]
+    },
+    "excluded_categories": {
+        "description": "Excluded minimum categories (CD_CAT_MIN) - SAS L198",
+        "values": [
+            "792",
+            "793"
+        ]
+    },
+    "excluded_guarantee_category": {
+        "description": "Excluded guarantee prospective category - SAS L198",
+        "value": "00400"
+    },
+    "product_guarantee_exclusions": {
+        "description": "Product-guarantee combination exclusions - SAS L186-187",
+        "rules": [
+            {
+                "product_prefix": "19",
+                "guarantee": "220",
+                "description": "Product starting with 19 AND guarantee 220",
+                "comment": "SAS L186: not(substr(CD_PRD_PRM, 1, 2) IN ('19') and CD_GAR_PROSPCTIV IN ('220'))"
+            },
+            {
+                "intermediary": "567ME0",
+                "product": "00200",
+                "description": "Intermediary 567ME0 AND product 00200",
+                "comment": "SAS L187: not(CD_INT_STC in (567ME0) and CD_PRD_PRM in (00200))"
+            }
+        ]
+    },
+    "excluded_product": {
+        "description": "Excluded product code - SAS L189",
+        "value": "01073"
+    }
 }
