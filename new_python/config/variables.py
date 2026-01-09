@@ -46,8 +46,6 @@ try:
     MOVEMENT_COLUMN_MAPPING = _loader.get_consolidation_config()['movement_column_mapping']
     EXPOSURE_COLUMN_MAPPING = _loader.get_consolidation_config()['exposure_column_mapping']
 
-    AZ_TRANSFORM_STEPS = _loader.get_business_rules()['az_transform_steps']['steps']
-
 except Exception as e:
     # Fallback if JSON configs are not available (e.g., during tests)
     import warnings
@@ -64,7 +62,7 @@ except Exception as e:
     AZEC_PRODUIT_LIST = []
     AZEC_MIGRATION_CONFIG = {'vision_threshold': 202009, 'transformations': []}
     AZEC_DATE_STATE_UPDATES = []
-    AZEC_MOVEMENT_CONFIG = {'nbafn': {}, 'nbres': {}, 'nbptf': {}}
+    AZEC_MOVEMENT_CONFIG = {'nbafn': {}, 'nbres': {}, 'nbptf': {}'}
     AZEC_SUSPENSION_CALC = {'column': 'nbj_susp_ytd', 'type': 'conditional', 'conditions': [], 'default': 0}
 
     CONSOLIDATION_AZ_HARMONIZATION = {'rename': {}, 'computed': {}}
@@ -72,5 +70,3 @@ except Exception as e:
 
     MOVEMENT_COLUMN_MAPPING = {'az': {}, 'azec': {}}
     EXPOSURE_COLUMN_MAPPING = {'az': {}, 'azec': {}}
-
-    AZ_TRANSFORM_STEPS = []
