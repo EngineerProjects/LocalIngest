@@ -679,8 +679,7 @@
         "table_segmentation_azec_mml": {
             "description": "TABLE_SEGMENTATION_AZEC_MML - AZEC product segmentation reference",
             "file_patterns": [
-                "table_segmentation_azec_mml.csv",
-                "segmentation_azec.csv"
+                "table_segmentation_azec_mml.csv"
             ],
             "schema": "table_segmentation_azec_mml",
             "read_options": {

@@ -19,7 +19,9 @@ class BronzeReader:
         self,
         spark: SparkSession,
         config: ConfigLoader,
-        reading_config_path: Optional[str] = None
+        reading_config_path: Optional[str] = None,
+        verify_schemas: bool = False,
+        logger = None
     ):
         """
         Initialize bronze reader.
@@ -28,9 +30,13 @@ class BronzeReader:
             spark: SparkSession instance
             config: ConfigLoader instance
             reading_config_path: Path to reading_config.json (optional)
+            verify_schemas: If True, verify schemas against actual CSV columns (default: False)
+            logger: Optional logger instance for verification messages
         """
         self.spark = spark
         self.config = config
+        self.verify_schemas = verify_schemas
+        self.logger = logger
 
         # Load reading configuration
         if reading_config_path is None:
@@ -117,7 +123,8 @@ class BronzeReader:
                     full_pattern,
                     file_format,
                     schema,
-                    read_options
+                    read_options,
+                    schema_name=schema_name  # Pass schema name for verification
                 )
 
                 # Add source file name for tracking origin (e.g., PTF16 vs PTF36)
@@ -187,12 +194,81 @@ class BronzeReader:
             # Default to CSV
             return 'csv'
 
+    def _verify_schema(
+        self,
+        actual_columns: List[str],
+        schema_columns: List[str],
+        schema_name: str,
+        file_path: str
+    ) -> Dict[str, Any]:
+        """
+        Verify schema columns against actual CSV columns.
+        Silently logs warnings for missing columns and info for case corrections.
+        
+        Args:
+            actual_columns: Actual columns from CSV file
+            schema_columns: Expected columns from schema
+            schema_name: Name of schema for reporting
+            file_path: Path to file for reporting
+            
+        Returns:
+            Dictionary with verification results
+        """
+        # Build case-insensitive comparison maps
+        actual_map = {c.lower(): c for c in actual_columns}
+        schema_map = {c.lower(): c for c in schema_columns}
+        
+        # Find matches, mismatches, missing
+        perfect_matches = []
+        case_mismatches = []
+        missing = []
+        
+        for schema_col in schema_columns:
+            schema_lower = schema_col.lower()
+            if schema_lower in actual_map:
+                actual_col = actual_map[schema_lower]
+                if actual_col == schema_col:
+                    perfect_matches.append(schema_col)
+                else:
+                    case_mismatches.append((schema_col, actual_col))
+            else:
+                missing.append(schema_col)
+        
+        # Extra columns not in schema
+        extra = [c for c in actual_columns if c.lower() not in schema_map]
+        
+        # Log issues (silent unless there are problems)
+        if self.logger:
+            if missing:
+                # Warning for missing columns (columns in schema but not in CSV - should be removed from schema)
+                self.logger.warning(
+                    f"Schema '{schema_name}': {len(missing)} columns missing in CSV (remove from schema): "
+                    f"{', '.join(missing)}"
+                )
+            
+            if case_mismatches:
+                # Info for case corrections (columns exist but wrong case - will be auto-corrected)
+                for schema_col, actual_col in case_mismatches:
+                    self.logger.info(
+                        f"Schema '{schema_name}': Auto-correcting case '{schema_col}' → '{actual_col}'"
+                    )
+        
+        return {
+            'perfect': len(perfect_matches),
+            'case_mismatch': len(case_mismatches),
+            'missing': len(missing),
+            'extra': len(extra),
+            'mismatches': case_mismatches,
+            'missing_list': missing
+        }
+
     def _read_by_format(
         self,
         path: str,
         file_format: str,
         schema: Optional[Any],
-        read_options: Dict[str, Any]
+        read_options: Dict[str, Any],
+        schema_name: str = None
     ) -> DataFrame:
         """
         Read file based on format with schema enforcement.
@@ -206,6 +282,7 @@ class BronzeReader:
             file_format: Format string ('csv', 'parquet', 'json', 'text')
             schema: PySpark StructType schema (optional)
             read_options: Read options passed directly to Spark reader
+            schema_name: Schema name for verification reporting (optional)
 
         Returns:
             DataFrame with schema columns selected and types enforced
@@ -220,6 +297,16 @@ class BronzeReader:
                     .options(**spark_options)
                     .csv(path, header=True, inferSchema=False)
             )
+            
+            # Verify schema if enabled
+            if self.verify_schemas and schema and schema_name:
+                schema_columns = [field.name for field in schema.fields]
+                self._verify_schema(
+                    df_all.columns,
+                    schema_columns,
+                    schema_name,
+                    path
+                )
 
             if schema:
                 from pyspark.sql.functions import col

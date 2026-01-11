@@ -590,9 +590,12 @@ class AZECProcessor(BaseProcessor):
         # ================================================================
         # SAS: Uses HASH table lookup in DATA step
         # Python: LEFT JOIN to preserve all AZEC records
+        # OPTIMIZATION: LOB is small reference table - use broadcast join
+        
+        from pyspark.sql.functions import broadcast
         
         df = df.alias('a').join(
-            lob_select.alias('l'),
+            broadcast(lob_select.alias('l')),  # Broadcast small LOB table
             col('a.produit') == col('l.produit'),
             how='left'
         ).select(

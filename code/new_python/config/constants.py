@@ -84,38 +84,95 @@ LTA_TYPES = ["QAW", "QBJ", "QBK", "QBB", "QBM"]  # Long-term contract types (tyd
 # ============================================================================
 
 # PTF_MVT Gold Columns (AZ + AZEC + Consolidation)
-# Based on SAS CUBE.MVT_PTF&vision. output
+# Based on actual SAS output: CUBE.MVT_PTF&vision. (110 columns)
 GOLD_COLUMNS_PTF_MVT = [
-    # Identifiers
-    'vision', 'dircom', 'cdpole', 'nopol', 'nopol11b', 'cdprod', 'noint',
+    # Core Identifiers (7)
+    'nopol', 'dircom', 'noint', 'cdpole', 'cdprod', 'cmarch', 'cseg',
+    'cssseg', 'nopolli1', 'dtcrepol',
     
-    # Segmentation
-    'cmarch', 'cseg', 'cssseg', 'segment', 'segment2', 'segment3',
+    # Risk Location (6)
+    'posacta_ri', 'rueacta_ri', 'cediacta_ri',
     
-    # Dates
-    'dtcrepol', 'dteffan', 'dtresilp', 'dtechann', 'dtreslip',
+    # Dates - Echeance (2)
     'mois_echeance', 'jour_echeance',
     
-    # Business attributes
-    'cdnatp', 'type_affaire', 'cdcasres', 'cdmotres', 'cdcoass',
-    'prcdcie', 'part_cie', 'ptgst', 'upper_mid',
+    # Dates - Additional (2)
+    'dtresilp', 'dttraar',
     
-    # Movements
-    'nbafn', 'nbres', 'nbrpt', 'nbrpc', 'nbptf',
+    # Policy Attributes (7)
+    'cdnatp', 'cdsitp', 'ptgst', 'cdreg', 'cdgecent',
     
-    # Premiums
-    'primes_afn', 'primes_res', 'primes_bpt', 'primes_bpc',
-    'primes_ptf', 'primes_ptf_intemp', 'primes_ptf_100_intemp',
+    # Business Data (5)
+    'mtca', 'cdnaf', 'cdtre', 'cdcoass', 'coass',
     
-    # Exposures
-    'expo_ytd', 'expo_gli',
-    'dt_deb_expo', 'dt_fin_expo',
+    # Flags (2)
+    'top_coass', 'type_affaire',
     
-    # Capitals
+    # Premiums - Portfolio (4)
+    'primes_ptf_intemp', 'primes_ptf_100_intemp', 'part_cie', 'primes_ptf',
+    
+    # Movement Indicators (2)
+    'nbptf', 'expo_ytd',
+    
+    # Exposures (3)
+    'expo_gli', 'top_temp',
+    
+    # Termination (3)
+    'cdmotres', 'cdcasres', 'cdpolrvi',
+    
+    # Vision (4)
+    'vision', 'exevue', 'moisvue',
+    
+    # Client Info (10)
+    'noclt', 'nmclt', 'cdfract', 'quarisq', 'nmrisq',
+    'nmsrisq', 'resrisq', 'ruerisq', 'lidirisq', 'posrisq',
+    'vilrisq',
+    
+    # Movements AFN/RES (6)
+    'nbafn', 'nbres', 'nbafn_anticipe', 'nbres_anticipe',
+    'primes_afn', 'primes_res',
+    
+    # Segment & Product Type (3)
+    'upper_mid', 'dt_deb_expo', 'dt_fin_expo',
+    'segment2', 'type_produit_2',
+    
+    # IRD Risk Data (12)
+    'ctdeftra', 'dstcsc', 'dtouchan', 'dtrectrx',
+    'dtrcppr', 'lbqltsou', 'dteffan', 'dttraan',
+    'actprin', 'ctprvtrv', 'mtsmpr', 'lbnattrv',
+    
+    # Revision (5)
+    'top_revisable', 'critere_revision', 'cdgrev',
+    
+    # Additional Movements (4)
+    'nbrpt', 'nbrpc', 'primes_rpc', 'primes_rpt',
+    
+    # Additional Capitals (3)
     'mtcaenp', 'mtcasst', 'mtcavnt',
     
-    # Flags
-    'top_temp', 'top_suspension'
+    # IRD Additional (1)
+    'dtreffin',
+    
+    # Client Enrichment (3)
+    'cdsiret', 'cdsiren', 'note_euler',
+    
+    # Destination (1)
+    'destinat',
+    
+    # Activity Type (1)
+    'typeact',
+    
+    # NAF Codes (4)
+    'cdnaf08_w6', 'cdnaf03_cli', 'cdnaf2008',
+    
+    # ISIC Codes (9)
+    'isic_code_sui', 'destinat_isic', 'isic_code', 'origine_isic',
+    'hazard_grades_fire', 'hazard_grades_bi', 'hazard_grades_rca',
+    'hazard_grades_rce', 'hazard_grades_trc', 'hazard_grades_rcd',
+    'hazard_grades_do', 'isic_code_gbl',
+    
+    # Partnership Flags (2)
+    'top_berlioz', 'top_partenariat'
 ]
 
 

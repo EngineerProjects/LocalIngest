@@ -229,7 +229,12 @@ class ConsolidationProcessor(BaseProcessor):
         
         df_final = df.select(existing_gold_cols)
         
-        self.logger.info(f"Final gold output: {len(df_final.columns)} columns (SAS-compliant schema)")
+        # Log detailed output stats
+        row_count = df_final.count()
+        col_count = len(df_final.columns)
+        self.logger.info(f"Final gold output: {col_count} columns, {row_count:,} rows (SAS-compliant schema)")
+        if missing_cols:
+            self.logger.warning(f"Note: {len(missing_cols)} columns are NULL (missing from processing): {sorted(missing_cols)[:5]}...")
         
         from utils.helpers import write_to_layer
         write_to_layer(

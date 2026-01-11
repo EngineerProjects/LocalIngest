@@ -29,7 +29,7 @@ from pyspark.sql.types import (
 
 # =============================================================================
 # ONE BI FILES - rf_fr1_prm_dtl_midcorp_m
-# File: rf_fr1_prm_dtl_midcorp_m_*.csv 🔴
+# File: rf_fr1_prm_dtl_midcorp_m_*.csv
 # Total columns: 15 (required from SAS EMISSIONS_RUN.sas)
 # =============================================================================
 RF_FR1_PRM_DTL_MIDCORP_M_SCHEMA = StructType([
@@ -51,9 +51,10 @@ RF_FR1_PRM_DTL_MIDCORP_M_SCHEMA = StructType([
 ])
 
 
+
 # =============================================================================
 # IMS FILES - IPFE16/IPFE36 (PTF16/PTF36)
-# Files: ipf16.csv.gz, ipf36.csv.gz 🟢
+# Files: ipf16.csv.gz, ipf36.csv.gz
 # Total columns: 133 (as discovered in actual CSV)
 # =============================================================================
 IPF_AZ_SCHEMA = StructType([
@@ -215,7 +216,7 @@ IPF_AZ_SCHEMA = StructType([
 
 # =============================================================================
 # IMS FILES - 3SPEIPFM99/E1SPEIPFM99 (PTF16a/PTF36a)
-# Files: 3SPEIPFM99_IPF_*.csv.gz, E1SPEIPFM99_IPF_*.csv.gz 🟢
+# Files: 3SPEIPFM99_IPF_*.csv.gz, E1SPEIPFM99_IPF_*.csv.gz
 # Total columns: 9
 # =============================================================================
 IPFM99_AZ_SCHEMA = StructType([
@@ -233,7 +234,7 @@ IPFM99_AZ_SCHEMA = StructType([
 
 # =============================================================================
 # IRD FILES - Q45/Q46/QAN
-# Files: ird_risk_q45_*.csv, ird_risk_q46_*.csv, ird_risk_qan_*.csv 🟢
+# Files: ird_risk_q45_*.csv, ird_risk_q46_*.csv, ird_risk_qan_*.csv
 # =============================================================================
 # Q45 and Q46 share identical schema (8 fields)
 IRD_RISK_COMMON_SCHEMA = StructType([
@@ -259,7 +260,7 @@ IRD_RISK_QAN_SCHEMA = StructType([
 
 # =============================================================================
 # REFERENCE FILES - INCENDCU (AZEC)
-# File: incendcu.csv (in bronze/ref) 🟢
+# File: incendcu.csv (in bronze/ref)
 # =============================================================================
 INCENDCU_SCHEMA = StructType([
     StructField("POLICE", StringType(), True),
@@ -272,10 +273,11 @@ INCENDCU_SCHEMA = StructType([
 
 
 # =============================================================================
-# REFERENCE FILES - CONSTRCU (AZEC)
-# File: constru.csv (in bronze/ref) 🟢
+# REFERENCE FILES - CONSTRCU_AZEC (Raw CONSTRCU for AZEC)
+# NOTE: We read RAW constrcu.csv and enrich it on-the-fly in the pipeline
+# This matches SAS but done automatically (no separate preprocessing needed)
 # =============================================================================
-CONSTRCU_SCHEMA = StructType([
+CONSTRCU_AZEC_SCHEMA = StructType([
     StructField("DATFINCH", DateType(), True),
     StructField("DATOUVCH", DateType(), True),
     StructField("DATRECEP", DateType(), True),
@@ -291,25 +293,10 @@ CONSTRCU_SCHEMA = StructType([
     StructField("TYPMARC1", StringType(), True),
 ])
 
-# =============================================================================
-# REFERENCE FILES - CONSTRCU_AZEC (Raw CONSTRCU for AZEC)
-# NOTE: We read RAW constrcu.csv and enrich it on-the-fly in the pipeline
-# This matches SAS but done automatically (no separate preprocessing needed)
-# =============================================================================
-CONSTRCU_AZEC_SCHEMA = StructType([
-    StructField("POLICE", StringType(), True),
-    StructField("PRODUIT", StringType(), True),      # Raw file has PRODUIT
-    StructField("TYPMARC1", StringType(), True),     # Optional: for TYPE_PRODUIT logic
-    StructField("LTYPMAR1", StringType(), True),     # Optional
-    StructField("FORMULE", StringType(), True),      # Optional
-    StructField("NAT_CNT", StringType(), True),      # Optional: for DPC products
-])
-
-
 
 # =============================================================================
 # REFERENCE FILES - Product Segmentation
-# Files: prdpfa1.csv, prdpfa3.csv (in bronze/ref) 🟢
+# Files: prdpfa1.csv, prdpfa3.csv (in bronze/ref)
 # =============================================================================
 SEGMPRDT_SCHEMA = StructType([
     StructField("CMARCH", StringType(), True),
@@ -325,7 +312,7 @@ SEGMPRDT_SCHEMA = StructType([
 
 # =============================================================================
 # REFERENCE FILES - Product Classification (LOB)
-# File: lob.csv (in bronze/ref) 🟢
+# File: lob.csv (in bronze/ref)
 # =============================================================================
 LOB_SCHEMA = StructType([
     StructField("PRODUIT", StringType(), True),
@@ -347,7 +334,7 @@ LOB_SCHEMA = StructType([
 
 # =============================================================================
 # REFERENCE FILES - Product Reference (CPRODUIT)
-# File: cproduit.csv (in bronze/ref) 🟢
+# File: cproduit.csv (in bronze/ref)
 # =============================================================================
 CPRODUIT_SCHEMA = StructType([
     StructField("cprod", StringType(), True),  # NOTE: lowercase
@@ -359,7 +346,7 @@ CPRODUIT_SCHEMA = StructType([
 
 # =============================================================================
 # REFERENCE FILES - Guarantees
-# File: garantcu.csv (in bronze/ref) 🟢
+# File: garantcu.csv (in bronze/ref)
 # =============================================================================
 GARANTCU_SCHEMA = StructType([
     StructField("POLICE", StringType(), True),
@@ -370,7 +357,7 @@ GARANTCU_SCHEMA = StructType([
 
 # =============================================================================
 # REFERENCE FILES - Category Minimum
-# File: import_catmin.csv (in bronze/ref) 🟢
+# File: import_catmin.csv (in bronze/ref)
 # =============================================================================
 CATMIN_SCHEMA = StructType([
     StructField("PRODUIT", StringType(), True),
@@ -380,7 +367,7 @@ CATMIN_SCHEMA = StructType([
 
 
 # =============================================================================
-# AZEC REFERENCE FILES - POLIC_CU - AZEC Policy Master Data 🟢
+# AZEC REFERENCE FILES - POLIC_CU - AZEC Policy Master Data
 # =============================================================================
 POLIC_CU_SCHEMA = StructType([
     StructField("CODECOAS", StringType(), True),
@@ -413,7 +400,7 @@ POLIC_CU_SCHEMA = StructType([
 
 
 # =============================================================================
-# AZEC REFERENCE FILES - CAPITXCU - AZEC Capital Data 🟢
+# AZEC REFERENCE FILES - CAPITXCU - AZEC Capital Data
 # =============================================================================
 CAPITXCU_SCHEMA = StructType([
     StructField("POLICE", StringType(), True),
@@ -426,7 +413,7 @@ CAPITXCU_SCHEMA = StructType([
 
 
 # =============================================================================
-# AZEC REFERENCE FILES - FORMULE Schema (RCENTCU + RISTECCU) 🟢
+# AZEC REFERENCE FILES - FORMULE Schema (RCENTCU + RISTECCU)
 # Shared by: RC Enterprise Data and Professional Risk Data
 # Both tables have identical structure: POLICE, COD_NAF, FORMULE×4
 # =============================================================================
@@ -442,7 +429,7 @@ AZEC_FORMULE_SCHEMA = StructType([
 
 
 # =============================================================================
-# AZEC REFERENCE FILES - MULPROCU - Multi-risk Professional Data 🟢
+# AZEC REFERENCE FILES - MULPROCU - Multi-risk Professional Data
 # =============================================================================
 MULPROCU_SCHEMA = StructType([
     StructField("POLICE", StringType(), True),
@@ -451,16 +438,16 @@ MULPROCU_SCHEMA = StructType([
 
 
 # =============================================================================
-# AZEC REFERENCE FILES - MPACU - MPA Policy Data 🟢
+# AZEC REFERENCE FILES - MPACU - MPA Policy Data
 # =============================================================================
 MPACU_SCHEMA = StructType([
     StructField("POLICE", StringType(), True),
-    StructField("COD_NAF", StringType(), True),
+    StructField("cod_naf", StringType(), True),
 ])
 
 
 # =============================================================================
-# CLIENT DATA - Agent and Courtage 🟢
+# CLIENT DATA - Agent and Courtage
 # =============================================================================
 CLIENT_SCHEMA = StructType([
     StructField("NOCLT", StringType(), True),
@@ -530,14 +517,14 @@ W6_BASECLI_INV_SCHEMA = StructType([
 
 
 # =============================================================================
-# MANAGEMENT POINTS REFERENCE - Two Different Tables 🟢
+# MANAGEMENT POINTS REFERENCE - Two Different Tables
 # Based on: SAS analysis PTF_MVTS_AZ_MACRO.sas L498 and REF_segmentation_azec.sas L142
 # =============================================================================
 # TABLE_PT_GEST - Versioned (PT_GEST.PTGST_YYYYMM)
 # Used in: AZ processor - provides Upper_MID for segmentation
 TABLE_PT_GEST_SCHEMA = StructType([
     StructField("PTGST", StringType(), True),
-    StructField("UPPER_MID", StringType(), True),  # Management level classification
+    StructField("Upper_Mid", StringType(), True),  # Management level classification
 ])
 
 # PTGST_STATIC - Static reference (SAS_C.PTGST)
@@ -545,15 +532,12 @@ TABLE_PT_GEST_SCHEMA = StructType([
 PTGST_STATIC_SCHEMA = StructType([
     StructField("PTGST", StringType(), True),
     StructField("REGION", StringType(), True),  # Region classification
-    StructField("P_NUM", StringType(), True),  # Management point number
+    StructField("P_Num", StringType(), True),  # Management point number
 ])
 
 
-# Deleted: CPRODUIT_CATALOG_SCHEMA (unused, identical to PRDCAP_SCHEMA)
-
-
 # =============================================================================
-# PRODUCT CAPITALS REFERENCE 🟢
+# PRODUCT CAPITALS REFERENCE
 # =============================================================================
 PRDCAP_SCHEMA = StructType([
     StructField("CDPROD", StringType(), True),
@@ -581,7 +565,6 @@ SEGMENTPRDT_SCHEMA = StructType([
 REF_MIG_AZEC_VS_IMS_SCHEMA = StructType([
     StructField("NOPOL_AZEC", StringType(), True),  # AZEC policy number
     StructField("NOPOL_IMS", StringType(), True),  # Corresponding IMS policy
-    StructField("DATE_MIG", DateType(), True),  # Migration date
 ])
 
 
@@ -599,10 +582,10 @@ INDICES_SCHEMA = StructType([
 
 
 # =============================================================================
-# ISIC CODIFICATION TABLES 🟢
+# ISIC CODIFICATION TABLES
 # SAS: CODIFICATION_ISIC_CONSTRUCTION.sas - ISIC assignment hierarchy
 # =============================================================================
-# Activity-based ISIC mapping 🟢
+# Activity-based ISIC mapping
 MAPPING_ISIC_CONST_ACT_SCHEMA = StructType([
     StructField("ACTPRIN", StringType(), True),  # Principal activity code
     StructField("CDNAF08", StringType(), True),  # NAF 2008 code
@@ -611,7 +594,7 @@ MAPPING_ISIC_CONST_ACT_SCHEMA = StructType([
     StructField("CDISIC", StringType(), True),  # ISIC code
 ])
 
-# Construction site destination to ISIC mapping 🟢
+# Construction site destination to ISIC mapping
 MAPPING_ISIC_CONST_CHT_SCHEMA = StructType([
     StructField("DESTI_ISIC", StringType(), True),  # Destination ISIC
     StructField("CDNAF08", StringType(), True),  # NAF 2008 code
@@ -620,19 +603,19 @@ MAPPING_ISIC_CONST_CHT_SCHEMA = StructType([
     StructField("CDISIC", StringType(), True),  # ISIC code
 ])
 
-# NAF 2003 to ISIC mapping 🟢
+# NAF 2003 to ISIC mapping
 MAPPING_CDNAF2003_ISIC_SCHEMA = StructType([
     StructField("CDNAF_2003", StringType(), True),  # NAF 2003 code
     StructField("ISIC_Code", StringType(), True),  # ISIC code
 ])
 
-# NAF 2008 to ISIC mapping 🟢
+# NAF 2008 to ISIC mapping
 MAPPING_CDNAF2008_ISIC_SCHEMA = StructType([
     StructField("CDNAF_2008", StringType(), True),  # NAF 2008 code
     StructField("ISIC_Code", StringType(), True),  # ISIC code
 ])
 
-# ISIC hazard grades reference table 🟢
+# ISIC hazard grades reference table
 TABLE_ISIC_TRE_NAF_SCHEMA = StructType([
     StructField("ISIC_Code", StringType(), True),
     StructField("HAZARD_GRADES_FIRE", StringType(), True),
@@ -644,7 +627,7 @@ TABLE_ISIC_TRE_NAF_SCHEMA = StructType([
     StructField("HAZARD_GRADES_DO", StringType(), True),
 ])
 
-# IRD Suivi Engagements - NAF 2008 tracking 🟢
+# IRD Suivi Engagements - NAF 2008 tracking
 IRD_SUIVI_ENGAGEMENTS_SCHEMA = StructType([
     StructField("NOPOL", StringType(), True),
     StructField("CDPROD", StringType(), True),
@@ -654,14 +637,13 @@ IRD_SUIVI_ENGAGEMENTS_SCHEMA = StructType([
 
 
 # =============================================================================
-# ISIC LOCAL-TO-GLOBAL MAPPING 🟢
+# ISIC LOCAL-TO-GLOBAL MAPPING
 # SAS: ISIC.ISIC_LG_202306 - Maps local ISIC codes to global ISIC codes
 # =============================================================================
 ISIC_LG_SCHEMA = StructType([
     StructField("ISIC_Local", StringType(), True),  # Local ISIC code
     StructField("ISIC_Global", StringType(), True),  # Global ISIC code (ISIC_Code_GBL)
 ])
-
 
 # =============================================================================
 # DO_DEST - CONSTRUCTION DESTINATION REFERENCE
@@ -695,10 +677,7 @@ TABLE_SEGMENTATION_AZEC_MML_SCHEMA = StructType([
 # Note: Used in AZEC segmentation merge with CONSTRCU for type_produit_2 enrichment
 # =============================================================================
 TYPRD_2_SCHEMA = StructType([
-    StructField("CDPROD", StringType(), True),  # Product code
-    StructField("POLICE", StringType(), True),  # Policy number (for join with CONSTRCU)
-    StructField("SEGMENT", StringType(), True),  # Segment2 classification
-    StructField("TYPE_PRODUIT", StringType(), True),  # Product type (type_produit_2)
+    StructField("Type_Produit", StringType(), True),  # Product type (type_produit_2)
 ])
 
 
@@ -715,7 +694,6 @@ SCHEMA_REGISTRY = {
     "ird_risk_q45": IRD_RISK_COMMON_SCHEMA,  # Consolidated
     "ird_risk_q46": IRD_RISK_COMMON_SCHEMA,  # Consolidated
     "ird_risk_qan": IRD_RISK_QAN_SCHEMA,
-    "ipfspe_ipfm0024": IPFSPE_IPFM0024_SCHEMA,
     "ipfm0024_1": IPFSPE_IPFM0024_SCHEMA,  # Reference data
     "ipfm0024_3": IPFSPE_IPFM0024_SCHEMA,  # Reference data
     "ipfspe_ipfm63": IPFSPE_IPFM63_SCHEMA,
