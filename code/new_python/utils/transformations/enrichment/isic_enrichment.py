@@ -202,10 +202,14 @@ def _assign_destination_isic(
         DataFrame with desti_isic column populated
     """
     if "dstcsc" not in df.columns:
+        if logger:
+            logger.warning("✗ Column 'dstcsc' NOT FOUND - cannot create desti_isic!")
+            logger.warning(f"Available columns: {df.columns[:20]}...")
         return df
 
     if logger:
-        logger.debug("Assigning DESTI_ISIC from DSTCSC patterns")
+        logger.info("✓ Column 'dstcsc' found - proceeding with desti_isic creation")
+        logger.debug(f"Sample dstcsc values: {[row.dstcsc for row in df.limit(5).collect()]}")
 
     # Build cascading when conditions for pattern matching
     desti_expr = (

@@ -230,7 +230,11 @@ class ConsolidationProcessor(BaseProcessor):
         # Rename desti_isic → destinat_isic to match gold schema
         # (Internal ISIC processing uses desti_isic to match reference tables)
         if 'desti_isic' in df.columns:
+            self.logger.info("✓ Found 'desti_isic' column - renaming to 'destinat_isic'")
             df = df.withColumnRenamed('desti_isic', 'destinat_isic')
+        else:
+            self.logger.warning("✗ Column 'desti_isic' NOT FOUND in DataFrame - cannot rename to destinat_isic!")
+            self.logger.warning(f"Available columns containing 'isic': {[c for c in df.columns if 'isic' in c.lower()]}")
         
         df_final = df.select(existing_gold_cols)
         
