@@ -214,6 +214,15 @@ class ConsolidationProcessor(BaseProcessor):
         """
         from config.constants import GOLD_COLUMNS_PTF_MVT
         
+        # CRITICAL: Rename desti_isic → destinat_isic BEFORE calculating existing columns
+        # (Internal ISIC processing uses desti_isic to match reference tables)
+        if 'desti_isic' in df.columns:
+            self.logger.info("✓ Found 'desti_isic' column - renaming to 'destinat_isic'")
+            df = df.withColumnRenamed('desti_isic', 'destinat_isic')
+        else:
+            self.logger.warning("✗ Column 'desti_isic' NOT FOUND in DataFrame - cannot rename to destinat_isic!")
+            self.logger.warning(f"Available columns containing 'isic': {[c for c in df.columns if 'isic' in c.lower()]}")
+        
         # Select only columns that exist (allows for graceful degradation if data missing)
         existing_gold_cols = [c for c in GOLD_COLUMNS_PTF_MVT if c in df.columns]
         
@@ -226,15 +235,6 @@ class ConsolidationProcessor(BaseProcessor):
         extra_cols = set(df.columns) - set(GOLD_COLUMNS_PTF_MVT)
         if extra_cols:
             self.logger.info(f"Dropping {len(extra_cols)} intermediate columns (e.g., {list(extra_cols)[:5]}).")
-        
-        # Rename desti_isic → destinat_isic to match gold schema
-        # (Internal ISIC processing uses desti_isic to match reference tables)
-        if 'desti_isic' in df.columns:
-            self.logger.info("✓ Found 'desti_isic' column - renaming to 'destinat_isic'")
-            df = df.withColumnRenamed('desti_isic', 'destinat_isic')
-        else:
-            self.logger.warning("✗ Column 'desti_isic' NOT FOUND in DataFrame - cannot rename to destinat_isic!")
-            self.logger.warning(f"Available columns containing 'isic': {[c for c in df.columns if 'isic' in c.lower()]}")
         
         df_final = df.select(existing_gold_cols)
         
