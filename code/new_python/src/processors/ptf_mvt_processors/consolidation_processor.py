@@ -93,6 +93,12 @@ class ConsolidationProcessor(BaseProcessor):
         self.logger.step(4, "Consolidating AZ + AZEC")
         df_consolidated = df_az.unionByName(df_azec, allowMissingColumns=True)
         
+        # CRITICAL: SAS uses OUTER UNION CORR which auto-deduplicates
+        # unionByName() = UNION ALL (keeps duplicates), so we must dedup manually
+        # SAS PTF_MVTS_CONSOLIDATION_MACRO.sas L70: OUTER UNION CORR
+        # This matches the AZ dedup (by nopol) from PTF_MVTS_AZ_MACRO.sas L505
+        df_consolidated = df_consolidated.orderBy("nopol", "cdpole").dropDuplicates(["nopol"])
+        
         # Step 4.1: Extract MOIS_ECHEANCE and JOUR_ECHEANCE from dtechann
         # SAS L49-50 (AZ): input(substr(put(DTECHANN, 5.), ...) AS MOIS_ECHEANCE
         # SAS L76 (AZEC): month(DTECHANN) AS MOIS_ECHEANCE, day(DTECHANN) AS JOUR_ECHEANCE

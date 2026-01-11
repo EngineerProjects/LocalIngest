@@ -140,6 +140,10 @@ class CapitauxConsolidationProcessor(BaseProcessor):
         self.logger.step(4, "Unioning AZ + AZEC")
         if df_azec is not None:
             df_consolidated = df_az.unionByName(df_azec, allowMissingColumns=True)
+            
+            # CRITICAL: SAS uses OUTER UNION CORR which auto-deduplicates
+            # Same fix as PTF_MVT consolidation - dedup by nopol
+            df_consolidated = df_consolidated.orderBy("nopol", "cdpole").dropDuplicates(["nopol"])
         else:
             df_consolidated = df_az
         
