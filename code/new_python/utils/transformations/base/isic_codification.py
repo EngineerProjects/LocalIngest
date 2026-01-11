@@ -108,7 +108,7 @@ def assign_isic_codes(
             when(
                 is_construction &
                 (col("cdnatp") == "C") &
-                col("destinat_isic").isNotNull() &
+                col("desti_isic").isNotNull() &
                 col("cdisic_const_c").isNotNull(),
                 col("cdisic_const_c")
             ).otherwise(col("cdisic"))
@@ -118,7 +118,7 @@ def assign_isic_codes(
             when(
                 is_construction &
                 (col("cdnatp") == "C") &
-                col("destinat_isic").isNotNull() &
+                col("desti_isic").isNotNull() &
                 col("cdisic_const_c").isNotNull(),
                 lit("DESTI_CHT")
             ).otherwise(col("origine_isic"))
@@ -270,11 +270,11 @@ def _assign_destination_isic(
 
     # Apply only for construction sites
     df = df.withColumn(
-        "destinat_isic",
+        "desti_isic",  # Internal column name (matches reference table)
         when(
             is_construction & (col("cdnatp") == "C") & (col("cdprod") != "01059"),
             desti_expr
-        ).otherwise(col("destinat_isic"))
+        ).otherwise(col("desti_isic") if "desti_isic" in df.columns else lit(None))
     )
 
     return df
@@ -396,7 +396,7 @@ def join_isic_reference_tables(
     df = df.select(
         "*",
         lit(None).cast("string").alias("cdnaf2008"),
-        lit(None).cast("string").alias("destinat_isic"),
+        lit(None).cast("string").alias("desti_isic"),  # Internal name
         lit(None).cast("string").alias("cdisic")
     )
 
@@ -459,23 +459,23 @@ def join_isic_reference_tables(
             logger.warning(f"MAPPING_ISIC_CONST_ACT not available: {e}")
 
     # 5. Join MAPPING_ISIC_CONST_CHT (for CDNATP='C')
-    # First ensure destinat_isic column exists
-    if "destinat_isic" not in df.columns:
-        df = df.withColumn("destinat_isic", lit(None).cast("string"))
+    # Column name: Reference table has 'desti_isic', we keep it for join compatibility
+    if "desti_isic" not in df.columns:
+        df = df.withColumn("desti_isic", lit(None).cast("string"))
     
     try:
         df_cht = reader.read_file_group("mapping_isic_const_cht", vision)
         if df_cht is not None:  # OPTIMIZED: Removed count() check
-            # Will join after destinat_isic is calculated
+            # Join on desti_isic (reference table column name)
             df = df.join(
                 df_cht.select(
-                    col("destinat_isic"),
-                    col("cdnaf08").alias("cdnaf08_const_c"),  # Production uses CDNAF08
+                    col("desti_isic"),  # Reference table column
+                    col("cdnaf08").alias("cdnaf08_const_c"),
                     col("cdtre").alias("cdtre_const_c"),
-                    col("cdnaf03").alias("cdnaf03_const_c"),  # Production uses CDNAF03
+                    col("cdnaf03").alias("cdnaf03_const_c"),
                     col("cdisic").alias("cdisic_const_c")
                 ),
-                on=["destinat_isic"],
+                on=["desti_isic"],  # Join on original column name
                 how="left"
             )
             if logger:

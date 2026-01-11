@@ -227,6 +227,11 @@ class ConsolidationProcessor(BaseProcessor):
         if extra_cols:
             self.logger.info(f"Dropping {len(extra_cols)} intermediate columns (e.g., {list(extra_cols)[:5]}).")
         
+        # Rename desti_isic → destinat_isic to match gold schema
+        # (Internal ISIC processing uses desti_isic to match reference tables)
+        if 'desti_isic' in df.columns:
+            df = df.withColumnRenamed('desti_isic', 'destinat_isic')
+        
         df_final = df.select(existing_gold_cols)
         
         # Log detailed output stats
@@ -792,6 +797,10 @@ class ConsolidationProcessor(BaseProcessor):
                 # Remove empty records (SAS L498-500)
                 df_tabspec = df_tabspec.filter(col("nopol").isNotNull() & (col("nopol") != ""))
                 
+                # CRITICAL: Dedup before join - SAS uses nodupkey implicitly via HASH tables
+                # Multiple poles (1+3) and multiple files (0024+63+99) can create duplicates
+                df_tabspec = df_tabspec.dropDuplicates(['nopol', 'cdprod'])
+                
                 # Left join on nopol + cdprod (SAS L514-515)
                 df = df.alias("t1").join(
                     df_tabspec.alias("t3"),
@@ -1017,11 +1026,11 @@ class ConsolidationProcessor(BaseProcessor):
             do_dest_df = reader.read_file_group("do_dest", "ref")
             
             if do_dest_df is not None:  # OPTIMIZED: Removed count() check
-                # Select relevant columns and alias to avoid conflicts
+                # Select relevant columns and dedup by nopol
                 do_dest_df = do_dest_df.select(
                     col("nopol").alias("nopol_ref"),
                     col("destinat").alias("destinat_ref")
-                )
+                ).dropDuplicates(["nopol_ref"])  # Dedup to prevent row multiplication
                 
                 df = df.join(
                     do_dest_df,
