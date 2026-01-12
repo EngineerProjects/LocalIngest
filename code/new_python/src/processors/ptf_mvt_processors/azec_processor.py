@@ -188,15 +188,19 @@ class AZECProcessor(BaseProcessor):
         cotis_100_expr = when(col("partbrut") == 0, col("prime")) \
                         .otherwise(col("prime") + (col("cpcua") / col("partcie")))
 
+
         # FIXED: Add CSSSEG filtering for PRIMES_AFN and PRIMES_RES
         cssseg_filter = (col("cssseg") != "5") if "cssseg" in df.columns else lit(True)
 
         df = df.select(
             "*",
             primeto_expr.alias("primeto"),
-            primecua_expr.alias("primecua"),  # SAS L217
+            primecua_expr.alias("primecua"),  # SAS L217: (prime*partbrut/100 + cpcua)
             cotis_100_expr.alias("cotis_100"),  # SAS L229 - FIXED
-            when(col("nbptf") == 1, primeto_expr).otherwise(lit(0)).alias("primes_ptf"),
+            # CRITICAL FIX: PRIMES_PTF must use primecua, not primeto
+            # SAS L225: ((nbptf=1)*(prime*partbrut/100 + cpcua))
+            # This matches PRIMES_AFN/RES logic which also use primecua
+            when(col("nbptf") == 1, primecua_expr).otherwise(lit(0)).alias("primes_ptf"),  # SAS L225 - FIXED
             when((col("nbafn") == 1) & cssseg_filter, primecua_expr).otherwise(lit(0)).alias("primes_afn"),  # SAS L223
             when((col("nbres") == 1) & cssseg_filter, primecua_expr).otherwise(lit(0)).alias("primes_res")   # SAS L224
         )

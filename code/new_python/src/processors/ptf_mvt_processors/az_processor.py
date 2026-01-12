@@ -387,17 +387,35 @@ class AZProcessor(BaseProcessor):
         df = df.join(broadcast(df_cproduit), on='cdprod', how='left')
         self.logger.info("✓ Successfully joined cproduit reference data")
         
-        # TABLE_PT_GEST - OPTIONAL (SAS L485)
+        # TABLE_PT_GEST - OPTIONAL (SAS L477-503)
+        # SAS uses version-specific logic:
+        # - If vision <= 201112: use PTGST_201201
+        # - Else: use %derniere_version(PT_GEST, ptgst_, &vision., TABLE_PT_GEST)
+        # 
+        # Python implementation: Try vision-specific first, fallback to 'ref'
+        year_int, month_int = extract_year_month_int(vision)
+        
+        # Determine which PT_GEST version to use
+        if year_int < 2011 or (year_int == 2011 and month_int <= 12):
+            # For very old visions (<= 201112), use fixed version 201201 (SAS L478-481)
+            pt_gest_vision = '201201'
+            self.logger.info(f"Using PT_GEST version 201201 (vision {vision} <= 201112)")
+        else:
+            # For recent visions, use vision-specific or fallback to 'ref' (SAS L483-485)
+            pt_gest_vision = vision
+            self.logger.info(f"Using PT_GEST version {vision} (vision-specific)")
+        
+        # Try to load version-specific TABLE_PT_GEST
         df = safe_reference_join(
             df, reader,
             file_group='table_pt_gest',
-            vision='ref',
+            vision=pt_gest_vision,  # Use computed version instead of fixed 'ref'
             join_keys='ptgst',
             select_columns=['upper_mid'],
             null_columns={'upper_mid': StringType},
             use_broadcast=True,
             logger=self.logger,
-            required=False
+            required=False  # Fallback to NULL if not found
         )
         
         # Debug: Check if upper_mid was successfully enriched

@@ -398,12 +398,19 @@ def calculate_exposures(
         expo_where_cond = branch1 | branch2
 
     # Calculate expo_ytd
+    # CRITICAL FIX: SAS uses year-end (Dec 31), NOT month-end for denominator
+    # SAS Reference: PTF_MVTS_AZ_MACRO.sas L299
+    # Original: ((mdy(12,31,&annee.) - "&DTDEB_AN"d) + 1)
+    # Python must use December 31st, not DTFIN (which is last day of vision month)
+    year_end_date = to_date(lit(f"{annee}-12-31"), 'yyyy-MM-dd')
+    year_days = datediff(year_end_date, dtdeb_an_date) + 1
+    
     df = df.withColumn(
         "expo_ytd",
         when(
             expo_where_cond &
             (col("dt_deb_expo") <= dtfin_date) & (col("dt_fin_expo") >= dtdeb_an_date),
-            (datediff(least(col("dt_fin_expo"), dtfin_date), greatest(col("dt_deb_expo"), dtdeb_an_date)) + 1) / 365.0
+            (datediff(least(col("dt_fin_expo"), dtfin_date), greatest(col("dt_deb_expo"), dtdeb_an_date)) + 1) / year_days
         ).otherwise(lit(0))
     )
 
