@@ -125,7 +125,7 @@
     }
   },
   "computed_fields": {
-    "description": "Computed fields to apply after column selection - SAS: PTF_MVTS_AZ_MACRO.sas L238-341",
+    "description": "Computed fields to apply after column selection - SAS: PTF_MVTS_AZ_MACRO.sas L238-243, L290 (NOTE: TOP_AOP moved to STEP 11 to match SAS L339-341 order)",
     "primeto": {
       "type": "expression",
       "formula": "mtprprto * (1 - tx / 100)",
@@ -135,18 +135,12 @@
       "type": "conditional",
       "conditions": [
         {
-          "check": "(ctduree > 1) and (tydris1 in ['QAW', 'QBJ', 'QBK', 'QBB', 'QBM'])",
+          "check": "(ctduree > 1) AND (tydris1 IN ('QAW', 'QBJ', 'QBK', 'QBB', 'QBM'))",
           "result": 1
         }
       ],
       "default": 0,
       "description": "Long Term Agreement flag - SAS L242-243. Contracts with duration > 1 year and specific risk types."
-    },
-    "top_aop": {
-      "type": "flag_equality",
-      "source_col": "opapoffr",
-      "value": "O",
-      "description": "AOP (All-risk Policies) offer flag - SAS L340. Added 2020-02-11 per Alain Voss."
     },
     "top_temp": {
       "type": "flag_equality",

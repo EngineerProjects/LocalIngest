@@ -77,51 +77,46 @@ class AZProcessor(BaseProcessor):
         year_int, month_int = extract_year_month_int(vision)
         dates = compute_date_ranges(vision)
 
-        # Load configurations from JSON
         loader = get_default_loader()
         az_config = loader.get_az_config()
-        business_rules = loader.get_business_rules()
 
-        # STEP 0: Business filters now applied in read() BEFORE union (SAS L135, L149)
-        # This matches SAS logic where filters are in WHERE clause of each SELECT
-
-        # Note: Computed columns (tx, top_coass, coass, partcie, critere_revision) 
-        # and column renames are ALL handled by JSON config in STEP 5 (_apply_computed_fields)
-        # SAS does these in SELECT clause (L55-97), Python does them in transformation step
-
-        # STEP 1: Initialize indicators (SAS L106-115)
-        self.logger.step(1, "Initializing indicator columns to 0")
-        
+        # ============================================================
+        # STEP 1 — Initialize all indicator columns (SAS L106–115)
+        # ============================================================
+        self.logger.step(1, "Initializing indicator columns")
         init_columns = {
-            # Numeric columns (float)
-            **{col: lit(0.0) for col in ['primeto', 'primes_ptf', 'primes_afn', 'primes_res',
-                                          'primes_rpt', 'primes_rpc', 'expo_ytd', 'expo_gli',
-                                          'cotis_100', 'mtca_', 'perte_exp', 'risque_direct',
-                                          'value_insured', 'smp_100', 'lci_100']},
-            # Integer flags
-            **{col: lit(0) for col in ['nbptf', 'nbafn', 'nbres', 'nbrpt', 'nbrpc', 'top_temp',
-                                        'top_lta', 'top_aop', 'nbafn_anticipe', 'nbres_anticipe']},
-            # Date columns and other
+            **{col: lit(0.0) for col in [
+                'primeto', 'primes_ptf', 'primes_afn', 'primes_res',
+                'primes_rpt', 'primes_rpc', 'expo_ytd', 'expo_gli',
+                'cotis_100', 'mtca_', 'perte_exp', 'risque_direct',
+                'value_insured', 'smp_100', 'lci_100'
+            ]},
+            **{col: lit(0) for col in [
+                'nbptf', 'nbafn', 'nbres', 'nbrpt', 'nbrpc',
+                'top_temp', 'top_lta', 'top_aop',
+                'nbafn_anticipe', 'nbres_anticipe'
+            ]},
             'dt_deb_expo': lit(None).cast(DateType()),
             'dt_fin_expo': lit(None).cast(DateType()),
             'ctduree': lit(None).cast('double')
         }
-        for col_name, col_value in init_columns.items():
-            df = df.withColumn(col_name, col_value)
+        for name, value in init_columns.items():
+            df = df.withColumn(name, value)
 
-        # STEP 2: Add metadata columns (SAS L128-147)
-        self.logger.step(2, "Adding metadata columns (vision, dircom, cdpole)")
-        
+        # ============================================================
+        # STEP 2 — Metadata (vision, dircom, exevue, moisvue)
+        # ============================================================
+        self.logger.step(2, "Adding metadata columns")
         metadata_cols = {
             'dircom': lit(DIRCOM.AZ),
             'vision': lit(vision),
             'exevue': lit(year_int),
             'moisvue': lit(month_int)
         }
-        for col_name, col_value in metadata_cols.items():
-            df = df.withColumn(col_name, col_value)
-        
-        # Determine CDPOLE from source file
+        for name, value in metadata_cols.items():
+            df = df.withColumn(name, value)
+
+        # Determine CDPOLE from source file (Agent vs Courtage)
         if '_source_file' in df.columns:
             df = df.withColumn(
                 'cdpole',
@@ -132,45 +127,103 @@ class AZProcessor(BaseProcessor):
         else:
             df = df.withColumn('cdpole', lit(POLE.AGENT))
 
-        # STEP 3: Join IPFM99 for product 01099 (SAS L157-187)
-        self.logger.step(3, "Joining IPFM99 for product 01099")
+        # ============================================================
+        # STEP 3 — Apply renames from JSON (SAS SELECT renames)
+        # ============================================================
+        self.logger.step(3, "Applying renames")
+        df = self._apply_renames(df, az_config)
+
+        # ============================================================
+        # STEP 4 — SELECT-level computed fields (tx, top_coass)
+        # ============================================================
+        self.logger.step(4, "Applying SELECT-level computed fields")
+        select_computed = az_config.get("column_selection", {}).get("computed", {})
+        df = self._apply_computed_generic(df, select_computed)
+
+        # ============================================================
+        # STEP 5 — Join IPFM99 (special CA logic for product 01099)
+        # ============================================================
+        self.logger.step(5, "Joining IPFM99")
         df = self._join_ipfm99(df, vision)
 
-        # STEP 4: Extract capitals (SAS L195-231)
-        self.logger.step(4, "Extracting capitals (SMP, LCI, PERTE_EXP, RISQUE_DIRECT)")
-        capital_config = az_config['capital_extraction']
-        
-        capital_targets = {
-            'smp_100': capital_config['smp_100'],
-            'lci_100': capital_config['lci_100'],
-            'perte_exp': capital_config['perte_exp'],
-            'risque_direct': capital_config['risque_direct']
-        }
-        df = extract_capitals(df, capital_targets)
+        # ============================================================
+        # STEP 6 — Capital extraction (SMP, LCI, PERTE_EXP, RISQUE_DIRECT)
+        # ============================================================
+        self.logger.step(6, "Extracting capital fields")
+        capital_cfg = az_config['capital_extraction']
+        df = extract_capitals(df, {
+            'smp_100': capital_cfg['smp_100'],
+            'lci_100': capital_cfg['lci_100'],
+            'perte_exp': capital_cfg['perte_exp'],
+            'risque_direct': capital_cfg['risque_direct']
+        })
 
-        # STEP 5: Apply computed fields from JSON config (SAS L55-97 + L238-243)
-        # This handles:
-        # - Column renames (posacta->posacta_ri, etc.)
-        # - Computed columns (tx, top_coass, coass, partcie, critere_revision)
-        # - Business fields (primeto, top_lta, top_aop, top_temp, top_revisable)
-        # NOTE: cotis_100/mtca_ calculated in Step 7.5 (after exposures), not in JSON
-        # NOTE: nbafn_anticipe/nbres_anticipe calculated in Step 6.5 (not in JSON)
-        self.logger.step(5, "Applying computed fields from config (renames + computed + business)")
-        df = self._apply_computed_fields(df, az_config)
+        # ============================================================
+        # STEP 7 — UPDATE-level computed fields (primeto, top_lta, top_temp, top_revisable)
+        # SAS L238-243, L290
+        # NOTE: TOP_AOP now in STEP 11 to match SAS L339-341 strict order
+        # ============================================================
+        self.logger.step(7, "Applying UPDATE-level computed fields")
+        update_computed = az_config.get("computed_fields", {})
+        df = self._apply_computed_generic(df, update_computed)
 
-        # STEP 6: Calculate movements (SAS L250-291)
-        self.logger.step(6, "Calculating movement indicators")
+        # ============================================================
+        # STEP 8 — Movement indicators (AFN, RES, RPC, RPT, NBPTF)
+        # ============================================================
+        self.logger.step(8, "Calculating movement indicators")
         movement_cols = az_config['movements']['column_mapping']
         df = calculate_movements(df, dates, year_int, movement_cols)
-        
-        # STEP 6.5: Calculate anticipated movements (SAS L347-355)
-        # CRITICAL FIX: These must be calculated manually (like AZEC) because they need
-        # access to finmois from dates dict, which is not available as a DataFrame column
-        self.logger.step(6.5, "Calculating anticipated movements (nbafn_anticipe, nbres_anticipe)")
+
+        # ============================================================
+        # STEP 9 — Exposure calculations (expo_ytd, expo_gli)
+        # SAS L298-311
+        # ============================================================
+        self.logger.step(9, "Calculating exposures")
+        exposure_cols = az_config['exposures']['column_mapping']
+        df = calculate_exposures(df, dates, year_int, exposure_cols)
+
+        # ============================================================
+        # STEP 10 — Cotisation 100% and MTCA_
+        # SAS L317-332
+        # ============================================================
+        self.logger.step(10, "Calculating cotis_100 and mtca_")
+
+        df = df.withColumn(
+            'prcdcie_normalized',
+            when((col('prcdcie').isNull()) | (col('prcdcie') == 0), lit(100))
+            .otherwise(col('prcdcie'))
+        )
+
+        df = df.withColumn(
+            'cotis_100',
+            when(
+                (col('top_coass') == 1) & (col('cdcoas').isin(['4', '5'])),
+                (col('mtprprto') * 100) / col('prcdcie_normalized')
+            ).otherwise(col('mtprprto'))
+        )
+
+        df = df.withColumn(
+            'mtca_',
+            coalesce(col('mtcaf'), lit(0)) + coalesce(col('mtca'), lit(0))
+        )
+
+        # ============================================================
+        # STEP 11 — TOP_AOP flag (STRICT ORDER MATCH)
+        # SAS L339-341 (after cotis_100, before AFN/RES anticipés)
+        # ============================================================
+        self.logger.step(11, "Applying TOP_AOP flag")
+        df = df.withColumn(
+            'top_aop',
+            when(col('opapoffr') == 'O', lit(1)).otherwise(lit(0))
+        )
+
+        # ============================================================
+        # STEP 12 — Anticipated movements (AFN/RES anticipés)
+        # SAS L347-355
+        # ============================================================
+        self.logger.step(12, "Calculating anticipated movements")
         finmois = dates['finmois']
-        
-        # nbafn_anticipe: AFN with effective date or creation date AFTER month end (SAS L347-350)
-        # Exclude replacements (RE types)
+
         df = df.withColumn(
             "nbafn_anticipe",
             when(
@@ -179,65 +232,48 @@ class AZProcessor(BaseProcessor):
                 lit(1)
             ).otherwise(lit(0))
         )
-        
-        # nbres_anticipe: RES with termination date AFTER month end (SAS L352-355)
-        # Exclude replaced contracts (RP types) and specific cancellation reasons
+
         df = df.withColumn(
             "nbres_anticipe",
             when(
                 (col("dtresilp") > lit(finmois)) &
-                ~((col("cdtypli1") == "RP") | (col("cdtypli2") == "RP") | (col("cdtypli3") == "RP") | 
-                  (col("cdmotres") == "R") | (col("cdcasres") == "2R")),
+                ~((col("cdtypli1") == "RP") | (col("cdtypli2") == "RP") | (col("cdtypli3") == "RP") |
+                (col("cdmotres") == "R") | (col("cdcasres") == "2R")),
                 lit(1)
             ).otherwise(lit(0))
         )
-        
-        # STEP 7: Calculate exposures (SAS L298-311)
-        self.logger.step(7, "Calculating exposures")
-        exposure_cols = az_config['exposures']['column_mapping']
-        df = calculate_exposures(df, dates, year_int, exposure_cols)
 
-        # STEP 7.5: Calculate cotis_100 and mtca_ (SAS L318-332)
-        # CRITICAL FIX: These MUST be calculated AFTER exposures to match exact SAS order
-        self.logger.step(7.5, "Calculating cotis_100 and mtca_ (premium/revenue metrics)")
-        
-        # Normalize prcdcie: set to 100 if null or 0 (SAS L318-319)
-        df = df.withColumn(
-            'prcdcie_normalized',
-            when((col('prcdcie').isNull()) | (col('prcdcie') == 0), lit(100))
-            .otherwise(col('prcdcie'))
-        )
-        
-        # Calculate cotis_100 (SAS L322-327)
-        # For accepted co-insurance (cdcoas in ['4', '5']), gross up by company share
-        df = df.withColumn(
-            'cotis_100',
-            when(
-                (col('top_coass') == 1) & (col('cdcoas').isin(['4', '5'])),
-                (col('mtprprto') * 100) / col('prcdcie_normalized')
-            ).otherwise(col('mtprprto'))
-        )
-        
-        # Calculate mtca_: Total CA (Revenue) = MTCAF + MTCA (SAS L330-332)
-        df = df.withColumn(
-            'mtca_',
-            coalesce(col('mtcaf'), lit(0)) + coalesce(col('mtca'), lit(0))
-        )
-
-        # STEP 8: Enrich with segmentation (segment2, type_produit_2, upper_mid) (SAS L377-503)
-        self.logger.step(8, "Enriching with segmentation and management point")
-        df = self._enrich_segment_and_product_type(df, vision)
-        
-        # STEP 9: Final data cleanup (SAS L362-370)
-        self.logger.step(9, "Applying final data cleanup")
+        # ============================================================
+        # STEP 13 — Final cleanup (expo dates, nmclt)
+        # SAS L362-370 (BEFORE segmentation in SAS)
+        # ============================================================
+        self.logger.step(13, "Final data cleanup")
         df = self._finalize_data_cleanup(df)
 
-        # STEP 10: Final deduplication (SAS L505-507)
-        self.logger.step(10, "Deduplicating by nopol")
+        # ============================================================
+        # STEP 14 — Segmentation & PT_GEST enrichment
+        #
+        # This step reproduces SAS L377–503:
+        #   - Load PRDPFA1 (Agent) and PRDPFA3 (Courtage)
+        #   - Filter construction market (CMARCH='6')
+        #   - Add RESEAU = '1' or '3'
+        #   - Union both segmentations
+        #   - Enrich with CPRODUIT (Type_Produit_2)
+        #   - Enrich with PRDCAP (product labels)
+        #   - Join on BOTH cdprod + cdpole (CRITICAL SAS rule)
+        #   - Enrich with TABLE_PT_GEST (upper_mid)
+        # SAS L377-503
+        # ============================================================
+        self.logger.step(14, "Enriching segmentation and management point")
+        df = self._enrich_segment_and_product_type(df, vision)
+
+        # ============================================================
+        # STEP 15 — Deduplication (SAS L505–507)
+        # ============================================================
+        self.logger.step(15, "Deduplicating by nopol")
         df = df.orderBy("nopol", "cdsitp").dropDuplicates(["nopol"])
 
         self.logger.info("AZ transformations completed successfully")
-
         return df
 
     def write(self, df: DataFrame, vision: str) -> None:
@@ -253,78 +289,92 @@ class AZProcessor(BaseProcessor):
             df, self.config, 'silver', f'mvt_const_ptf_{vision}', vision, self.logger
         )
 
+    def _apply_renames(self, df, az_config):
+        column_selection = az_config.get("column_selection", {})
+        rename_map = column_selection.get("rename", {})
+        self.logger.info(f"Rename map loaded: {rename_map}")
+        for old, new in rename_map.items():
+            if old in df.columns:
+                df = df.withColumnRenamed(old, new)
+        return df
 
-    def _apply_computed_fields(self, df: DataFrame, config: dict) -> DataFrame:
+    def _apply_computed_generic(self, df: DataFrame, computed_config: dict) -> DataFrame:
         """
-        Apply computed fields from configuration.
-        
-        Handles three types of computed fields:
-        - expression: Direct PySpark SQL expressions
-        - conditional: Cascading when() conditions
-        - flag_equality: Simple equality flags
-        
-        Args:
-            df: Input DataFrame
-            config: computed_fields configuration section
-            
-        Returns:
-            DataFrame with computed fields added
+        Generic computed-field engine.
+        Supports:
+        - coalesce_default
+        - flag_equality
+        - expression
+        - conditional
+        Works for both:
+        - column_selection.computed (SELECT SAS)
+        - computed_fields (UPDATE SAS)
         """
-        from pyspark.sql.functions import expr
-        
-        computed = config.get('computed_fields', {})
-        if not computed:
+        from pyspark.sql.functions import col, lit, when, expr
+
+        if not computed_config:
             return df
-        
-        self.logger.info(f"Applying {len(computed) - 1} computed fields from config")  # -1 for description
-        
-        for field_name, field_config in computed.items():
-            if field_name == 'description':
+
+        for field_name, field_def in computed_config.items():
+            if field_name == "description":
                 continue
-                
-            field_type = field_config.get('type')
-            
-            if field_type == 'expression':
-                # Direct PySpark expression
-                formula = field_config['formula']
+
+            field_type = field_def.get("type")
+
+            # 1. coalesce_default
+            if field_type == "coalesce_default":
+                source = field_def["source_col"]
+                default = field_def["default"]
+                df = df.withColumn(
+                    field_name,
+                    when(col(source).isNull(), lit(default)).otherwise(col(source))
+                )
+
+            # 2. flag_equality
+            elif field_type == "flag_equality":
+                source = field_def["source_col"]
+                value = field_def["value"]
+                df = df.withColumn(
+                    field_name,
+                    when(col(source) == value, lit(1)).otherwise(lit(0))
+                )
+
+            # 3. expression
+            elif field_type == "expression":
+                formula = field_def["formula"]
                 df = df.withColumn(field_name, expr(formula))
-                self.logger.debug(f"  ✓ {field_name}: {formula}")
-                
-            elif field_type == 'conditional':
-                # Cascading when() conditions
-                conditions = field_config['conditions']
-                default = field_config['default']
-                
-                # Build expression from default backwards
-                if isinstance(default, str) and default not in ['0', '1']:
+
+            # 4. conditional
+            elif field_type == "conditional":
+                conditions = field_def["conditions"]
+                default = field_def["default"]
+
+                # default value
+                if isinstance(default, str) and default not in ["0", "1"]:
                     result_expr = expr(default)
                 else:
-                    result_expr = lit(float(default) if '.' in str(default) else int(default))
-                
-                # Apply conditions in reverse order (last condition has highest priority)
+                    result_expr = lit(float(default) if "." in str(default) else int(default))
+
+                # apply conditions in reverse order
                 for cond in reversed(conditions):
-                    check_expr = expr(cond['check'])
-                    result_val = cond['result']
-                    
-                    if isinstance(result_val, str) and result_val not in ['0', '1']:
+                    check_expr = expr(cond["check"])
+                    result_val = cond["result"]
+
+                    if isinstance(result_val, str) and result_val not in ["0", "1"]:
                         result_val = expr(result_val)
                     else:
                         result_val = lit(int(result_val))
-                    
+
                     result_expr = when(check_expr, result_val).otherwise(result_expr)
-                
+
                 df = df.withColumn(field_name, result_expr)
-                self.logger.debug(f"  ✓ {field_name}: conditional with {len(conditions)} condition(s)")
-                
-            elif field_type == 'flag_equality':
-                # Simple equality flag
-                source = field_config['source_col']
-                value = field_config['value']
-                df = df.withColumn(field_name, when(col(source) == value, lit(1)).otherwise(lit(0)))
-                self.logger.debug(f"  ✓ {field_name}: {source} == '{value}'")
-        
+
+            else:
+                self.logger.warning(f"Unknown computed field type: {field_type}")
+
         return df
 
+                
     def _join_ipfm99(self, df: DataFrame, vision: str) -> DataFrame:
         """
         Join IPFM99 data for product 01099 special CA handling.

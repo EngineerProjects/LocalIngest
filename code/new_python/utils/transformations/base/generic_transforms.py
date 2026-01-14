@@ -345,111 +345,101 @@ def _build_expression_from_string(
 def apply_business_filters(
     df: DataFrame,
     filter_config: Dict[str, Any],
-    logger: Optional[Any] = None
+    logger: Optional[Any] = None,
+    business_rules: Optional[Dict[str, Any]] = None
 ) -> DataFrame:
     """
     Apply business filters from configuration dictionary.
-
-    Supports multiple filter types:
-    - 'equals' or '==': column == value
-    - 'not_equals' or '!=': column != value
-    - 'in': column.isin(values)
-    - 'not_in': ~column.isin(values)
-    - 'not_equals_column': column1 != column2
-    - 'complex': Custom PySpark expression string
-
-    Args:
-        df: Input DataFrame
-        filter_config: Filter configuration dictionary with keys:
-            - 'description': Human-readable description
-            - 'filters': List of filter dictionaries
-        logger: Optional logger instance for progress tracking
-
-    Returns:
-        Filtered DataFrame
-
-    Raises:
-        ValueError: If filter type is unsupported or configuration is invalid
-
-    Example:
-        >>> filter_config = {
-        ...     'description': 'AZ filters',
-        ...     'filters': [
-        ...         {'type': '==', 'column': 'cmarch', 'value': '6'},
-        ...         {'type': 'not_in', 'column': 'cdsitp', 'value': ['4', '5']},
-        ...         {'type': 'not_in', 'column': 'noint', 'value': '@EXCLUDED_NOINT'},
-        ...         {'type': 'complex', 'expression': '(col_a > 10) & (col_b != "X")'}
-        ...     ]
-        ... }
-        >>> df_filtered = apply_business_filters(df, filter_config)
+    Supports:
+      - equals, not_equals
+      - in, not_in
+      - not_equals_column
+      - complex expressions
+      - values_ref (AZEC-specific)
     """
-    # Count operations are expensive and unnecessary for filter logging
-    # Use sampling if statistics are needed for debugging
+
     filters = filter_config.get('filters', [])
+
+    # Load business rules root if needed (for values_ref)
+    if business_rules is None:
+        business_rules = get_default_loader().get_business_rules()
 
     for filter_spec in filters:
         filter_type = filter_spec.get('type')
         column_name = filter_spec.get('column', '').lower()
-        description = filter_spec.get('description', '') or filter_spec.get('comment', '')
+        description = filter_spec.get('description', '')
 
-        # Log filter application if logger available
         if logger:
             logger.debug(f"Applying filter: {description or filter_type}")
 
-        # Resolve value from constants if needed (@CONSTANT syntax or values_from_constant)
-        value = filter_spec.get('value') or filter_spec.get('values')
-        value = _resolve_constant_reference(value)
+        # ---------------------------------------------------------
+        # 1. Resolve value / values / values_ref
+        # ---------------------------------------------------------
+        value = None
 
-        # Legacy support for values_from_constant
-        if 'values_from_constant' in filter_spec:
+        # Direct value or values
+        if 'value' in filter_spec:
+            value = filter_spec['value']
+        elif 'values' in filter_spec:
+            value = filter_spec['values']
+
+        # values_ref → lookup in business_rules
+        elif 'values_ref' in filter_spec:
+            ref_name = filter_spec['values_ref']
+            value = business_rules['business_filters']['azec'].get(ref_name)
+
+            if value is None:
+                raise ValueError(f"Unknown values_ref '{ref_name}' in filter: {filter_spec}")
+
+        # Legacy: values_from_constant
+        elif 'values_from_constant' in filter_spec:
             from config import constants
             value = getattr(constants, filter_spec['values_from_constant'])
 
-        # Type: equals (column == value) - support both 'equals' and '=='
+        # Resolve @CONSTANT syntax
+        value = _resolve_constant_reference(value)
+
+        # ---------------------------------------------------------
+        # 2. Apply filter
+        # ---------------------------------------------------------
+
         if filter_type in ['equals', '==']:
             df = df.filter(col(column_name) == value)
 
-        # Type: not_equals (column != value) - support both 'not_equals' and '!='
         elif filter_type in ['not_equals', '!=']:
             df = df.filter(col(column_name) != value)
 
-        # Type: in (column.isin(values))
         elif filter_type == 'in':
             if not value:
-                raise ValueError(f"Filter 'in' requires 'value' or 'values' list: {filter_spec}")
+                raise ValueError(f"Filter 'in' requires values: {filter_spec}")
             df = df.filter(col(column_name).isin(value))
 
-        # Type: not_in (~column.isin(values))
         elif filter_type == 'not_in':
             if not value:
-                raise ValueError(f"Filter 'not_in' requires 'value' or 'values': {filter_spec}")
-
+                raise ValueError(f"Filter 'not_in' requires values: {filter_spec}")
             df = df.filter(~col(column_name).isin(value))
 
-        # Type: not_equals_column (column1 != column2)
         elif filter_type == 'not_equals_column':
             compare_column = filter_spec.get('compare_column', '').lower()
             if not compare_column:
-                raise ValueError(f"Filter 'not_equals_column' requires 'compare_column': {filter_spec}")
+                raise ValueError(f"Filter 'not_equals_column' requires compare_column")
             df = df.filter(col(column_name) != col(compare_column))
 
-        # Type: complex (custom PySpark expression)
         elif filter_type == 'complex':
             expression = filter_spec.get('expression')
             if not expression:
-                raise ValueError(f"Filter 'complex' requires 'expression': {filter_spec}")
-
-            # Parse expression string to build PySpark condition
+                raise ValueError(f"Filter 'complex' requires expression")
             filter_condition = _parse_filter_expression(expression, df.columns)
             df = df.filter(filter_condition)
 
         else:
-            raise ValueError(f"Unsupported filter type: '{filter_type}' in {filter_spec}")
+            raise ValueError(f"Unsupported filter type: {filter_type}")
 
     if logger:
         logger.info(f"Business filters applied successfully ({len(filters)} filters)")
 
     return df
+
 
 
 def _resolve_constant_reference(value):

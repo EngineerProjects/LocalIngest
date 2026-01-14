@@ -26,6 +26,16 @@
                 "ipf16.csv",
                 "ipf36.csv"
             ],
+            "dynamic_columns": [
+                {
+                    "pattern": "*16*",
+                    "columns": { "cdpole": "1" }
+                },
+                {
+                    "pattern": "*36*",
+                    "columns": { "cdpole": "3" }
+                }
+            ],
             "schema": "ipf_az",
             "read_options": {
                 "format": "csv",
@@ -43,6 +53,16 @@
                 "*3SPEIPFM99_IPF_*.csv.gz",
                 "*E1SPEIPFM99_IPF_*.csv.gz"
             ],
+            "dynamic_columns": [
+                {
+                    "pattern": "*3SPEIPFM99*",
+                    "columns": { "cdpole": "3" }
+                },
+                {
+                    "pattern": "*E1SPEIPFM99*",
+                    "columns": { "cdpole": "1" }
+                }
+            ],  
             "schema": "ipfm99_az",
             "read_options": {
                 "format": "csv",

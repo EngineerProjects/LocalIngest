@@ -6,7 +6,8 @@ Reads files from bronze with column selection and filtering.
 import json
 from pathlib import Path
 from pyspark.sql import SparkSession, DataFrame # type: ignore
-from pyspark.sql.functions import col, input_file_name # type: ignore
+from pyspark.sql.functions import col, input_file_name, lit # type: ignore
+import fnmatch
 from typing import List, Dict, Optional, Any
 from utils.loaders.config_loader import ConfigLoader
 from utils.helpers import build_layer_path
@@ -129,6 +130,20 @@ class BronzeReader:
 
                 # Add source file name for tracking origin (e.g., PTF16 vs PTF36)
                 df_temp = df_temp.withColumn("_source_file", input_file_name())
+
+                # Add dynamic columns if there are some.
+                dynamic_cols = group_config.get("dynamic_columns", [])
+
+                # Extract source file name once
+                source_file = df_temp.select("_source_file").first()[0].lower()
+
+                for rule in dynamic_cols:
+                    dyn_pattern = rule["pattern"].lower()
+                    cols_to_add = rule["columns"]
+
+                    if fnmatch.fnmatch(source_file, dyn_pattern):
+                        for col_name, col_value in cols_to_add.items():
+                            df_temp = df_temp.withColumn(col_name, lit(col_value))
 
                 # Convert to lowercase BEFORE applying filters
                 from utils.transformations import lowercase_all_columns
