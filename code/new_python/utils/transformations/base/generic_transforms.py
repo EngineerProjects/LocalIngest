@@ -9,6 +9,7 @@ from pyspark.sql import DataFrame # type: ignore
 from pyspark.sql.functions import col, when, lit, coalesce, expr # type: ignore
 from typing import Dict, Any, List, Optional
 import re
+from utils.loaders import get_default_loader
 
 
 def apply_conditional_transform(

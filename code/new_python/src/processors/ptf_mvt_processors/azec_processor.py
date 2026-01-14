@@ -68,7 +68,7 @@ class AZECProcessor(BaseProcessor):
 
     def transform(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Apply AZEC business transformations (config-driven from JSON).
+        Apply AZEC business transformations following SAS L52-487 strict order.
 
         Args:
             df: POLIC_CU DataFrame from read() (lowercase columns)
@@ -85,47 +85,84 @@ class AZECProcessor(BaseProcessor):
         azec_config = loader.get_azec_config()
         business_rules = loader.get_business_rules()
 
-        # Step 1: Apply column configuration
+        # ============================================================
+        # STEP 1: Column Selection (SAS L52-85)
+        # ============================================================
         self.logger.step(1, "Applying column configuration")
         column_config = azec_config['column_selection']
         df = apply_column_config(df, column_config, vision, year_int, month_int)
 
-        # Step 2: Add DIRCOM constant
+        # Add DIRCOM constant
         df = df.withColumn('dircom', lit(DIRCOM.AZEC))
 
-        # Step 3: Apply business filters (SAS WHERE clause equivalent) - from centralized business_rules.json
+        # Apply business filters (SAS WHERE clause)
         self.logger.step(2, "Applying business filters")
         azec_filters = business_rules.get('business_filters', {}).get('azec', {}).get('filters', [])
         df = apply_business_filters(df, {'filters': azec_filters}, self.logger)
 
-        # Step 3.5: Apply computed fields from config (SAS L62, L76-77, L217-248)
-        # This handles: partcie, primeto, cotis_100, coass, cdnatp, top_coass, top_lta, top_revisable
-        self.logger.step(3.5, "Applying computed fields (partcie, primeto, cotis_100, flags)")
-        df = self._apply_computed_fields(df, azec_config)
-
-        # Step 4: Handle migration logic (vision > 202009)
-        self.logger.step(4, "Handling AZEC migration")
+        # ============================================================
+        # STEP 2: Migration Handling (SAS L94-106)
+        # ============================================================
+        self.logger.step(3, "Handling AZEC migration")
         df = self._handle_migration(df, vision, azec_config)
 
-        # Step 5: Update dates and policy states
+        # ============================================================
+        # STEP 3: Data Quality Updates (SAS L113-137)
+        # ============================================================
         self.logger.step(4, "Updating dates and policy states")
         df = self._update_dates_and_states(df, dates, year_int, month_int)
 
-        # Step 6: Calculate movements (AZEC-specific)
-        self.logger.step(5, "Calculating movements")
+        # ============================================================
+        # STEP 4: AFN/RES/PTF Indicators (SAS L144-182)
+        # ============================================================
+        self.logger.step(5, "Calculating movement indicators")
         df = self._calculate_movements(df, dates, year_int, month_int)
 
-        # Step 7: Calculate suspension periods (SAS L118-126)
-        self.logger.step(6, "Calculating suspension periods (nbj_susp_ytd)")
+        # ============================================================
+        # STEP 5: Exposure Calculation (SAS L189-203)
+        # ============================================================
+        self.logger.step(6, "Calculating suspension periods")
         from utils.transformations.operations.business_logic import calculate_azec_suspension
         df = calculate_azec_suspension(df, dates)
 
-        # Step 8: Calculate exposures
         self.logger.step(7, "Calculating exposures")
         df = self._calculate_exposures(df, dates, vision)
-        
-        # Step 8.5: Cleanup DT_DEB_EXPO/DT_FIN_EXPO when EXPO_YTD = 0 (SAS L374-380)
-        self.logger.step(7.5, "Cleaning up exposure dates when EXPO_YTD = 0")
+
+        # ============================================================
+        # STEP 6: Segmentation + Premiums (SAS L210-265)
+        # ============================================================
+        self.logger.step(8, "Enriching segmentation (LOB)")
+        df = self._enrich_segmentation(df)
+
+        # Calculate premiums AFTER segmentation (CSSSEG needed)
+        self.logger.step(9, "Calculating premiums and flags")
+        df = self._calculate_premiums(df)
+
+        # ============================================================
+        # STEP 7: NAF Codes (SAS L272-302)
+        # ============================================================
+        self.logger.step(10, "Enriching NAF codes")
+        df = self._enrich_naf_codes(df, vision)
+
+        # ============================================================
+        # STEP 8: Formulas (SAS L309-332)
+        # ============================================================
+        self.logger.step(11, "Enriching formulas")
+        df = self._enrich_formulas(df, vision)
+
+        # ============================================================
+        # STEP 9: CA Turnover (SAS L339-357)
+        # ============================================================
+        self.logger.step(12, "Enriching CA turnover")
+        df = self._enrich_ca(df, vision)
+
+        # ============================================================
+        # STEP 10: PE/RD/VI Capitals + Cleanup (SAS L364-380)
+        # ============================================================
+        self.logger.step(13, "Enriching PE/RD/VI capitals")
+        df = self._enrich_pe_rd_vi(df, vision)
+
+        # Cleanup expo dates AFTER PE/RD (SAS L374-380)
         df = df.withColumn('dt_deb_expo',
             when(col('expo_ytd') == 0, lit(None).cast(DateType())).otherwise(col('dt_deb_expo'))
         )
@@ -133,54 +170,29 @@ class AZECProcessor(BaseProcessor):
             when(col('expo_ytd') == 0, lit(None).cast(DateType())).otherwise(col('dt_fin_expo'))
         )
 
-
-        # Step 10: Join capitals from CAPITXCU
-        self.logger.step(8, "Joining capital data (CAPITXCU)")
+        # ============================================================
+        # STEP 11: SMP/LCI Capitals (SAS L387-420)
+        # ============================================================
+        self.logger.step(14, "Joining SMP/LCI capital data")
         df = self._join_capitals(df, vision)
 
-        # TYPE_AFFAIRE: Alias for TYPCONTR (SAS L248)
-        df = df.withColumn('type_affaire', col('typcontr'))
-
-        # Step 11: NAF code enrichment from INCENDCU, MPACU, RCENTCU, RISTECCU
-        self.logger.step(10, "Enriching NAF codes and PE/RD capitals (INCENDCU)")
-        df = self._enrich_naf_codes(df, vision)
-
-        # Step 12: Product formulas and CA from CONSTRCU and MULPROCU
-        self.logger.step(10.5, "Enriching formulas and CA (CONSTRCU, MULPROCU)")
-        df = self._enrich_formules_and_ca(df, vision)
-
-        # Step 13: Enrichissement segmentation AZEC
-        self.logger.step(11, "Adding AZEC segmentation (SEGMENT)")
-        df = self._enrich_segmentation(df)
-
-        # Step 13.5: Enrich REGION from PTGST_STATIC (SAS REF_segmentation_azec.sas L59-75)
-        self.logger.step(11.5, "Enriching REGION from management points (PTGST_STATIC)")
-        df = self._enrich_region(df)
-
-        # Step 14: Calculate primes (optimized: single select instead of 5 withColumns)
-        self.logger.step(11, "Calculating primes")
-        # Note: primeto and cotis_100 already calculated in computed_fields (Step 3.5)
-        primecua_expr = col("primeto")  # primecua = primeto in AZEC
-        
-        # CSSSEG filtering for PRIMES_AFN and PRIMES_RES
-        cssseg_filter = (col("cssseg") != "5") if "cssseg" in df.columns else lit(True)
-
-        df = df.select(
-            "*",
-            primecua_expr.alias("primecua"),  # SAS L217: primecua = primeto
-            # CRITICAL FIX: PRIMES_PTF must use primecua, not primeto
-            # SAS L225: ((nbptf=1)*(prime*partbrut/100 + cpcua))
-            # This matches PRIMES_AFN/RES logic which also use primecua
-            when(col("nbptf") == 1, primecua_expr).otherwise(lit(0)).alias("primes_ptf"),  # SAS L225 - FIXED
-            when((col("nbafn") == 1) & cssseg_filter, primecua_expr).otherwise(lit(0)).alias("primes_afn"),  # SAS L223
-            when((col("nbres") == 1) & cssseg_filter, primecua_expr).otherwise(lit(0)).alias("primes_res")   # SAS L224
-        )
-
-        # Step 15: NBRES adjustments (AZEC-specific)
+        # ============================================================
+        # STEP 12: Business Adjustments (SAS L449-466)
+        # ============================================================
+        self.logger.step(15, "Applying business adjustments")
         df = self._adjust_nbres(df)
 
-        self.logger.info("AZEC transformations completed successfully")
+        # ============================================================
+        # STEP 13: Final Enrichment (SAS L476-487)
+        # ============================================================
+        self.logger.step(16, "Final enrichment (REGION, UPPER_MID)")
+        df = self._enrich_region(df)
+        df = self._enrich_constrcu_site_data(df, vision)
 
+        # ORDER BY police (SAS L487)
+        df = df.orderBy('police')
+
+        self.logger.info("AZEC transformations completed successfully")
         return df
 
     def write(self, df: DataFrame, vision: str) -> None:
@@ -330,75 +342,6 @@ class AZECProcessor(BaseProcessor):
         year_int, _ = extract_year_month_int(vision)
         return calculate_exposures(df, dates, year_int, EXPOSURE_COLUMN_MAPPING['azec'])
 
-    def _apply_computed_fields(self, df: DataFrame, config: dict) -> DataFrame:
-        """
-        Apply computed fields from configuration.
-        
-        Handles three types of computed fields:
-        - expression: Direct PySpark SQL expressions
-        - conditional: Cascading when() conditions
-        - flag_equality: Simple equality flags
-        
-        Args:
-            df: Input DataFrame
-            config: azec_config dictionary with computed_fields section
-            
-        Returns:
-            DataFrame with computed fields added
-        """
-        from pyspark.sql.functions import expr
-        
-        computed = config.get('computed_fields', {})
-        if not computed:
-            return df
-        
-        self.logger.info(f"Applying {len(computed) - 1} computed fields from config")
-        
-        for field_name, field_config in computed.items():
-            if field_name == 'description':
-                continue
-                
-            field_type = field_config.get('type')
-            
-            if field_type == 'expression':
-                formula = field_config['formula']
-                df = df.withColumn(field_name, expr(formula))
-                self.logger.debug(f"  ✓ {field_name}: {formula}")
-                
-            elif field_type == 'conditional':
-                conditions = field_config['conditions']
-                default = field_config['default']
-                
-                # Build expression from default
-                if isinstance(default, str) and default not in ['0', '1']:
-                    result_expr = expr(default) if default else lit("")
-                else:
-                    result_expr = lit(float(default) if '.' in str(default) else int(default))
-                
-                # Apply conditions in reverse order
-                for cond in reversed(conditions):
-                    check_expr = expr(cond['check'])
-                    result_val = cond['result']
-                    
-                    if isinstance(result_val, str) and result_val not in ['0', '1']:
-                        result_val = lit(result_val)
-                    elif isinstance(result_val, int):
-                        result_val = lit(result_val)
-                    else:
-                        result_val = expr(result_val)
-                    
-                    result_expr = when(check_expr, result_val).otherwise(result_expr)
-                
-                df = df.withColumn(field_name, result_expr)
-                self.logger.debug(f"  ✓ {field_name}: conditional with {len(conditions)} condition(s)")
-                
-            elif field_type == 'flag_equality':
-                source = field_config['source_col']
-                value = field_config['value']
-                df = df.withColumn(field_name, when(col(source) == value, lit(1)).otherwise(lit(0)))
-                self.logger.debug(f"  ✓ {field_name}: {source} == '{value}'")
-        
-        return df
 
     def _join_capitals(self, df: DataFrame, vision: str) -> DataFrame:
         """
@@ -479,43 +422,6 @@ class AZECProcessor(BaseProcessor):
         )
 
         self.logger.info("✓ Capital data joined successfully")
-        return df
-
-    def _apply_business_filters(self, df: DataFrame) -> DataFrame:
-        """
-        Apply business filters to AZEC data.
-        Filters are now loaded from azec_transformations.json for easier maintenance.
-        
-        Based on SAS: PTF_MVTS_AZEC_MACRO.sas L37-39, L81-85
-        
-        Args:
-            df: AZEC DataFrame
-        
-        Returns:
-            Filtered DataFrame
-        """
-        # Read exclusion lists from config (SAS L37)
-        business_filters = self.transformations.get('business_filters', {})
-        excluded_intermed = business_filters.get('excluded_intermed', {}).get('values', [])
-        excluded_police = business_filters.get('excluded_police', {}).get('values', [])
-        
-        self.logger.info(f"Excluding {len(excluded_intermed)} intermediaries, {len(excluded_police)} policies")
-        
-        # Apply filters (SAS L37-39)
-        df = df.filter(~col('intermed').isin(excluded_intermed))
-        df = df.filter(~col('police').isin(excluded_police))
-        
-        # Standard filters (SAS L81-85)
-        df = df.filter(
-            ~((col('duree') == '00') & ~col('produit').isin(['DO0', 'TRC', 'CTR', 'CNR']))
-        )
-        df = df.filter(col('datfin') != col('effetpol'))
-        df = df.filter(
-            (col('gestsit') != 'MIGRAZ') | 
-            ((col('gestsit') == 'MIGRAZ') & (col('etatpol') == 'R'))
-        )
-        
-        self.logger.info("✓ AZEC business filters applied")
         return df
     
     def _adjust_nbres(self, df: DataFrame) -> DataFrame:
@@ -1037,4 +943,312 @@ class AZECProcessor(BaseProcessor):
             if 'mtca' not in df.columns:
                 df = df.withColumn('mtca', lit(0).cast(DoubleType()))
 
+        return df
+
+    def _calculate_premiums(self, df: DataFrame) -> DataFrame:
+        """
+        Calculate premiums and related fields AFTER segmentation (SAS L217-248).
+        
+        CRITICAL: Must be called AFTER _enrich_segmentation() to have CSSSEG available.
+        
+        Args:
+            df: AZEC DataFrame with segmentation (CSSSEG column)
+        
+        Returns:
+            DataFrame with premiums and flags calculated
+        """
+        # SAS L62: partcie = partbrut / 100
+        df = df.withColumn('partcie', col('partbrut') / 100.0)
+        
+        # SAS L217: primecua = (prime * partbrut / 100 + cpcua)
+        # SAS L227: primeto = (prime * partbrut / 100 + cpcua)  [Same formula]
+        primeto_expr = (col('prime') * col('partbrut') / 100.0) + col('cpcua')
+        df = df.withColumn('primeto', primeto_expr)
+        df = df.withColumn('primecua', primeto_expr)  # Alias
+        
+        # SAS L229: cotis_100 = CASE WHEN partbrut=0 THEN prime ELSE (prime + (cpcua/partcie)) END
+        df = df.withColumn('cotis_100',
+            when(col('partbrut') == 0, col('prime'))
+            .otherwise(col('prime') + (col('cpcua') / col('partcie')))
+        )
+        
+        # SAS L231-238: COASS logic
+        df = df.withColumn('coass',
+            when(col('codecoas') == '0', lit('SANS COASSURANCE'))
+            .when(col('codecoas') == 'A', lit('APERITION'))
+            .when(col('codecoas') == 'C', lit('COASS. ACCEPTEE'))
+            .when((col('typcontr') == 'A') & (col('codecoas') == 'R'), lit('REASS. ACCEPTEE'))
+            .otherwise(lit(None))
+        )
+        
+        # SAS L240-245: CDNATP logic
+        df = df.withColumn('cdnatp',
+            when((col('duree') == '00') & col('produit').isin(['CNR', 'CTR', 'DO0']), lit('C'))
+            .when((col('duree') == '00') & (col('produit') == 'TRC'), lit('T'))
+            .when(col('duree').isin(['01', '02', '03']), lit('R'))
+            .otherwise(lit(''))
+        )
+        
+        # SAS L247: TOP_COASS
+        df = df.withColumn('top_coass',
+            when(col('codecoas') == '0', lit(0)).otherwise(lit(1))
+        )
+        
+        # SAS L76: TOP_LTA
+        df = df.withColumn('top_lta',
+            when(~col('duree').isin(['00', '01', '', ' ']), lit(1)).otherwise(lit(0))
+        )
+        
+        # SAS L77: TOP_REVISABLE
+        if 'indregul' in df.columns:
+            df = df.withColumn('top_revisable',
+                when(col('indregul') == 'O', lit(1)).otherwise(lit(0))
+            )
+        else:
+            df = df.withColumn('top_revisable', lit(0))
+        
+        # Initialize empty critere_revision and cdgrev
+        df = df.withColumn('critere_revision', lit(''))
+        df = df.withColumn('cdgrev', lit(''))
+        
+        # SAS L248: TYPE_AFFAIRE = TYPCONTR
+        df = df.withColumn('type_affaire', col('typcontr'))
+        
+        # SAS L223-225: PRIMES_AFN, PRIMES_RES, PRIMES_PTF
+        # CSSSEG filtering for PRIMES_AFN and PRIMES_RES
+        cssseg_filter = (col("cssseg") != "5") if "cssseg" in df.columns else lit(True)
+
+        df = df.withColumn('primes_afn',
+            when((col("nbafn") == 1) & cssseg_filter, col("primecua")).otherwise(lit(0))
+        )
+        df = df.withColumn('primes_res',
+            when((col("nbres") == 1) & cssseg_filter, col("primecua")).otherwise(lit(0))
+        )
+        df = df.withColumn('primes_ptf',
+            when(col("nbptf") == 1, col("primecua")).otherwise(lit(0))
+        )
+        
+        self.logger.info("✓ Premiums and flags calculated (primeto, cotis_100, coass, cdnatp, top_*, primes_*)")
+        return df
+
+    def _enrich_formulas(self, df: DataFrame, vision: str) -> DataFrame:
+        """
+        Enrich with product formulas from RCENTCU and RISTECCU (SAS L309-332).
+        
+        Args:
+            df: AZEC DataFrame
+            vision: Vision in YYYYMM format
+        
+        Returns:
+            DataFrame enriched with formulas (formule, formule2, formule3, formule4)
+        """
+        reader = get_bronze_reader(self)
+        
+        # Initialize formula columns if not present
+        from utils.processor_helpers import add_null_columns
+        existing_cols = set(df.columns)
+        for col_name in ['formule', 'formule2', 'formule3', 'formule4']:
+            if col_name not in existing_cols:
+                df = df.withColumn(col_name, lit(None).cast(StringType()))
+        
+        # RCENTCU formulas (SAS L310 line 1)
+        try:
+            df_rcentcu = reader.read_file_group('rcentcu_azec', vision)
+            if df_rcentcu is not None:
+                df_rcentcu_select = df_rcentcu.select(
+                    'police',
+                    col('formule').alias('formule_rc'),
+                    col('formule2').alias('formule2_rc'),
+                    col('formule3').alias('formule3_rc'),
+                    col('formule4').alias('formule4_rc')
+                ).dropDuplicates(['police'])
+                
+                df = df.join(df_rcentcu_select, on='police', how='left')
+                
+                # Coalesce with RC fallback
+                df = df.withColumn('formule', coalesce(col('formule'), col('formule_rc')))
+                df = df.withColumn('formule2', coalesce(col('formule2'), col('formule2_rc')))
+                df = df.withColumn('formule3', coalesce(col('formule3'), col('formule3_rc')))
+                df = df.withColumn('formule4', coalesce(col('formule4'), col('formule4_rc')))
+                df = df.drop('formule_rc', 'formule2_rc', 'formule3_rc', 'formule4_rc')
+                
+                self.logger.info("RCENTCU formulas joined")
+        except Exception as e:
+            self.logger.debug(f"RCENTCU not available: {e}")
+        
+        # RISTECCU formulas (SAS L311 line 2 - UNION)
+        try:
+            df_risteccu = reader.read_file_group('risteccu_azec', vision)
+            if df_risteccu is not None:
+                df_risteccu_select = df_risteccu.select(
+                    'police',
+                    col('formule').alias('formule_ris'),
+                    col('formule2').alias('formule2_ris'),
+                    col('formule3').alias('formule3_ris'),
+                    col('formule4').alias('formule4_ris')
+                ).dropDuplicates(['police'])
+                
+                df = df.join(df_risteccu_select, on='police', how='left')
+                
+                # Coalesce with RISTECCU fallback
+                df = df.withColumn('formule', coalesce(col('formule'), col('formule_ris')))
+                df = df.withColumn('formule2', coalesce(col('formule2'), col('formule2_ris')))
+                df = df.withColumn('formule3', coalesce(col('formule3'), col('formule3_ris')))
+                df = df.withColumn('formule4', coalesce(col('formule4'), col('formule4_ris')))
+                df = df.drop('formule_ris', 'formule2_ris', 'formule3_ris', 'formule4_ris')
+                
+                self.logger.info("RISTECCU formulas joined")
+        except Exception as e:
+            self.logger.debug(f"RISTECCU not available: {e}")
+        
+        self.logger.info("✓ Formulas enriched (formule × 4)")
+        return df
+
+    def _enrich_ca(self, df: DataFrame, vision: str) -> DataFrame:
+        """
+        Enrich with CA turnover from MULPROCU (SAS L339-357).
+        
+        Args:
+            df: AZEC DataFrame
+            vision: Vision in YYYYMM format
+        
+        Returns:
+            DataFrame enriched with MTCA (turnover)
+        """
+        reader = get_bronze_reader(self)
+        
+        try:
+            df_mulprocu = reader.read_file_group('mulprocu_azec', vision)
+            if df_mulprocu is not None:
+                # SAS L340: SELECT POLICE, SUM(CHIFFAFF) AS MTCA GROUP BY POLICE
+                from pyspark.sql.functions import sum as spark_sum
+                df_mulprocu_agg = df_mulprocu.groupBy('police').agg(
+                    spark_sum('chiffaff').alias('mtca')
+                )
+                
+                # Left join on police
+                df = df.join(df_mulprocu_agg, on='police', how='left')
+                
+                self.logger.info("MULPROCU CA data joined")
+        except Exception as e:
+            self.logger.warning(f"MULPROCU not available: {e}")
+            if 'mtca' not in df.columns:
+                df = df.withColumn('mtca', lit(None).cast(DoubleType()))
+        
+        self.logger.info("✓ CA turnover enriched (mtca)")
+        return df
+
+    def _enrich_pe_rd_vi(self, df: DataFrame, vision: str) -> DataFrame:
+        """
+        Enrich with PE/RD/VI capitals from INCENDCU (SAS L364-371).
+        
+        Args:
+            df: AZEC DataFrame
+            vision: Vision in YYYYMM format
+        
+        Returns:
+            DataFrame enriched with PERTE_EXP, RISQUE_DIRECT, VALUE_INSURED
+        """
+        reader = get_bronze_reader(self)
+        
+        try:
+            df_incendcu = reader.read_file_group('incendcu_azec', vision)
+            if df_incendcu is not None:
+                # SAS L365-370: Aggregate by (POLICE, PRODUIT)
+                from pyspark.sql.functions import sum as spark_sum
+                df_pe_rd = df_incendcu.groupBy('police', 'produit').agg(
+                    spark_sum('mt_baspe').alias('perte_exp'),
+                    spark_sum('mt_basdi').alias('risque_direct')
+                ).withColumn('value_insured',
+                    col('perte_exp') + col('risque_direct')
+                )
+                
+                # Left join on (police, produit) - CRITICAL: Both keys!
+                df = df.alias('a').join(
+                    df_pe_rd.alias('b'),
+                    (col('a.police') == col('b.police')) & (col('a.produit') == col('b.produit')),
+                    how='left'
+                ).select(
+                    'a.*',
+                    coalesce(col('b.perte_exp'), lit(0)).alias('perte_exp'),
+                    coalesce(col('b.risque_direct'), lit(0)).alias('risque_direct'),
+                    coalesce(col('b.value_insured'), lit(0)).alias('value_insured')
+                )
+                
+                self.logger.info("PE/RD/VI capitals joined")
+        except Exception as e:
+            self.logger.warning(f"INCENDCU not available: {e}")
+            from utils.processor_helpers import add_null_columns
+            df = add_null_columns(df, {
+                'perte_exp': DoubleType,
+                'risque_direct': DoubleType,
+                'value_insured': DoubleType
+            })
+        
+        self.logger.info("✓ PE/RD/VI capitals enriched")
+        return df
+
+    def _enrich_constrcu_site_data(self, df: DataFrame, vision: str) -> DataFrame:
+        """
+        Enrich with construction site data from CONSTRCU (SAS L476-487).
+        
+        Adds: DATOUVCH, LDESTLOC, MNT_GLOB, DATRECEP, DEST_LOC, DATFINCH, LQUALITE, UPPER_MID.
+        
+        Args:
+            df: AZEC DataFrame
+            vision: Vision in YYYYMM format
+        
+        Returns:
+            DataFrame enriched with construction site details and UPPER_MID
+        """
+        reader = get_bronze_reader(self)
+        
+        # CONSTRCU site data
+        try:
+            df_constrcu = reader.read_file_group('constrcu_azec', vision='ref')
+            if df_constrcu is not None:
+                # Select site data columns (SAS L481)
+                site_cols = ['police', 'produit']
+                for col_name in ['datouvch', 'ldestloc', 'mnt_glob', 'datrecep', 'dest_loc', 'datfinch', 'lqualite']:
+                    if col_name in df_constrcu.columns:
+                        site_cols.append(col_name)
+                
+                df_site = df_constrcu.select(*site_cols).dropDuplicates(['police', 'produit'])
+                
+                # Left join on (police, produit)
+                df = df.alias('a').join(
+                    df_site.alias('c'),
+                    (col('a.police') == col('c.police')) & (col('a.produit') == col('c.produit')),
+                    how='left'
+                ).select('a.*', *[f'c.{c}' for c in site_cols if c not in ['police', 'produit']])
+                
+                self.logger.info("CONSTRCU site data joined")
+        except Exception as e:
+            self.logger.warning(f"CONSTRCU not available: {e}")
+        
+        # TABLE_PT_GEST for UPPER_MID (SAS L482, L486)
+        try:
+            year_int, _ = extract_year_month_int(vision)
+            from utils.processor_helpers import safe_reference_join
+            
+            # Use derniere_version equivalent
+            df = safe_reference_join(
+                df,
+                'table_pt_gest',
+                vision,
+                join_condition="df.poingest == df_ref.ptgst",
+                select_cols=['upper_mid'],
+                logger=self.logger,
+                join_type='left',
+                alias_main='df',
+                alias_ref='df_ref'
+            )
+            
+            self.logger.info("UPPER_MID enriched from TABLE_PT_GEST")
+        except Exception as e:
+            self.logger.warning(f"TABLE_PT_GEST not available: {e}")
+            if 'upper_mid' not in df.columns:
+                df = df.withColumn('upper_mid', lit(None).cast(StringType()))
+        
+        self.logger.info("✓ Final enrichment complete (site data, UPPER_MID)")
         return df
