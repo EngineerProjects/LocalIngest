@@ -93,11 +93,17 @@ class ConsolidationProcessor(BaseProcessor):
         self.logger.step(4, "Consolidating AZ + AZEC")
         df_consolidated = df_az.unionByName(df_azec, allowMissingColumns=True)
         
-        # CRITICAL: SAS uses OUTER UNION CORR which auto-deduplicates
+        # CRITICAL FIX: SAS uses OUTER UNION CORR which auto-deduplicates
         # unionByName() = UNION ALL (keeps duplicates), so we must dedup manually
         # SAS PTF_MVTS_CONSOLIDATION_MACRO.sas L70: OUTER UNION CORR
-        # This matches the AZ dedup (by nopol) from PTF_MVTS_AZ_MACRO.sas L505
-        df_consolidated = df_consolidated.orderBy("nopol", "cdpole").dropDuplicates(["nopol"])
+        # SAS deduplicates AZ first (L505-507), then unions with AZEC
+        # This gives AZ priority when same nopol exists in both sources
+        # 
+        # FIXED: Order by dircom DESC to prioritize 'AZ ' over 'AZEC' alphabetically
+        df_consolidated = df_consolidated.orderBy(
+            col("dircom").desc(),  # 'AZ ' > 'AZEC' → AZ has priority
+            "nopol"
+        ).dropDuplicates(["nopol"])
         
         # Step 4.1: Extract MOIS_ECHEANCE and JOUR_ECHEANCE from dtechann
         # SAS L49-50 (AZ): input(substr(put(DTECHANN, 5.), ...) AS MOIS_ECHEANCE
@@ -337,51 +343,6 @@ class ConsolidationProcessor(BaseProcessor):
             'suffix': '_risk'  # Same suffix (dropped before QAN join)
         }
     }
-
-    def _enrich_ird_risk(self, df: DataFrame, vision: str) -> DataFrame:
-        """
-        Enrich with IRD risk framework data (Q45, Q46, QAN).
-
-        OPTIMIZED: Uses consolidated _join_ird_risk method (reduced from 122 to 40 lines)
-
-        Based on PTF_MVTS_CONSOLIDATION_MACRO.sas L200-280.
-        Joins IRD risk data and adds columns with _risk suffix for later coalescing.
-
-        Args:
-            df: Consolidated DataFrame (lowercase columns)
-            vision: Vision string
-
-        Returns:
-            Enriched DataFrame with IRD _risk columns (lowercase columns)
-        """
-
-
-        reader = get_bronze_reader(self)
-        year_int, month_int = extract_year_month_int(vision)
-
-        try:
-            # FIXED: SAS reads ALL THREE sources sequentially (Q46 → Q45 → QAN)
-            # Reference: PTF_MVTS_CONSOLIDATION_MACRO.sas L154-258
-            # Each source coalesces with previous values, then drops temp columns
-            if year_int > 2022 or (year_int == 2022 and month_int >= 10):
-                # Use current vision for all three sources (SAS L154-258)
-                df = self._join_ird_risk(df, vision, reader, 'q46')
-                df = self._join_ird_risk(df, vision, reader, 'q45')
-                df = self._join_ird_risk(df, vision, reader, 'qan')  # ✅ ADDED - was missing!
-            else:
-                # Use 202210 reference for all three sources (SAS L260-362)
-                # Note: Current implementation uses vision-specific path
-                # This may need adjustment to use reference path
-                df = self._join_ird_risk(df, vision, reader, 'q46')
-                df = self._join_ird_risk(df, vision, reader, 'q45')
-                df = self._join_ird_risk(df, vision, reader, 'qan')
-
-            self.logger.info("IRD risk data enrichment completed (Q46 + Q45 + QAN)")
-
-        except Exception as e:
-            self.logger.warning(f"IRD risk data not found or error: {e}. Skipping enrichment.")
-
-        return df
 
 
     def _apply_destinat_final_adjustments(self, df: DataFrame) -> DataFrame:

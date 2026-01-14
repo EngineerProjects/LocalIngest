@@ -198,26 +198,38 @@ def calculate_movements(
         df = df.select(
             "*",
             nbafn_expr.alias("nbafn"),
-            when(nbafn_expr == 1, col("primeto")).otherwise(lit(0)).alias("primes_afn")
+            # FIXED: Use afn_cond directly instead of comparing Column expression with literal
+            # Bug was: when(nbafn_expr == 1, ...) compares Column object, not evaluated value
+            when(afn_cond, col("primeto")).otherwise(lit(0)).alias("primes_afn")
         )
 
     # RES: Terminations
+    # CRITICAL FIX: SAS checks cdsitp='3' first (L269)
     if termination_date:
-        res_cond = (
+        # Base condition: must be terminated (cdsitp='3')
+        res_cond = col("cdsitp") == "3" if "cdsitp" in df.columns else lit(True)
+        
+        # Date conditions (at least one must be true)
+        date_cond = (
             (col(termination_date) >= lit(dtdeb_an)) & (col(termination_date) <= lit(dtfin))
         )
 
         if transfer_end:
-            res_cond = res_cond | (
+            date_cond = date_cond | (
                 (col(transfer_end) >= lit(dtdeb_an)) & (col(transfer_end) <= lit(dtfin)) &
                 (col(termination_date) <= lit(dtfin))
             )
+        
+        # Combine: cdsitp='3' AND (date conditions)
+        res_cond = res_cond & date_cond
 
+        # Exclude replacement types
         if type_col1:
             res_cond = res_cond & ~(
                 (col(type_col1) == "RP") | (col(type_col2) == "RP") | (col(type_col3) == "RP")
             )
 
+        # Exclude chantiers (construction sites)
         if 'cdnatp' in df.columns:
             res_cond = res_cond & (col("cdnatp") != "C")
 
@@ -228,7 +240,8 @@ def calculate_movements(
         df = df.select(
             "*",
             nbres_expr.alias("nbres"),
-            when(nbres_expr == 1, col("primeto")).otherwise(lit(0)).alias("primes_res")
+            # FIXED: Use res_cond directly instead of comparing Column expression with literal
+            when(res_cond, col("primeto")).otherwise(lit(0)).alias("primes_res")
         )
 
     # RPT/RPC: Replacements (AZ only)
@@ -291,7 +304,8 @@ def calculate_movements(
     df = df.select(
         "*",
         nbptf_expr.alias("nbptf"),
-        when(nbptf_expr == 1, col("primeto")).otherwise(lit(0)).alias("primes_ptf")
+        # FIXED: Use nbptf_cond directly instead of comparing Column expression with literal
+        when(nbptf_cond, col("primeto")).otherwise(lit(0)).alias("primes_ptf")
     )
 
     return df

@@ -136,11 +136,11 @@ class TransformationLoader:
 
         Returns:
             Dictionary with keys:
-            - coassurance_config: top_coass, coass, partcie, top_revisable
             - business_filters: az, azec
-            - az_transform_steps: generic transformation steps
             - lta_types: long term agreement types
-            - constants: excluded_noint, excluded_azec_intermed, etc.
+            
+        Note:
+            coassurance_config removed - now in az/azec_transformations.json computed_fields
         """
         return self._load_json('business_rules.json')
 
@@ -200,16 +200,6 @@ class TransformationLoader:
             business_rules = self.get_business_rules()
             filters = business_rules.get('business_filters', {}).get(source.lower(), {})
             return filters.get('filters', [])
-
-    def get_coassurance_config(self) -> Dict[str, Any]:
-        """
-        Get coassurance calculation configuration.
-
-        Returns:
-            Dictionary with top_coass, coass, partcie, top_revisable configs
-        """
-        business_rules = self.get_business_rules()
-        return business_rules['coassurance_config']
 
     def get_harmonization_mapping(self, source: str) -> Dict[str, Any]:
         """

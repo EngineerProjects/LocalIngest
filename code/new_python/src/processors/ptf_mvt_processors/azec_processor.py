@@ -93,13 +93,18 @@ class AZECProcessor(BaseProcessor):
         # Step 2: Add DIRCOM constant
         df = df.withColumn('dircom', lit(DIRCOM.AZEC))
 
-        # Step 3: Apply business filters (SAS WHERE clause equivalent)
+        # Step 3: Apply business filters (SAS WHERE clause equivalent) - from centralized business_rules.json
         self.logger.step(2, "Applying business filters")
-        azec_filters = azec_config.get('business_filters', {}).get('filters', [])
+        azec_filters = business_rules.get('business_filters', {}).get('azec', {}).get('filters', [])
         df = apply_business_filters(df, {'filters': azec_filters}, self.logger)
 
+        # Step 3.5: Apply computed fields from config (SAS L62, L76-77, L217-248)
+        # This handles: partcie, primeto, cotis_100, coass, cdnatp, top_coass, top_lta, top_revisable
+        self.logger.step(3.5, "Applying computed fields (partcie, primeto, cotis_100, flags)")
+        df = self._apply_computed_fields(df, azec_config)
+
         # Step 4: Handle migration logic (vision > 202009)
-        self.logger.step(3, "Handling AZEC migration")
+        self.logger.step(4, "Handling AZEC migration")
         df = self._handle_migration(df, vision, azec_config)
 
         # Step 5: Update dates and policy states
@@ -133,32 +138,6 @@ class AZECProcessor(BaseProcessor):
         self.logger.step(8, "Joining capital data (CAPITXCU)")
         df = self._join_capitals(df, vision)
 
-        # Step 10.5: Calculate AZEC coassurance (uses CODECOAS, not cdpolgp1 like AZ)
-        # Based on SAS PTF_MVTS_AZEC_MACRO.sas L232-247
-        self.logger.step(9, "Calculating AZEC coassurance")
-        
-        # COASS: Coassurance type (SAS L232-238)
-        df = df.withColumn('coass',
-            when(col('codecoas') == '0', lit('SANS COASSURANCE'))
-            .when(col('codecoas') == 'A', lit('APERITION'))
-            .when(col('codecoas') == 'C', lit('COASS. ACCEPTEE'))
-            .when((col('typcontr') == 'A') & (col('codecoas') == 'R'), lit('REASS. ACCEPTEE'))
-            .otherwise(lit('AUTRES'))
-        )
-        
-        # TOP_COASS: Binary flag (SAS L247)
-        df = df.withColumn('top_coass',
-            when(col('codecoas') == '0', lit(0)).otherwise(lit(1))
-        )
-        
-        # CDNATP: Reprocessing logic (SAS L240-245)
-        df = df.withColumn('cdnatp',
-            when((col('duree') == '00') & col('produit').isin(['CNR', 'CTR', 'DO0']), lit('C'))
-            .when((col('duree') == '00') & col('produit').isin(['TRC']), lit('T'))
-            .when(col('duree').isin(['01', '02', '03']), lit('R'))
-            .otherwise(lit(''))
-        )
-        
         # TYPE_AFFAIRE: Alias for TYPCONTR (SAS L248)
         df = df.withColumn('type_affaire', col('typcontr'))
 
@@ -180,23 +159,15 @@ class AZECProcessor(BaseProcessor):
 
         # Step 14: Calculate primes (optimized: single select instead of 5 withColumns)
         self.logger.step(11, "Calculating primes")
-        primeto_expr = col("prime") * col("partcie")
-        primecua_expr = (col("prime") * col("partbrut") / 100.0) + col("cpcua")  # SAS L217
+        # Note: primeto and cotis_100 already calculated in computed_fields (Step 3.5)
+        primecua_expr = col("primeto")  # primecua = primeto in AZEC
         
-        # Cotis_100: SAS L229 - conditional logic
-        # CASE WHEN PARTBRUT = 0 THEN PRIME ELSE (PRIME + (CPCUA/PARTCIE)) END
-        cotis_100_expr = when(col("partbrut") == 0, col("prime")) \
-                        .otherwise(col("prime") + (col("cpcua") / col("partcie")))
-
-
-        # FIXED: Add CSSSEG filtering for PRIMES_AFN and PRIMES_RES
+        # CSSSEG filtering for PRIMES_AFN and PRIMES_RES
         cssseg_filter = (col("cssseg") != "5") if "cssseg" in df.columns else lit(True)
 
         df = df.select(
             "*",
-            primeto_expr.alias("primeto"),
-            primecua_expr.alias("primecua"),  # SAS L217: (prime*partbrut/100 + cpcua)
-            cotis_100_expr.alias("cotis_100"),  # SAS L229 - FIXED
+            primecua_expr.alias("primecua"),  # SAS L217: primecua = primeto
             # CRITICAL FIX: PRIMES_PTF must use primecua, not primeto
             # SAS L225: ((nbptf=1)*(prime*partbrut/100 + cpcua))
             # This matches PRIMES_AFN/RES logic which also use primecua
@@ -359,6 +330,76 @@ class AZECProcessor(BaseProcessor):
         year_int, _ = extract_year_month_int(vision)
         return calculate_exposures(df, dates, year_int, EXPOSURE_COLUMN_MAPPING['azec'])
 
+    def _apply_computed_fields(self, df: DataFrame, config: dict) -> DataFrame:
+        """
+        Apply computed fields from configuration.
+        
+        Handles three types of computed fields:
+        - expression: Direct PySpark SQL expressions
+        - conditional: Cascading when() conditions
+        - flag_equality: Simple equality flags
+        
+        Args:
+            df: Input DataFrame
+            config: azec_config dictionary with computed_fields section
+            
+        Returns:
+            DataFrame with computed fields added
+        """
+        from pyspark.sql.functions import expr
+        
+        computed = config.get('computed_fields', {})
+        if not computed:
+            return df
+        
+        self.logger.info(f"Applying {len(computed) - 1} computed fields from config")
+        
+        for field_name, field_config in computed.items():
+            if field_name == 'description':
+                continue
+                
+            field_type = field_config.get('type')
+            
+            if field_type == 'expression':
+                formula = field_config['formula']
+                df = df.withColumn(field_name, expr(formula))
+                self.logger.debug(f"  ✓ {field_name}: {formula}")
+                
+            elif field_type == 'conditional':
+                conditions = field_config['conditions']
+                default = field_config['default']
+                
+                # Build expression from default
+                if isinstance(default, str) and default not in ['0', '1']:
+                    result_expr = expr(default) if default else lit("")
+                else:
+                    result_expr = lit(float(default) if '.' in str(default) else int(default))
+                
+                # Apply conditions in reverse order
+                for cond in reversed(conditions):
+                    check_expr = expr(cond['check'])
+                    result_val = cond['result']
+                    
+                    if isinstance(result_val, str) and result_val not in ['0', '1']:
+                        result_val = lit(result_val)
+                    elif isinstance(result_val, int):
+                        result_val = lit(result_val)
+                    else:
+                        result_val = expr(result_val)
+                    
+                    result_expr = when(check_expr, result_val).otherwise(result_expr)
+                
+                df = df.withColumn(field_name, result_expr)
+                self.logger.debug(f"  ✓ {field_name}: conditional with {len(conditions)} condition(s)")
+                
+            elif field_type == 'flag_equality':
+                source = field_config['source_col']
+                value = field_config['value']
+                df = df.withColumn(field_name, when(col(source) == value, lit(1)).otherwise(lit(0)))
+                self.logger.debug(f"  ✓ {field_name}: {source} == '{value}'")
+        
+        return df
+
     def _join_capitals(self, df: DataFrame, vision: str) -> DataFrame:
         """
         Join capital data from CAPITXCU.
@@ -409,9 +450,11 @@ class AZECProcessor(BaseProcessor):
                 ).otherwise(lit(0))
             )
 
-        # Aggregate by police
+        # CRITICAL FIX: Aggregate by (police, produit) not just police
+        # SAS: GROUP BY POLICE, PRODUIT (PTF_MVTS_AZEC_MACRO.sas L411-421)
+        # This prevents summing capitals across different products for the same police
         agg_columns = [mapping['target'] for mapping in AZEC_CAPITAL_MAPPING]
-        df_cap_agg = df_cap.groupBy("police").agg(
+        df_cap_agg = df_cap.groupBy("police", "produit").agg(  # FIXED: Added produit
             *[spark_sum(col_name).alias(col_name) for col_name in agg_columns]
         )
 
@@ -421,10 +464,11 @@ class AZECProcessor(BaseProcessor):
         df_cap_agg = df_cap_agg.withColumn("smp_100", col("smp_pe_100") + col("smp_dd_100"))
         df_cap_agg = df_cap_agg.withColumn("smp_cie", col("smp_pe_cie") + col("smp_dd_cie"))
 
-        # Left join
+        # FIXED: Left join on (police, produit) not just police
         df = df.alias("a").join(
             df_cap_agg.alias("b"),
-            col("a.police") == col("b.police"),
+            (col("a.police") == col("b.police")) & 
+            (col("a.produit") == col("b.produit")),  # FIXED: Added produit join condition
             how="left"
         ).select(
             "a.*",

@@ -93,7 +93,8 @@
       "tydris1",
       "opapoffr",
       "cdpolqpl",
-      "cdgrev"
+      "cdgrev",
+      "ctduree"
     ],
     "rename": {
       "posacta": "posacta_ri",
@@ -121,6 +122,43 @@
       "dircom": "AZ",
       "add_vision": true,
       "add_year_month": true
+    }
+  },
+  "computed_fields": {
+    "description": "Computed fields to apply after column selection - SAS: PTF_MVTS_AZ_MACRO.sas L238-341",
+    "primeto": {
+      "type": "expression",
+      "formula": "mtprprto * (1 - tx / 100)",
+      "description": "Total premium = Gross premium * (1 - Ceding rate %) - SAS L239"
+    },
+    "top_lta": {
+      "type": "conditional",
+      "conditions": [
+        {
+          "check": "(ctduree > 1) and (tydris1 in ['QAW', 'QBJ', 'QBK', 'QBB', 'QBM'])",
+          "result": 1
+        }
+      ],
+      "default": 0,
+      "description": "Long Term Agreement flag - SAS L242-243. Contracts with duration > 1 year and specific risk types."
+    },
+    "top_aop": {
+      "type": "flag_equality",
+      "source_col": "opapoffr",
+      "value": "O",
+      "description": "AOP (All-risk Policies) offer flag - SAS L340. Added 2020-02-11 per Alain Voss."
+    },
+    "top_temp": {
+      "type": "flag_equality",
+      "source_col": "cdnatp",
+      "value": "T",
+      "description": "Temporary contract flag - SAS L290. Identifies temporary nature contracts."
+    },
+    "top_revisable": {
+      "type": "flag_equality",
+      "source_col": "cdpolrvi",
+      "value": "1",
+      "description": "Revisable policy flag - SAS L77. Policies with revision clause (cdpolrvi='1')."
     }
   },
   "capital_extraction": {
@@ -173,109 +211,6 @@
       "amount_prefix": "mtcapi",
       "num_indices": 14
     }
-  },
-  "business_filters": {
-    "description": "Business filters to apply during processing - SAS: PTF_MVTS_AZ_MACRO.sas L40-48",
-    "excluded_noint": {
-      "description": "Excluded intermediaries (NOINT)",
-      "values": [
-        "H90061",
-        "482001",
-        "489090",
-        "102030",
-        "H90036",
-        "H90059",
-        "H99045",
-        "H99059",
-        "5B2000",
-        "446000",
-        "5R0001",
-        "446118",
-        "4F1004",
-        "4A1400",
-        "4A1500",
-        "4A1600",
-        "4A1700",
-        "4A1800",
-        "4A1900",
-        "4L1010"
-      ]
-    },
-    "filters": [
-      {
-        "type": "not_equals",
-        "column": "cdri",
-        "value": "X",
-        "description": "Exclude cdri = X"
-      },
-      {
-        "type": "not_in",
-        "column": "cdsitp",
-        "values": [
-          "4",
-          "5"
-        ],
-        "description": "Exclude cdsitp 4 and 5"
-      },
-      {
-        "type": "not_in",
-        "column": "noint",
-        "value": [
-          "H90061",
-          "482001",
-          "489090",
-          "102030",
-          "H90036",
-          "H90059",
-          "H99045",
-          "H99059",
-          "5B2000",
-          "446000",
-          "5R0001",
-          "446118",
-          "4F1004",
-          "4A1400",
-          "4A1500",
-          "4A1600",
-          "4A1700",
-          "4A1800",
-          "4A1900",
-          "4L1010"
-        ],
-        "description": "Exclude specific intermediaries (NOINT)"
-      },
-      {
-        "type": "not_in",
-        "column": "cdprod",
-        "values": [
-          "01073"
-        ],
-        "description": "Exclude product 01073"
-      },
-      {
-        "type": "in",
-        "column": "cdnatp",
-        "values": [
-          "R",
-          "O",
-          "T",
-          "C"
-        ],
-        "description": "Keep only valid nature types"
-      },
-      {
-        "type": "equals",
-        "column": "cmarch",
-        "value": "6",
-        "description": "Construction market only"
-      },
-      {
-        "type": "equals",
-        "column": "csegt",
-        "value": "2",
-        "description": "Segment 2 only"
-      }
-    ]
   },
   "coassurance": {
     "description": "Coassurance type and part company calculation - SAS L64-74",
@@ -352,38 +287,6 @@
     "column_mapping": {
       "creation_date": "dtcrepol",
       "termination_date": "dtresilp"
-    }
-  },
-  "initialization": {
-    "description": "Initialize columns with default values - SAS L106-114",
-    "columns": {
-      "primeto": 0,
-      "primes_ptf": 0,
-      "primes_afn": 0,
-      "primes_res": 0,
-      "primes_rpt": 0,
-      "primes_rpc": 0,
-      "nbptf": 0,
-      "nbafn": 0,
-      "nbres": 0,
-      "nbrpt": 0,
-      "nbrpc": 0,
-      "top_temp": 0,
-      "expo_ytd": 0,
-      "expo_gli": 0,
-      "cotis_100": 0,
-      "mtca_": 0,
-      "top_lta": 0,
-      "perte_exp": 0,
-      "risque_direct": 0,
-      "value_insured": 0,
-      "smp_100": 0,
-      "lci_100": 0,
-      "top_aop": 0,
-      "nbafn_anticipe": 0,
-      "nbres_anticipe": 0,
-      "dt_deb_expo": null,
-      "dt_fin_expo": null
     }
   }
 }

@@ -130,6 +130,16 @@ class BronzeReader:
                 # Add source file name for tracking origin (e.g., PTF16 vs PTF36)
                 df_temp = df_temp.withColumn("_source_file", input_file_name())
 
+                # Convert to lowercase BEFORE applying filters
+                from utils.transformations import lowercase_all_columns
+                df_temp = lowercase_all_columns(df_temp)
+
+                df_temp = self._apply_read_filters(df_temp, filters)
+                
+                # Apply custom filters if provided (also before union)
+                if custom_filters:
+                    df_temp = self._apply_read_filters(df_temp, custom_filters)
+
                 dfs.append(df_temp)
             except Exception:
                 # File pattern not found - skip
@@ -140,7 +150,7 @@ class BronzeReader:
                 f"No files found for pattern {file_patterns} in {bronze_path}"
             )
         
-        # Union all matching files
+        # Union all matching files (already filtered)
         if len(dfs) == 1:
             df = dfs[0]
         else:
@@ -148,16 +158,8 @@ class BronzeReader:
             for df_next in dfs[1:]:
                 df = df.unionByName(df_next, allowMissingColumns=True)
         
-        # CRITICAL: Convert all columns to lowercase immediately after reading
-        from utils.transformations import lowercase_all_columns
-        df = lowercase_all_columns(df)
-
-        # Apply row-level filters from configuration
-        df = self._apply_read_filters(df, filters)
-
-        # Apply custom filters if provided
-        if custom_filters:
-            df = self._apply_read_filters(df, custom_filters)
+        # Note: Filters already applied before union (see above)
+        # Columns already lowercased before union (see above)
 
         return df
 

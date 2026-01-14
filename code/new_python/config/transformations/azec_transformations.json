@@ -38,28 +38,109 @@
       "indregul",
       "cpcua"
     ],
-    "rename": {},
-    "computed": {
-      "partcie": {
-        "type": "arithmetic",
-        "expression": "partbrut / 100.0",
-        "comment": "SAS L62"
-      },
-      "top_lta": {
-        "type": "flag",
-        "condition": "duree not in ['00', '01', '', ' ']",
-        "comment": "SAS L76"
-      },
-      "top_revisable": {
-        "type": "flag",
-        "condition": "indregul == 'O'",
-        "comment": "SAS L77"
-      }
-    },
     "metadata": {
       "dircom": "AZEC",
       "add_vision": true,
       "add_year_month": true
+    }
+  },
+  "computed_fields": {
+    "description": "Computed fields to apply after column selection - SAS L62, L76-77, L217-248",
+    "partcie": {
+      "type": "expression",
+      "formula": "partbrut / 100.0",
+      "description": "Company part (%) - SAS L62. Converts partbrut from percentage to decimal."
+    },
+    "primeto": {
+      "type": "expression",
+      "formula": "prime * partbrut / 100 + cpcua",
+      "description": "Total premium (company share + cpcua) - SAS L227. Also known as PRIMECUA."
+    },
+    "cotis_100": {
+      "type": "conditional",
+      "conditions": [
+        {
+          "check": "partbrut != 0",
+          "result": "prime + (cpcua / partcie)"
+        }
+      ],
+      "default": "prime",
+      "description": "Premium at 100% (gross up to full) - SAS L229. If partbrut=0, use prime directly."
+    },
+    "coass": {
+      "type": "conditional",
+      "conditions": [
+        {
+          "check": "codecoas == '0'",
+          "result": "SANS COASSURANCE"
+        },
+        {
+          "check": "codecoas == 'A'",
+          "result": "APERITION"
+        },
+        {
+          "check": "codecoas == 'C'",
+          "result": "COASS. ACCEPTEE"
+        },
+        {
+          "check": "(typcontr == 'A') and (codecoas == 'R')",
+          "result": "REASS. ACCEPTEE"
+        }
+      ],
+      "default": "",
+      "description": "Co-insurance type classification - SAS L231-238. Maps codecoas to business labels."
+    },
+    "cdnatp": {
+      "type": "conditional",
+      "conditions": [
+        {
+          "check": "(duree == '00') and (produit in ['CNR', 'CTR', 'DO0'])",
+          "result": "C"
+        },
+        {
+          "check": "(duree == '00') and (produit == 'TRC')",
+          "result": "T"
+        },
+        {
+          "check": "duree in ['01', '02', '03']",
+          "result": "R"
+        }
+      ],
+      "default": "",
+      "description": "Policy nature type classification - SAS L240-245. C=Construction, T=Temporary, R=Renewable."
+    },
+    "top_coass": {
+      "type": "conditional",
+      "conditions": [
+        {
+          "check": "codecoas != '0'",
+          "result": 1
+        }
+      ],
+      "default": 0,
+      "description": "Co-insurance flag - SAS L247. 1 if policy has co-insurance (codecoas != '0')."
+    },
+    "top_lta": {
+      "type": "conditional",
+      "conditions": [
+        {
+          "check": "duree not in ['00', '01', '', ' ']",
+          "result": 1
+        }
+      ],
+      "default": 0,
+      "description": "Long term agreement flag - SAS L76. Contracts with duration > 1 year."
+    },
+    "top_revisable": {
+      "type": "conditional",
+      "conditions": [
+        {
+          "check": "indregul == 'O'",
+          "result": 1
+        }
+      ],
+      "default": 0,
+      "description": "Revisable policy flag - SAS L77. Policies with revision clause (indregul='O')."
     }
   },
   "date_state_updates": {
@@ -307,89 +388,5 @@
       }
     ],
     "default": 0
-  },
-  "business_filters": {
-    "description": "Business filters to apply during AZEC processing - SAS L81-85",
-    "excluded_intermed": {
-      "description": "Excluded AZEC intermediaries",
-      "values": [
-        "24050",
-        "40490"
-      ]
-    },
-    "excluded_police": {
-      "description": "Excluded AZEC policies",
-      "values": [
-        "012684940"
-      ]
-    },
-    "filters": [
-      {
-        "type": "not_in",
-        "column": "intermed",
-        "value": [
-          "24050",
-          "40490"
-        ],
-        "description": "Exclude fictitious intermediaries - SAS L81"
-      },
-      {
-        "type": "not_in",
-        "column": "police",
-        "values": [
-          "012684940"
-        ],
-        "description": "Exclude fictitious policies - SAS L82"
-      },
-      {
-        "type": "complex",
-        "expression": "~((duree == '00') & ~produit.isin(['DO0', 'TRC', 'CTR', 'CNR']))",
-        "description": "Exclude temporaries except specific products - SAS L83"
-      },
-      {
-        "type": "not_equals_column",
-        "column": "datfin",
-        "compare_column": "effetpol",
-        "description": "Exclude contracts without effect - SAS L84"
-      },
-      {
-        "type": "complex",
-        "expression": "(gestsit != 'MIGRAZ') | ((gestsit == 'MIGRAZ') & (etatpol == 'R'))",
-        "description": "Gestsit migration logic - SAS L85"
-      }
-    ]
-  },
-  "initialization": {
-    "description": "Initialize columns with default values - SAS L64-79",
-    "columns": {
-      "nbptf": 0,
-      "nbafn": 0,
-      "nbres": 0,
-      "nbafn_anticipe": 0,
-      "nbres_anticipe": 0,
-      "nbptf_non_migres_azec": 0,
-      "top_lta": 0,
-      "top_revisable": 0,
-      "expo_ytd": 0,
-      "expo_gli": 0,
-      "nbj_tot_ytd": 0,
-      "nbj_susp_ytd": 0,
-      "smp_100": 0,
-      "smp_cie": 0,
-      "lci_100": 0,
-      "lci_cie": 0,
-      "perte_exp": 0,
-      "risque_direct": 0,
-      "value_insured": 0,
-      "primeto": 0,
-      "cotis_100": 0,
-      "primes_ptf": 0,
-      "primes_afn": 0,
-      "primes_res": 0,
-      "mtca": 0,
-      "dt_deb_expo": null,
-      "dt_fin_expo": null,
-      "dtechanm": null
-    }
   }
 }
