@@ -375,7 +375,8 @@ class AZECProcessor(BaseProcessor):
             raise RuntimeError("CAPITXCU capital data is unavailable")
 
         # Select only needed columns
-        needed_cols = set(["police", "smp_sre", "brch_rea"])
+        # CRITICAL: Must include 'produit' for groupBy(police, produit) later (SAS L411-420)
+        needed_cols = set(["police", "produit", "smp_sre", "brch_rea"])
         for mapping in AZEC_CAPITAL_MAPPING:
             needed_cols.add(mapping['source'])
 
