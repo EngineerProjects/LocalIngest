@@ -728,8 +728,6 @@ class AZECProcessor(BaseProcessor):
         enrichment_cols = {
             'cdnaf': StringType,
             'cdtre': StringType,
-            'perte_exp': DoubleType,
-            'risque_direct': DoubleType,
             'nbj_acti': IntegerType
         }
         
@@ -739,17 +737,15 @@ class AZECProcessor(BaseProcessor):
         if cols_to_add:
             df = add_null_columns(df, cols_to_add)
 
-        # 1. INCENDCU: NAF codes and PE/RD capitals
+        # 1. INCENDCU: NAF codes ONLY (PE/RD/VI handled in _enrich_pe_rd_vi)
         try:
             df_incend = reader.read_file_group('incendcu_azec', vision)
             if df_incend is not None:
-                # Select needed columns
+                # Select NAF columns only
                 df_incend_select = df_incend.select(
                     'police',
                     col('cod_naf').alias('cod_naf'),
-                    col('cod_tre').alias('cod_tre'),
-                    col('mt_baspe').alias('mt_baspe'),
-                    col('mt_basdi').alias('mt_basdi')
+                    col('cod_tre').alias('cod_tre')
                 ).dropDuplicates(['police'])
 
                 # Left join on police
@@ -758,13 +754,11 @@ class AZECProcessor(BaseProcessor):
                 # Update columns with coalesce (use INCENDCU if main is null)
                 df = df.withColumn('cdnaf', coalesce(col('cdnaf'), col('cod_naf')))
                 df = df.withColumn('cdtre', coalesce(col('cdtre'), col('cod_tre')))
-                df = df.withColumn('perte_exp', coalesce(col('perte_exp'), col('mt_baspe'), lit(0)))
-                df = df.withColumn('risque_direct', coalesce(col('risque_direct'), col('mt_basdi'), lit(0)))
 
                 # Drop temporary join columns
-                df = df.drop('cod_naf', 'cod_tre', 'mt_baspe', 'mt_basdi')
+                df = df.drop('cod_naf', 'cod_tre')
 
-                self.logger.info("INCENDCU joined successfully - NAF codes and PE/RD capitals enriched")
+                self.logger.info("INCENDCU joined successfully - NAF codes enriched")
         except Exception as e:
             self.logger.warning(f"INCENDCU not available: {e}. Using default values.")
 
@@ -791,67 +785,8 @@ class AZECProcessor(BaseProcessor):
         except Exception as e:
             self.logger.debug(f"MPACU not available: {e}")
 
-        # 3. RCENTCU: Formulas for RC policies (SAS L309-312)
-        try:
-            df_rcentcu = reader.read_file_group('rcentcu_azec', vision)
-            if df_rcentcu is not None:  # OPTIMIZED: Removed count() check
-                # Select formula columns (SAS L310)
-                df_rcentcu_select = df_rcentcu.select(
-                    'police',
-                    col('formule').alias('formule_rc'),
-                    col('formule2').alias('formule2_rc'),
-                    col('formule3').alias('formule3_rc'),
-                    col('formule4').alias('formule4_rc'),
-                    col('cod_naf').alias('cod_naf_rcentcu')
-                ).dropDuplicates(['police'])
-                
-                # Left join on police
-                df = df.join(df_rcentcu_select, on='police', how='left')
-                
-                # Coalesce formulas and NAF (prioritize existing if not null)
-                df = df.withColumn('formule', coalesce(col('formule'), col('formule_rc')))
-                df = df.withColumn('formule2', coalesce(col('formule2'), col('formule2_rc')))
-                df = df.withColumn('formule3', coalesce(col('formule3'), col('formule3_rc')))
-                df = df.withColumn('formule4', coalesce(col('formule4'), col('formule4_rc')))
-                df = df.withColumn('cdnaf', coalesce(col('cdnaf'), col('cod_naf_rcentcu')))
-                
-                # Drop temporary columns
-                df = df.drop('formule_rc', 'formule2_rc', 'formule3_rc', 'formule4_rc', 'cod_naf_rcentcu')
-                
-                self.logger.info("RCENTCU formulas joined successfully")
-        except Exception as e:
-            self.logger.debug(f"RCENTCU not available: {e}")
-
-        # 4. RISTECCU: Technical risk formulas (SAS L312)
-        try:
-            df_risteccu = reader.read_file_group('risteccu_azec', vision)
-            if df_risteccu is not None:  # OPTIMIZED: Removed count() check
-                # Select formula columns
-                df_risteccu_select = df_risteccu.select(
-                    'police',
-                    col('formule').alias('formule_ris'),
-                    col('formule2').alias('formule2_ris'),
-                    col('formule3').alias('formule3_ris'),
-                    col('formule4').alias('formule4_ris'),
-                    col('cod_naf').alias('cod_naf_risteccu')
-                ).dropDuplicates(['police'])
-                
-                # Left join on police
-                df = df.join(df_risteccu_select, on='police', how='left')
-                
-                # Coalesce formulas and NAF with RISTECCU as fallback
-                df = df.withColumn('formule', coalesce(col('formule'), col('formule_ris')))
-                df = df.withColumn('formule2', coalesce(col('formule2'), col('formule2_ris')))
-                df = df.withColumn('formule3', coalesce(col('formule3'), col('formule3_ris')))
-                df = df.withColumn('formule4', coalesce(col('formule4'), col('formule4_ris')))
-                df = df.withColumn('cdnaf', coalesce(col('cdnaf'), col('cod_naf_risteccu')))
-                
-                # Drop temporary columns
-                df = df.drop('formule_ris', 'formule2_ris', 'formule3_ris', 'formule4_ris', 'cod_naf_risteccu')
-                
-                self.logger.info("RISTECCU formulas joined successfully")
-        except Exception as e:
-            self.logger.debug(f"RISTECCU not available: {e}")
+        # RCENTCU and RISTECCU formulas are now handled in _enrich_formulas() (STEP 11)
+        # This function only handles NAF codes
 
         return df
 
@@ -1171,8 +1106,9 @@ class AZECProcessor(BaseProcessor):
                     how='left'
                 ).select(
                     'a.*',
-                    coalesce(col('b.perte_exp'), lit(0)).alias('perte_exp'),
-                    coalesce(col('b.risque_direct'), lit(0)).alias('risque_direct'),
+                    # Use GREATEST to prioritize aggregated values over individual record values
+                    coalesce(col('b.perte_exp'), col('a.perte_exp'), lit(0)).alias('perte_exp'),
+                    coalesce(col('b.risque_direct'), col('a.risque_direct'), lit(0)).alias('risque_direct'),
                     coalesce(col('b.value_insured'), lit(0)).alias('value_insured')
                 )
                 
