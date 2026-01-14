@@ -713,173 +713,142 @@ class AZECProcessor(BaseProcessor):
 
     def _enrich_naf_codes(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Enrich AZEC data with NAF codes and capitals from INCENDCU, MPACU, RCENTCU, RISTECCU.
+        Enrich AZEC data with NAF codes using FULL OUTER JOIN strategy.
+        
+        CRITICAL: Reproduces SAS L272-302 EXACTLY.
+        SAS uses FULL JOIN of 4 tables (INCENDCU, MPACU, RCENTCU, RISTECCU)
+        to ensure ALL policies from ALL tables are captured.
         
         Args:
             df: AZEC DataFrame
             vision: Vision in YYYYMM format
         
         Returns:
-            DataFrame enriched with NAF codes and capitals
+            DataFrame enriched with NAF codes (cdnaf, cdtre)
         """
         reader = get_bronze_reader(self)
         
-        # Initialize enrichment columns upfront
-        enrichment_cols = {
-            'cdnaf': StringType,
-            'cdtre': StringType,
-            'nbj_acti': IntegerType
-        }
+        # ================================================================
+        # STEP 1: FULL OUTER JOIN of 4 tables for NAF codes (SAS L272-279)
+        # ================================================================
+        # SAS: COALESCEC(t1.POLICE, t2.POLICE, t3.POLICE, t4.POLICE)
+        #      COALESCEC(t1.COD_NAF, t2.cod_naf, t3.COD_NAF, t4.COD_NAF)
         
-        from utils.processor_helpers import add_null_columns
-        existing_cols = set(df.columns)
-        cols_to_add = {k: v for k, v in enrichment_cols.items() if k not in existing_cols}
-        if cols_to_add:
-            df = add_null_columns(df, cols_to_add)
-
-        # 1. INCENDCU: NAF codes ONLY (PE/RD/VI handled in _enrich_pe_rd_vi)
         try:
+            # Read all 4 tables
             df_incend = reader.read_file_group('incendcu_azec', vision)
-            if df_incend is not None:
-                # Select NAF columns only
-                df_incend_select = df_incend.select(
-                    'police',
-                    col('cod_naf').alias('cod_naf'),
-                    col('cod_tre').alias('cod_tre')
-                ).dropDuplicates(['police'])
-
-                # Left join on police
-                df = df.join(df_incend_select, on='police', how='left')
-
-                # Update columns with coalesce (use INCENDCU if main is null)
-                df = df.withColumn('cdnaf', coalesce(col('cdnaf'), col('cod_naf')))
-                df = df.withColumn('cdtre', coalesce(col('cdtre'), col('cod_tre')))
-
-                # Drop temporary join columns
-                df = df.drop('cod_naf', 'cod_tre')
-
-                self.logger.info("INCENDCU joined successfully - NAF codes enriched")
-        except Exception as e:
-            self.logger.warning(f"INCENDCU not available: {e}. Using default values.")
-
-        # 2. MPACU: Additional NAF codes (SAS L277: FULL JOIN with MPACU.MPACU)
-        try:
             df_mpacu = reader.read_file_group('mpacu_azec', vision)
-            if df_mpacu is not None:  # OPTIMIZED: Removed count() check
-                # Select needed columns for NAF fallback
-                df_mpacu_select = df_mpacu.select(
-                    'police',
-                    col('cod_naf').alias('cod_naf_mpacu')
-                ).dropDuplicates(['police'])
-                
-                # Left join on police
-                df = df.join(df_mpacu_select, on='police', how='left')
-                
-                # Coalesce CDNAF with MPACU fallback (SAS L274-275)
-                df = df.withColumn(
-                    'cdnaf',
-                    coalesce(col('cdnaf'), col('cod_naf_mpacu'))
-                ).drop('cod_naf_mpacu')
-                
-                self.logger.info("MPACU NAF codes joined successfully")
-        except Exception as e:
-            self.logger.debug(f"MPACU not available: {e}")
-
-        # RCENTCU and RISTECCU formulas are now handled in _enrich_formulas() (STEP 11)
-        # This function only handles NAF codes
-
-        return df
-
-
-    def _enrich_formules_and_ca(self, df: DataFrame, vision: str) -> DataFrame:
-        """
-        Enrich AZEC data with product formulas from CONSTRCU and CA from MULPROCU.
-        
-        Args:
-            df: AZEC DataFrame
-            vision: Vision in YYYYMM format
-        
-        Returns:
-            DataFrame enriched with formulas and CA
-        """
-        reader = get_bronze_reader(self)
-
-        # 1. CONSTRCU: Product formulas and construction site details
-        try:
-            df_CONSTRCU = reader.read_file_group('constrcu_azec', vision)
-            if df_CONSTRCU is not None:  # OPTIMIZED: Removed count() check
-                # Select formula columns
-                CONSTRCU_cols = ['police']
-
-                # Formula columns
-                for col_name in ['formule', 'formule2', 'formule3', 'formule4']:
-                    if col_name in df_CONSTRCU.columns:
-                        CONSTRCU_cols.append(col_name)
-
-                # Construction site details
-                for col_name in ['datouvch', 'ldestloc', 'datrecep', 'datnot',
-                                'loclieu', 'adrchant', 'vilchant', 'codpchant']:
-                    if col_name in df_CONSTRCU.columns:
-                        CONSTRCU_cols.append(col_name)
-
-                df_CONSTRCU_select = df_CONSTRCU.select(*CONSTRCU_cols)
-
-                # Left join on police
-                df = df.join(df_CONSTRCU_select, on='police', how='left')
-
-                self.logger.info("CONSTRCU joined successfully - formulas and construction site details added")
-        except Exception as e:
-            self.logger.warning(f"CONSTRCU not available: {e}. Skipping formula enrichment.")
-            # Initialize formula columns if not present
-            from utils.processor_helpers import add_null_columns
-            existing_cols = set(df.columns)
-            null_cols_needed = {
-                col_name: StringType
-                for col_name in ['formule', 'formule2', 'formule3', 'formule4']
-                if col_name not in existing_cols
-            }
-            if null_cols_needed:
-                df = add_null_columns(df, null_cols_needed)
-
-        # 2. MULPROCU: Turnover (CA) data
-        try:
-            df_mulprocu = reader.read_file_group('mulprocu_azec', vision)
-            if df_mulprocu is not None:  # OPTIMIZED: Removed count() check
-                # Select CA column
-                # Aggregate CHIFFAFF to get MTCA (SAS L340: SUM(CHIFFAFF) AS MTCA)
-                from pyspark.sql.functions import sum as spark_sum
-                df_mulprocu_agg = df_mulprocu.groupBy('police').agg(
-                    spark_sum('chiffaff').alias('mtca_mulpro')
+            df_rcentcu = reader.read_file_group('rcentcu_azec', vision)
+            df_risteccu = reader.read_file_group('risteccu_azec', vision)
+            
+            # Prepare each table: select (police, cod_naf) and deduplicate
+            tables = []
+            
+            if df_incend is not None:
+                tables.append(df_incend.select(
+                    col('police'), 
+                    col('cod_naf').alias('naf_incend')
+                ).dropDuplicates(['police']))
+            
+            if df_mpacu is not None:
+                tables.append(df_mpacu.select(
+                    col('police'),
+                    col('cod_naf').alias('naf_mpacu')
+                ).dropDuplicates(['police']))
+            
+            if df_rcentcu is not None:
+                tables.append(df_rcentcu.select(
+                    col('police'),
+                    col('cod_naf').alias('naf_rcentcu')
+                ).dropDuplicates(['police']))
+            
+            if df_risteccu is not None:
+                tables.append(df_risteccu.select(
+                    col('police'),
+                    col('cod_naf').alias('naf_risteccu')
+                ).dropDuplicates(['police']))
+            
+            if not tables:
+                self.logger.warning("No NAF tables available - skipping NAF enrichment")
+                from utils.processor_helpers import add_null_columns
+                return add_null_columns(df, {'cdnaf': StringType, 'cdtre': StringType})
+            
+            # FULL OUTER JOIN all tables (SAS L277-279)
+            df_naf_all = tables[0]
+            for df_table in tables[1:]:
+                df_naf_all = df_naf_all.join(df_table, on='police', how='full_outer')
+            
+            # COALESCEC: Take first non-null NAF code (SAS L275)
+            df_naf_all = df_naf_all.withColumn(
+                'code_naf',
+                coalesce(
+                    col('naf_incend') if 'naf_incend' in df_naf_all.columns else lit(None),
+                    col('naf_mpacu') if 'naf_mpacu' in df_naf_all.columns else lit(None),
+                    col('naf_rcentcu') if 'naf_rcentcu' in df_naf_all.columns else lit(None),
+                    col('naf_risteccu') if 'naf_risteccu' in df_naf_all.columns else lit(None)
                 )
-
-                # Left join on police
-                df = df.join(df_mulprocu_agg, on='police', how='left')
-
-                # Priority logic (SAS L344-355):
-                # If MTCA is null and specific formulas, use MTCA_MULPRO
-                # For now, use simple coalesce (can be refined based on formula conditions)
-                if 'mtca' in df.columns:
-                    df = df.withColumn(
-                        'mtca',
-                        when(
-                            col('mtca').isNull() & col('mtca_mulpro').isNotNull(),
-                            col('mtca_mulpro')
-                        ).otherwise(col('mtca'))
-                    )
-                else:
-                    df = df.withColumn('mtca', coalesce(col('mtca_mulpro'), lit(0)))
-
-                # Drop temporary column
-                df = df.drop('mtca_mulpro')
-
-                self.logger.info("MULPROCU joined successfully - CA data enriched")
+            )
+            
+            # Keep only (police, code_naf)
+            df_naf_all = df_naf_all.select('police', 'code_naf')
+            
+            # GROUP BY + MIN to deduplicate (SAS L281-284)
+            from pyspark.sql.functions import min as spark_min
+            df_code_naf = df_naf_all.groupBy('police').agg(
+                spark_min('code_naf').alias('code_naf')
+            )
+            
+            self.logger.info(f"NAF codes consolidated from {len(tables)} tables using FULL OUTER JOIN")
+            
         except Exception as e:
-            self.logger.warning(f"MULPROCU not available: {e}. Skipping CA enrichment.")
-            # Initialize mtca if not present
-            if 'mtca' not in df.columns:
-                df = df.withColumn('mtca', lit(0).cast(DoubleType()))
-
+            self.logger.warning(f"NAF FULL JOIN failed: {e} - using empty NAF")
+            df_code_naf = self.spark.createDataFrame([], schema="police string, code_naf string")
+        
+        # ================================================================
+        # STEP 2: COD_TRE from INCENDCU only (SAS L286-289)
+        # ================================================================
+        try:
+            if df_incend is not None:
+                df_code_tre = df_incend.select('police', 'cod_tre').dropDuplicates(['police'])
+                
+                # GROUP BY + MIN (SAS L287-289)
+                from pyspark.sql.functions import min as spark_min
+                df_code_tre = df_code_tre.groupBy('police').agg(
+                    spark_min('cod_tre').alias('code_tre')
+                )
+                
+                self.logger.info("COD_TRE extracted from INCENDCU")
+            else:
+                df_code_tre = self.spark.createDataFrame([], schema="police string, code_tre string")
+        except Exception as e:
+            self.logger.warning(f"COD_TRE extraction failed: {e}")
+            df_code_tre = self.spark.createDataFrame([], schema="police string, code_tre string")
+        
+        # ================================================================
+        # STEP 3: FULL OUTER JOIN CODE_TRE + CODE_NAF (SAS L291-297)
+        # ================================================================
+        df_naf_final = df_code_tre.join(df_code_naf, on='police', how='full_outer')
+        
+        # ================================================================
+        # STEP 4: LEFT JOIN to main DataFrame (SAS L300-302)
+        # ================================================================
+        df = df.join(df_naf_final, on='police', how='left')
+        
+        # Rename to match expected columns
+        if 'code_naf' in df.columns:
+            df = df.withColumn('cdnaf', col('code_naf')).drop('code_naf')
+        else:
+            df = df.withColumn('cdnaf', lit(None).cast(StringType()))
+        
+        if 'code_tre' in df.columns:
+            df = df.withColumn('cdtre', col('code_tre')).drop('code_tre')
+        else:
+            df = df.withColumn('cdtre', lit(None).cast(StringType()))
+        
+        self.logger.info("✓ NAF codes enriched with FULL OUTER JOIN (SAS-compliant)")
         return df
+
+
 
     def _calculate_premiums(self, df: DataFrame) -> DataFrame:
         """
@@ -1096,7 +1065,7 @@ class AZECProcessor(BaseProcessor):
                     spark_sum('mt_baspe').alias('perte_exp'),
                     spark_sum('mt_basdi').alias('risque_direct')
                 ).withColumn('value_insured',
-                    col('perte_exp') + col('risque_direct')
+                    coalesce(col('perte_exp'), lit(0)) + coalesce(col('risque_direct'), lit(0))
                 )
                 
                 # Left join on (police, produit) - CRITICAL: Both keys!
@@ -1106,9 +1075,8 @@ class AZECProcessor(BaseProcessor):
                     how='left'
                 ).select(
                     'a.*',
-                    # Use GREATEST to prioritize aggregated values over individual record values
-                    coalesce(col('b.perte_exp'), col('a.perte_exp'), lit(0)).alias('perte_exp'),
-                    coalesce(col('b.risque_direct'), col('a.risque_direct'), lit(0)).alias('risque_direct'),
+                    coalesce(col('b.perte_exp'), lit(0)).alias('perte_exp'),
+                    coalesce(col('b.risque_direct'), lit(0)).alias('risque_direct'),
                     coalesce(col('b.value_insured'), lit(0)).alias('value_insured')
                 )
                 
