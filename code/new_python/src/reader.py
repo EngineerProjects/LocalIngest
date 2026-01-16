@@ -284,11 +284,10 @@ class BronzeReader:
         Strategy:
         ---------
         1. Replace "." with None (vectorized)
-        2. Trim all string columns (removes leading/trailing whitespace)
+        2. Trim ALL columns in single select (removes leading/trailing whitespace)
         3. Replace empty strings with None
         
-        This is MUCH faster than multiple replace() calls and handles
-        all edge cases from SASPROD exports.
+        OPTIMIZED: Uses single select() instead of loop for trim → much faster!
         
         Performance: Single-pass transformation, extremely efficient.
         """
@@ -296,10 +295,11 @@ class BronzeReader:
         # Step 1: Replace SAS missing indicator "." with None
         df = df.replace({".": None})
         
-        # Step 2: Trim all string columns to handle whitespace-only values
+        # Step 2: Trim ALL columns in a single select (OPTIMIZED!)
         # This converts " ", "  ", "   ", etc. to ""
-        for col_name in df.columns:
-            df = df.withColumn(col_name, trim(col(col_name)))
+        # Much faster than loop for 200+ columns
+        trim_exprs = [trim(col(c)).alias(c) for c in df.columns]
+        df = df.select(*trim_exprs)
         
         # Step 3: Replace empty strings with None (after trimming)
         df = df.replace({"": None})
