@@ -146,11 +146,12 @@ class BronzeReader:
         schema_name = group_config.get("schema")
         read_options = group_config.get("read_options", {})
         filters = group_config.get("filters", [])
+        dynamic_columns = group_config.get("dynamic_columns", [])  # NEW: Get dynamic columns config
 
         schema = self.get_schema(schema_name) if schema_name else None
 
         # ------------------------------------------------------------------
-        # 1. READ ALL FILES RAW
+        # 1. READ ALL FILES RAW + APPLY DYNAMIC COLUMNS
         # ------------------------------------------------------------------
         raw_dfs = []
         
@@ -161,6 +162,10 @@ class BronzeReader:
                 df_raw = self._read_raw(full_pattern, file_format, schema, read_options)
 
                 df_raw = df_raw.withColumn("_source_file", input_file_name())
+
+                # Apply dynamic columns if configured (e.g., cdpole based on filename)
+                if dynamic_columns:
+                    df_raw = self._apply_dynamic_columns(df_raw, dynamic_columns)
 
                 raw_dfs.append(df_raw)
 
@@ -374,6 +379,40 @@ class BronzeReader:
             elif op == "<=":
                 df = df.filter(col(colname) <= val)
 
+        return df
+
+    # ----------------------------------------------------------------------
+
+    def _apply_dynamic_columns(self, df: DataFrame, dynamic_columns: List[Dict[str, Any]]) -> DataFrame:
+        """
+        Apply dynamic columns based on source filename.
+        
+        Used for adding file-specific columns like cdpole based on filename patterns.
+        Example: ipfm199.csv → cdpole="3", ipfm399.csv → cdpole="1"
+        
+        Args:
+            df: DataFrame with _source_file column
+            dynamic_columns: List of rules with pattern and columns to add
+            
+        Returns:
+            DataFrame with dynamic columns added
+        """
+        import fnmatch
+        
+        # Extract source filename once (lowercase for case-insensitive matching)
+        source_file = df.select("_source_file").first()[0].lower()
+        
+        # Apply rules that match the filename pattern
+        for rule in dynamic_columns:
+            pattern = rule["pattern"].lower()
+            cols_to_add = rule["columns"]
+            
+            # Check if filename matches the pattern
+            if fnmatch.fnmatch(source_file, f"*{pattern}*"):
+                # Add all columns from this rule
+                for col_name, col_value in cols_to_add.items():
+                    df = df.withColumn(col_name, lit(col_value))
+        
         return df
 
     # ----------------------------------------------------------------------
