@@ -29,10 +29,12 @@ datalake:
 
 # Output configuration (silver and gold layers)
 output:
-  # Format for all outputs (parquet for type safety)
+  # Format for all outputs (delta recommended for ACID guarantees)
   format: "delta"
   compression: "snappy"
   mode: "overwrite"
+  # Delta Lake VACUUM retention (14 days recommended by Databricks)
+  vacuum_hours: 336  # 14 days = 336 hours
 
 # Component toggles
 components:

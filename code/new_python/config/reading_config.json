@@ -54,18 +54,18 @@
         "ipfm99_az": {
             "description": "IMS AZ IPFM99 files - Product 01099 CA amounts",
             "file_patterns": [
-                "*3SPEIPFM99_IPF_*.csv.gz",
-                "*E1SPEIPFM99_IPF_*.csv.gz"
+                "ipfm199.csv",
+                "ipfm399.csv"
             ],
             "dynamic_columns": [
                 {
-                    "pattern": "*3SPEIPFM99*",
+                    "pattern": "*199*",
                     "columns": {
                         "cdpole": "3"
                     }
                 },
                 {
-                    "pattern": "*E1SPEIPFM99*",
+                    "pattern": "*399*",
                     "columns": {
                         "cdpole": "1"
                     }
@@ -739,8 +739,7 @@
         "do_dest": {
             "description": "DO_DEST - Construction site destination reference - SAS DEST.DO_DEST202110",
             "file_patterns": [
-                "do_dest_*.csv",
-                "do_dest.csv"
+                "do_dest*.csv"
             ],
             "schema": "do_dest",
             "read_options": {
@@ -750,7 +749,7 @@
                 "encoding": "LATIN9"
             },
             "filters": [],
-            "location_type": "reference"
+            "location_type": "monthly"
         },
         "table_segmentation_azec_mml": {
             "description": "TABLE_SEGMENTATION_AZEC_MML - AZEC product segmentation reference",

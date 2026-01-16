@@ -660,56 +660,60 @@ class AZECProcessor(BaseProcessor):
 
     def _enrich_region(self, df: DataFrame) -> DataFrame:
         """
-        Enrich AZEC data with REGION and P_Num from PTGST_STATIC.
+        SAS L482-487: Enrich REGION + P_NUM + UPPER_MID from TABLE_PT_GEST.
+        
+        Join: a.poingest = d.ptgst
+        Fallback: REGION = 'Autres' if null
+        
+        OPTIMIZATION: Fetches region, p_num, AND upper_mid in single join
+        (previously done in 2 separate joins: ptgst_static + table_pt_gest)
         
         Args:
             df: AZEC DataFrame with poingest column
         
         Returns:
-            DataFrame enriched with region and p_num columns
+            DataFrame enriched with region, p_num, and upper_mid columns
         """
         reader = get_bronze_reader(self)
-        
+
         try:
-            df_ptgst = reader.read_file_group('ptgst_static', vision='ref')
-            
-            if df_ptgst is not None:
-                # Select needed columns and prepare for join
-                # Note: BronzeReader lowercases all columns
-                df_ptgst_select = df_ptgst.select(
-                    col("ptgst"),
-                    col("region"),
-                    col("p_num") if "p_num" in df_ptgst.columns else lit(None).cast(StringType()).alias("p_num")
-                ).dropDuplicates(["ptgst"])
-                
-                # Left join on poingest = ptgst
-                # Note: poingest in POLIC_CU maps to PTGST in reference table
-                df = df.alias("a").join(
-                    df_ptgst_select.alias("p"),
-                    col("a.poingest") == col("p.ptgst"),
-                    how="left"
-                ).select(
-                    "a.*",
-                    # If no match found, set REGION = 'Autres' (SAS L70)
-                    when(col("p.region").isNull(), lit("Autres"))
-                    .otherwise(col("p.region")).alias("region"),
-                    col("p.p_num")
-                )
-                
-                self.logger.info("PTGST_STATIC joined successfully - REGION and P_Num added")
-            else:
-                self.logger.warning("PTGST_STATIC not available - setting REGION to 'Autres'")
-                from utils.processor_helpers import add_null_columns
-                df = df.withColumn('region', lit('Autres'))
-                df = add_null_columns(df, {'p_num': StringType})
+            df_ref = reader.read_file_group("table_pt_gest", vision="ref")
+
+            if df_ref is None:
+                self.logger.warning("TABLE_PT_GEST unavailable - applying fallback (REGION='Autres')")
+                return df.withColumn("region", lit("Autres")) \
+                         .withColumn("p_num", lit(None).cast(StringType())) \
+                         .withColumn("upper_mid", lit(None).cast(StringType()))
+
+            # Only needed columns
+            df_ref = df_ref.select(
+                col("ptgst"),
+                col("region"),
+                col("p_num") if "p_num" in df_ref.columns else lit(None).cast(StringType()).alias("p_num"),
+                col("upper_mid") if "upper_mid" in df_ref.columns else lit(None).cast(StringType()).alias("upper_mid")
+            ).dropDuplicates(["ptgst"])
+
+            # LEFT join a.poingest == ref.ptgst (SAS L486)
+            df = df.alias("a").join(
+                df_ref.alias("r"),
+                col("a.poingest") == col("r.ptgst"),
+                how="left"
+            ).select(
+                "a.*",
+                when(col("r.region").isNull(), lit("Autres")).otherwise(col("r.region")).alias("region"),
+                col("r.p_num"),
+                col("r.upper_mid")
+            )
+
+            self.logger.info("✓ TABLE_PT_GEST joined (region, p_num, upper_mid) - SAS compliant")
+            return df
 
         except Exception as e:
-            self.logger.warning(f"PTGST_STATIC enrichment failed: {e} - setting REGION to 'Autres'")
-            from utils.processor_helpers import add_null_columns
-            df = df.withColumn('region', lit('Autres'))
-            df = add_null_columns(df, {'p_num': StringType})
-        
-        return df
+            self.logger.warning(f"TABLE_PT_GEST enrichment failed: {e} - applying fallback")
+            return df.withColumn("region", lit("Autres")) \
+                     .withColumn("p_num", lit(None).cast(StringType())) \
+                     .withColumn("upper_mid", lit(None).cast(StringType()))
+
 
     def _enrich_naf_codes(self, df: DataFrame, vision: str) -> DataFrame:
         """
@@ -1095,24 +1099,27 @@ class AZECProcessor(BaseProcessor):
 
     def _enrich_constrcu_site_data(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Enrich with construction site data from CONSTRCU (SAS L476-487).
+        Enrich with construction site data from CONSTRCU (SAS L481).
         
-        Adds: DATOUVCH, LDESTLOC, MNT_GLOB, DATRECEP, DEST_LOC, DATFINCH, LQUALITE, UPPER_MID.
+        Adds: DATOUVCH, LDESTLOC, MNT_GLOB, DATRECEP, DEST_LOC, DATFINCH, LQUALITE.
+        
+        Note: UPPER_MID is now enriched in _enrich_region() for efficiency
+        (single join instead of two separate joins).
         
         Args:
             df: AZEC DataFrame
             vision: Vision in YYYYMM format
         
         Returns:
-            DataFrame enriched with construction site details and UPPER_MID
+            DataFrame enriched with construction site details
         """
         reader = get_bronze_reader(self)
         
-        # CONSTRCU site data
+        # CONSTRCU site data (SAS L481: c.DATOUVCH, c.LDESTLOC, ...)
         try:
             df_constrcu = reader.read_file_group('constrcu_azec', vision='ref')
             if df_constrcu is not None:
-                # Select site data columns (SAS L481)
+                # Select site data columns
                 site_cols = ['police', 'produit']
                 for col_name in ['datouvch', 'ldestloc', 'mnt_glob', 'datrecep', 'dest_loc', 'datfinch', 'lqualite']:
                     if col_name in df_constrcu.columns:
@@ -1120,40 +1127,16 @@ class AZECProcessor(BaseProcessor):
                 
                 df_site = df_constrcu.select(*site_cols).dropDuplicates(['police', 'produit'])
                 
-                # Left join on (police, produit)
+                # Left join on (police, produit) - SAS L485
                 df = df.alias('a').join(
                     df_site.alias('c'),
                     (col('a.police') == col('c.police')) & (col('a.produit') == col('c.produit')),
                     how='left'
                 ).select('a.*', *[f'c.{c}' for c in site_cols if c not in ['police', 'produit']])
                 
-                self.logger.info("CONSTRCU site data joined")
+                self.logger.info("✓ CONSTRCU site data joined")
         except Exception as e:
             self.logger.warning(f"CONSTRCU not available: {e}")
         
-        # TABLE_PT_GEST for UPPER_MID (SAS L482, L486)
-        try:
-            year_int, _ = extract_year_month_int(vision)
-            from utils.processor_helpers import safe_reference_join
-            
-            # Use derniere_version equivalent
-            df = safe_reference_join(
-                df,
-                'table_pt_gest',
-                vision,
-                join_condition="df.poingest == df_ref.ptgst",
-                select_cols=['upper_mid'],
-                logger=self.logger,
-                join_type='left',
-                alias_main='df',
-                alias_ref='df_ref'
-            )
-            
-            self.logger.info("UPPER_MID enriched from TABLE_PT_GEST")
-        except Exception as e:
-            self.logger.warning(f"TABLE_PT_GEST not available: {e}")
-            if 'upper_mid' not in df.columns:
-                df = df.withColumn('upper_mid', lit(None).cast(StringType()))
-        
-        self.logger.info("✓ Final enrichment complete (site data, UPPER_MID)")
         return df
+

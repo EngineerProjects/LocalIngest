@@ -232,20 +232,42 @@ def write_to_layer(
     layer: str,
     filename: str,
     vision: str,
-    logger=None
+    logger=None,
+    optimize: bool = False,
+    zorder_cols: Optional[List[str]] = None
 ) -> None:
     """
-    Write a DataFrame to the datalake (silver/gold) with Delta support.
-    Uses dynamic partition overwrite to avoid duplicate partitions.
+    Generic datalake writer for silver/gold layers.
+    Supports Delta, Parquet, CSV.
+
+    Features:
+    - Dynamic overwrite/append mode from config.yml
+    - Delta-safe overwrite (no duplicate partitions)
+    - Optional OPTIMIZE + ZORDER per-table (not global)
+    - Optional VACUUM cleanup
+    - Coalesce gold files
+    
+    Args:
+        df: DataFrame to write
+        config: ConfigLoader instance
+        layer: 'silver' or 'gold'
+        filename: Output filename (without extension for parquet/csv)
+        vision: YYYYMM format
+        logger: Optional logger
+        optimize: If True, run OPTIMIZE + ZORDER after Delta write
+        zorder_cols: Columns to ZORDER by (only if optimize=True)
     """
 
-    # Enable safe overwrite of only the partitions present in df
-    df.sparkSession.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
+    # Resolve config
+    base_path = config.get("datalake.base_path")
+    path_template = config.get("datalake.path_template")
+    output_format = config.get("output.format", "delta").lower()
+    compression = config.get("output.compression", "snappy")
+    mode = config.get("output.mode", "overwrite").lower()
+    vacuum_hours = config.get("output.vacuum_hours", 168)
 
-    base_path = config.get('datalake.base_path')
-    path_template = config.get('datalake.path_template')
+    # Build path
     year, month = extract_year_month_int(vision)
-
     layer_path = path_template.format(
         base_path=base_path,
         layer=layer,
@@ -253,46 +275,118 @@ def write_to_layer(
         month=f"{month:02d}"
     )
 
-    output_format = config.get('output.format', 'parquet').lower()
-    compression = config.get('output.compression', 'snappy')
-    mode = config.get('output.mode', 'overwrite')
-
-    # Delta = directory, no extension
+    # Delta = directory, others = file with extension
     if output_format == "delta":
         output_path = f"{layer_path}/{filename}"
     else:
         output_path = f"{layer_path}/{filename}.{output_format}"
 
     if logger:
-        logger.info(f"Writing {layer} data to: {output_path}")
-        logger.info(f"Format: {output_format}, Compression: {compression}, Mode: {mode}")
+        logger.info(f"Writing to {output_path}")
+        logger.info(f"Format={output_format}, Mode={mode}, Layer={layer}")
 
-    # Optional coalesce for gold layer
-    try:
-        if layer == "gold":
+    # ================================================================
+    # COALESCE OPTIMIZATION FOR GOLD LAYER
+    # ================================================================
+    if layer == "gold":
+        try:
             row_count = df.count()
             if row_count < 1_000_000:
                 df = df.coalesce(1)
+                if logger:
+                    logger.debug(f"Coalesced to 1 partition ({row_count:,} rows)")
             elif row_count < 10_000_000:
                 df = df.coalesce(4)
-    except Exception:
-        pass
+                if logger:
+                    logger.debug(f"Coalesced to 4 partitions ({row_count:,} rows)")
+        except Exception as e:
+            if logger:
+                logger.warning(f"Coalesce skipped: {e}")
 
+    # ================================================================
+    # WRITE LOGIC BY FORMAT
+    # ================================================================
     writer = df.write.mode(mode)
 
+    # PARQUET
     if output_format == "parquet":
         writer.option("compression", compression).parquet(output_path)
+        if logger:
+            logger.success(f"Parquet write complete: {output_path}")
 
-    elif output_format == "delta":
-        (
-            writer.format("delta")
-            .option("mergeSchema", "false")
-            .option("overwriteSchema", str(mode == "overwrite").lower())
-            .save(output_path)
-        )
-
+    # CSV
     elif output_format == "csv":
         writer.option("header", True).option("delimiter", ";").csv(output_path)
+        if logger:
+            logger.success(f"CSV write complete: {output_path}")
+
+    # DELTA LAKE
+    elif output_format == "delta":
+        
+        # ✅ FIX: Local config only (not global session config)
+        writer = writer.format("delta")
+        
+        # Overwrite schema only in overwrite mode
+        if mode == "overwrite":
+            writer = writer.option("overwriteSchema", "true")
+            # Static overwrite mode (replaces entire table, not individual partitions)
+            writer = writer.option("partitionOverwriteMode", "static")
+        
+        # Execute write
+        writer.save(output_path)
+
+        if logger:
+            logger.info("Delta write complete")
+
+        # ================================================================
+        # DELTA POST-WRITE OPTIMIZATIONS
+        # ================================================================
+        
+        # Import Delta only when needed
+        try:
+            from delta.tables import DeltaTable
+        except ImportError:
+            if logger:
+                logger.warning("Delta Lake not available - skipping optimizations")
+            return
+        
+        # VACUUM cleanup (remove old file versions)
+        try:
+            delta_tbl = DeltaTable.forPath(df.sparkSession, output_path)
+            delta_tbl.vacuum(vacuum_hours)
+            if logger:
+                logger.info(f"VACUUM completed (retention={vacuum_hours}h)")
+        except Exception as e:
+            if logger:
+                logger.warning(f"VACUUM skipped: {e}")
+
+        # OPTIMIZE + ZORDER (optional, per-table)
+        if optimize:
+            try:
+                spark = df.sparkSession
+                optimize_sql = f"OPTIMIZE delta.`{output_path}`"
+
+                if zorder_cols:
+                    # Validate columns exist
+                    invalid_cols = [c for c in zorder_cols if c not in df.columns]
+                    if invalid_cols:
+                        if logger:
+                            logger.warning(f"ZORDER cols not found: {invalid_cols}")
+                        # Only use valid columns
+                        valid_zorder = [c for c in zorder_cols if c in df.columns]
+                        if valid_zorder:
+                            optimize_sql += " ZORDER BY (" + ", ".join(valid_zorder) + ")"
+                    else:
+                        optimize_sql += " ZORDER BY (" + ", ".join(zorder_cols) + ")"
+
+                spark.sql(optimize_sql)
+
+                if logger:
+                    logger.success(f"OPTIMIZE completed: {output_path}")
+
+            except Exception as e:
+                if logger:
+                    logger.warning(f"OPTIMIZE failed: {e}")
 
     else:
         raise ValueError(f"Unsupported output format: {output_format}")
