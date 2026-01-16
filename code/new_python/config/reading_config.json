@@ -29,11 +29,15 @@
             "dynamic_columns": [
                 {
                     "pattern": "*16*",
-                    "columns": { "cdpole": "1" }
+                    "columns": {
+                        "cdpole": "1"
+                    }
                 },
                 {
                     "pattern": "*36*",
-                    "columns": { "cdpole": "3" }
+                    "columns": {
+                        "cdpole": "3"
+                    }
                 }
             ],
             "schema": "ipf_az",
@@ -56,13 +60,17 @@
             "dynamic_columns": [
                 {
                     "pattern": "*3SPEIPFM99*",
-                    "columns": { "cdpole": "3" }
+                    "columns": {
+                        "cdpole": "3"
+                    }
                 },
                 {
                     "pattern": "*E1SPEIPFM99*",
-                    "columns": { "cdpole": "1" }
+                    "columns": {
+                        "cdpole": "1"
+                    }
                 }
-            ],  
+            ],
             "schema": "ipfm99_az",
             "read_options": {
                 "format": "csv",
@@ -429,6 +437,14 @@
             "file_patterns": [
                 "ipfm0024_1.csv"
             ],
+            "dynamic_columns": [
+                {
+                    "pattern": "*",
+                    "columns": {
+                        "cdpole": "1"
+                    }
+                }
+            ],
             "schema": "ipfspe_ipfm0024",
             "read_options": {
                 "format": "csv",
@@ -437,13 +453,21 @@
                 "encoding": "LATIN9"
             },
             "filters": [],
-            "location_type": "reference"
+            "location_type": "monthly"
         },
         "ipfm0024_3": {
             "description": "IPFM0024_3 - Product activities reference (Pole 3)",
             "file_patterns": [
                 "ipfm0024_3.csv"
             ],
+            "dynamic_columns": [
+                {
+                    "pattern": "*",
+                    "columns": {
+                        "cdpole": "3"
+                    }
+                }
+            ],
             "schema": "ipfspe_ipfm0024",
             "read_options": {
                 "format": "csv",
@@ -452,13 +476,21 @@
                 "encoding": "LATIN9"
             },
             "filters": [],
-            "location_type": "reference"
+            "location_type": "monthly"
         },
         "ipfm63_1": {
             "description": "IPFM63_1 - Professional activities reference (Pole 1)",
             "file_patterns": [
                 "ipfm63_1.csv"
             ],
+            "dynamic_columns": [
+                {
+                    "pattern": "*",
+                    "columns": {
+                        "cdpole": "1"
+                    }
+                }
+            ],
             "schema": "ipfspe_ipfm63",
             "read_options": {
                 "format": "csv",
@@ -467,13 +499,21 @@
                 "encoding": "LATIN9"
             },
             "filters": [],
-            "location_type": "reference"
+            "location_type": "monthly"
         },
         "ipfm63_3": {
             "description": "IPFM63_3 - Professional activities reference (Pole 3)",
             "file_patterns": [
                 "ipfm63_3.csv"
             ],
+            "dynamic_columns": [
+                {
+                    "pattern": "*",
+                    "columns": {
+                        "cdpole": "3"
+                    }
+                }
+            ],
             "schema": "ipfspe_ipfm63",
             "read_options": {
                 "format": "csv",
@@ -482,27 +522,20 @@
                 "encoding": "LATIN9"
             },
             "filters": [],
-            "location_type": "reference"
+            "location_type": "monthly"
         },
         "ipfm99_1": {
             "description": "IPFM99_1 - Generic activities reference (Pole 1)",
             "file_patterns": [
                 "ipfm99_1.csv"
             ],
-            "schema": "ipfspe_ipfm99",
-            "read_options": {
-                "format": "csv",
-                "sep": "|",
-                "header": true,
-                "encoding": "LATIN9"
-            },
-            "filters": [],
-            "location_type": "reference"
-        },
-        "ipfm99_3": {
-            "description": "IPFM99_3 - Generic activities reference (Pole 3)",
-            "file_patterns": [
-                "ipfm99_3.csv"
+            "dynamic_columns": [
+                {
+                    "pattern": "*",
+                    "columns": {
+                        "cdpole": "1"
+                    }
+                }
             ],
             "schema": "ipfspe_ipfm99",
             "read_options": {
@@ -512,7 +545,30 @@
                 "encoding": "LATIN9"
             },
             "filters": [],
-            "location_type": "reference"
+            "location_type": "monthly"
+        },
+        "ipfm99_3": {
+            "description": "IPFM99_3 - Generic activities reference (Pole 3)",
+            "file_patterns": [
+                "ipfm99_3.csv"
+            ],
+            "dynamic_columns": [
+                {
+                    "pattern": "*",
+                    "columns": {
+                        "cdpole": "3"
+                    }
+                }
+            ],
+            "schema": "ipfspe_ipfm99",
+            "read_options": {
+                "format": "csv",
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9"
+            },
+            "filters": [],
+            "location_type": "monthly"
         },
         "w6_basecli_inv": {
             "description": "W6 BASECLI_INV - Client base cumulative data",
@@ -653,7 +709,7 @@
         "ird_suivi_engagements": {
             "description": "IRD Suivi Engagements - NAF 2008 tracking (using 202511, 202509 is empty)",
             "file_patterns": [
-                "ird_suivi_engagements_202511.csv"
+                "ird_suivi_engagements_*.csv"
             ],
             "schema": "ird_suivi_engagements",
             "read_options": {
@@ -663,7 +719,7 @@
                 "encoding": "LATIN9"
             },
             "filters": [],
-            "location_type": "reference"
+            "location_type": "monthly"
         },
         "isic_lg": {
             "description": "ISIC Local-to-Global mapping - SAS ISIC.ISIC_LG_202306 for ISIC_CODE_GBL",

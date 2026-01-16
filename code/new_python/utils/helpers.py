@@ -226,83 +226,38 @@ def compute_date_ranges(vision: str) -> Dict[str, str]:
 
     return dates
 
-
 def write_to_layer(
-    df,  # DataFrame type - avoid pyspark import in helpers
-    config,  # ConfigLoader type
+    df,
+    config,
     layer: str,
     filename: str,
     vision: str,
-    logger=None  # PipelineLogger type
+    logger=None
 ) -> None:
     """
-    Generic function to write a Spark DataFrame to a data lake layer (silver or gold).
-
-    This function centralizes all logic related to output path construction,
-    format selection (Parquet, Delta, CSV), compression, write mode, and optional
-    partition coalescing for optimized file sizes.
-
-    The output path is automatically built using the configured base path,
-    layer name, and the vision period (YYYYMM), ensuring consistent folder
-    structure across all pipelines.
-
-    Features:
-        - Supports multiple output formats via config: parquet, delta, csv
-        - Automatically handles Delta-specific behavior (no file extension)
-        - Optional coalesce optimization for gold layer to reduce small files
-        - Delta Lake: OPTIMIZE + Z-Ordering for performance
-        - Delta Lake: Schema enforcement to prevent data corruption
-        - Centralized logging for traceability
-        - Ensures consistent naming: <filename>_<vision>.<format>
-
-    Args:
-        df: Spark DataFrame to write. Columns are expected to be lowercase.
-        config: Configuration loader providing datalake paths and output settings.
-        layer: Target layer in the data lake ("silver" or "gold").
-        filename: Base name of the output dataset (without extension).
-        vision: Vision period in YYYYMM format, used for folder structure and filename.
-        logger: Optional logger for structured pipeline logging.
-        optimize: If True and format is Delta, run OPTIMIZE after write (default: True)
-        zorder_columns: Optional columns for Z-Ordering (Delta only, improves data skipping)
-
-    Examples:
-        Write to Silver layer in Parquet:
-            >>> write_to_layer(df, config, "silver", "mvt_const_ptf", "202509", logger)
-            # → .../silver/2025/09/mvt_const_ptf_202509.parquet
-
-        Write to Gold layer in Delta with Z-Ordering:
-            >>> write_to_layer(
-            ...     df, config, "gold", "construction_portfolio", "202509", logger,
-            ...     optimize=True, zorder_columns=["police", "dtfin"]
-            ... )
-            # → .../gold/2025/09/construction_portfolio_202509 (Delta directory)
-
-    Notes:
-        - Delta format writes a directory, not a single file, so no extension is added.
-        - Coalescing is applied only for gold layer to reduce the number of small files.
-        - All write behavior (format, mode, compression) is controlled by config.
-        - Delta tables are automatically optimized after write if optimize=True.
+    Write a DataFrame to the datalake (silver/gold) with Delta support.
+    Uses dynamic partition overwrite to avoid duplicate partitions.
     """
-    from typing import List, Optional
-    
+
+    # Enable safe overwrite of only the partitions present in df
+    df.sparkSession.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
+
     base_path = config.get('datalake.base_path')
     path_template = config.get('datalake.path_template')
     year, month = extract_year_month_int(vision)
-    
-    # Build layer path using template
+
     layer_path = path_template.format(
         base_path=base_path,
         layer=layer,
         year=year,
         month=f"{month:02d}"
     )
-    
-    # Get output configuration
+
     output_format = config.get('output.format', 'parquet').lower()
     compression = config.get('output.compression', 'snappy')
     mode = config.get('output.mode', 'overwrite')
-    
-    # Delta tables do NOT use file extensions (they are directories)
+
+    # Delta = directory, no extension
     if output_format == "delta":
         output_path = f"{layer_path}/{filename}"
     else:
@@ -312,42 +267,29 @@ def write_to_layer(
         logger.info(f"Writing {layer} data to: {output_path}")
         logger.info(f"Format: {output_format}, Compression: {compression}, Mode: {mode}")
 
-    # OPTIMIZATION: Coalesce output for small datasets to avoid small file problem
-    # Reduces number of output files while maintaining performance
+    # Optional coalesce for gold layer
     try:
-        # Only count for gold layer or if explicitly requested
-        if layer == 'gold':
+        if layer == "gold":
             row_count = df.count()
-
-            if row_count < 1_000_000:  # < 1M rows: single file
+            if row_count < 1_000_000:
                 df = df.coalesce(1)
-                if logger:
-                    logger.debug(f"Coalescing to 1 partition ({row_count:,} rows)")
-            elif row_count < 10_000_000:  # < 10M rows: 4 files
+            elif row_count < 10_000_000:
                 df = df.coalesce(4)
-                if logger:
-                    logger.debug(f"Coalescing to 4 partitions ({row_count:,} rows)")
-            # else: Keep default partitioning for large datasets
-    except Exception as e:
-        # If count fails, skip coalescing
-        if logger:
-            logger.debug(f"Skipping coalesce optimization: {e}")
+    except Exception:
+        pass
 
-    # --- Write logic depending on format ---
     writer = df.write.mode(mode)
 
     if output_format == "parquet":
         writer.option("compression", compression).parquet(output_path)
 
     elif output_format == "delta":
-        # Delta Lake with schema enforcement
-        writer = (
-            writer
-            .format("delta")
-            .option("mergeSchema", "false")  # Refuse schema changes (data quality)
-            .option("overwriteSchema", str(mode == "overwrite").lower())  # Allow schema overwrite only in overwrite mode
+        (
+            writer.format("delta")
+            .option("mergeSchema", "false")
+            .option("overwriteSchema", str(mode == "overwrite").lower())
+            .save(output_path)
         )
-        writer.save(output_path)
 
     elif output_format == "csv":
         writer.option("header", True).option("delimiter", ";").csv(output_path)
@@ -357,7 +299,6 @@ def write_to_layer(
 
     if logger:
         logger.success(f"{layer.capitalize()} data written successfully")
-
 
 def upload_log_to_datalake(
     spark,
