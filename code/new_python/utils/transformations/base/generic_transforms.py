@@ -401,30 +401,43 @@ def apply_business_filters(
         value = _resolve_constant_reference(value)
 
         # ---------------------------------------------------------
-        # 2. Apply filter
+        # 2. Apply filter (SAS NULL semantics)
         # ---------------------------------------------------------
+        # CRITICAL: SAS WHERE clause treats NULL differently than PySpark:
+        # - col = value     → NULL excluded (same)
+        # - col != value    → NULL INCLUDED (different!)
+        # - col IN (...)    → NULL excluded (same)
+        # - col NOT IN (...) → NULL INCLUDED (different!)
 
         if filter_type in ['equals', '==']:
             df = df.filter(col(column_name) == value)
 
         elif filter_type in ['not_equals', '!=']:
-            df = df.filter(col(column_name) != value)
+            # SAS: WHERE col NE value keeps NULL rows
+            df = df.filter(col(column_name).isNull() | (col(column_name) != value))
 
         elif filter_type == 'in':
             if not value:
                 raise ValueError(f"Filter 'in' requires values: {filter_spec}")
-            df = df.filter(col(column_name).isin(value))
+            # SAS: WHERE col IN (...) excludes NULL (explicit for clarity)
+            df = df.filter(col(column_name).isNotNull() & col(column_name).isin(value))
 
         elif filter_type == 'not_in':
             if not value:
                 raise ValueError(f"Filter 'not_in' requires values: {filter_spec}")
-            df = df.filter(~col(column_name).isin(value))
+            # SAS: WHERE col NOT IN (...) keeps NULL rows
+            df = df.filter(col(column_name).isNull() | (~col(column_name).isin(value)))
 
         elif filter_type == 'not_equals_column':
             compare_column = filter_spec.get('compare_column', '').lower()
             if not compare_column:
                 raise ValueError(f"Filter 'not_equals_column' requires compare_column")
-            df = df.filter(col(column_name) != col(compare_column))
+            # SAS: WHERE col1 NE col2 keeps rows where either is NULL
+            df = df.filter(
+                col(column_name).isNull() | 
+                col(compare_column).isNull() | 
+                (col(column_name) != col(compare_column))
+            )
 
         elif filter_type == 'complex':
             expression = filter_spec.get('expression')

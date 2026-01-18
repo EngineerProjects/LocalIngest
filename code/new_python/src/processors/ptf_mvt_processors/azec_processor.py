@@ -40,24 +40,24 @@ class AZECProcessor(BaseProcessor):
 
     def read(self, vision: str) -> DataFrame:
         """
-        Read POLIC_CU from bronze layer and calculate DTECHANM.
+        Read POLIC_CU from bronze layer and calculate DTECHANN.
 
         Args:
             vision: Vision in YYYYMM format
 
         Returns:
-            POLIC_CU DataFrame with DTECHANM calculated (lowercase columns)
+            POLIC_CU DataFrame with DTECHANN calculated (lowercase columns)
         """
         reader = get_bronze_reader(self)
 
         self.logger.info("Reading POLIC_CU file")
         df = reader.read_file_group('polic_cu_azec', vision)
 
-        # Calculate DTECHANM from ECHEANMM and ECHEANJJ
-        # SAS: mdy(echeanmm, echeanjj, &annee.)
+        # Calculate DTECHANN from ECHEANMM and ECHEANJJ
+        # SAS L61: mdy(echeanmm, echeanjj, &annee.) AS DTECHANN
         year_int, _ = extract_year_month_int(vision)
         df = df.withColumn(
-            "dtechanm",
+            "dtechann",  # SAS L61: DTECHANN (not dtechanm!)
             when(
                 col("echeanmm").isNotNull() & col("echeanjj").isNotNull(),
                 make_date(lit(year_int), col("echeanmm"), col("echeanjj"))
@@ -65,6 +65,7 @@ class AZECProcessor(BaseProcessor):
         )
 
         return df
+
 
     def transform(self, df: DataFrame, vision: str) -> DataFrame:
         """
@@ -138,6 +139,13 @@ class AZECProcessor(BaseProcessor):
         self.logger.step(9, "Calculating premiums and flags")
         df = self._calculate_premiums(df)
 
+        # CRITICAL: Force expo_ytd = 0 when PRIMES_PTF <= 0 (SAS L263-265)
+        # SAS: UPDATE PTF_AZEC SET expo_ytd = 0 WHERE PRIMES_PTF <= 0;
+        df = df.withColumn(
+            "expo_ytd",
+            when(col("primes_ptf") <= 0, lit(0)).otherwise(col("expo_ytd"))
+        )
+
         # ============================================================
         # STEP 7: NAF Codes (SAS L272-302)
         # ============================================================
@@ -185,7 +193,7 @@ class AZECProcessor(BaseProcessor):
         # ============================================================
         # STEP 13: Final Enrichment (SAS L476-487)
         # ============================================================
-        self.logger.step(16, "Final enrichment (REGION, UPPER_MID)")
+        self.logger.step(16, "Final enrichment (UPPER_MID)")
         df = self._enrich_region(df)
         df = self._enrich_constrcu_site_data(df, vision)
 
@@ -660,19 +668,19 @@ class AZECProcessor(BaseProcessor):
 
     def _enrich_region(self, df: DataFrame) -> DataFrame:
         """
-        SAS L482-487: Enrich REGION + P_NUM + UPPER_MID from TABLE_PT_GEST.
+        SAS L482-487: Enrich UPPER_MID from TABLE_PT_GEST.
+        
+        CRITICAL: Only UPPER_MID is enriched in AZEC (not REGION, not P_NUM)
+        SAS L482: d.UPPER_MID
+        SAS L486: left join TABLE_PT_GEST as d ON a.POINGEST = d.PTGST
         
         Join: a.poingest = d.ptgst
-        Fallback: REGION = 'Autres' if null
-        
-        OPTIMIZATION: Fetches region, p_num, AND upper_mid in single join
-        (previously done in 2 separate joins: ptgst_static + table_pt_gest)
         
         Args:
             df: AZEC DataFrame with poingest column
         
         Returns:
-            DataFrame enriched with region, p_num, and upper_mid columns
+            DataFrame enriched with upper_mid column ONLY
         """
         reader = get_bronze_reader(self)
 
@@ -680,16 +688,12 @@ class AZECProcessor(BaseProcessor):
             df_ref = reader.read_file_group("table_pt_gest", vision="ref")
 
             if df_ref is None:
-                self.logger.warning("TABLE_PT_GEST unavailable - applying fallback (REGION='Autres')")
-                return df.withColumn("region", lit("Autres")) \
-                         .withColumn("p_num", lit(None).cast(StringType())) \
-                         .withColumn("upper_mid", lit(None).cast(StringType()))
+                self.logger.warning("TABLE_PT_GEST unavailable - applying fallback (NULL upper_mid)")
+                return df.withColumn("upper_mid", lit(None).cast(StringType()))
 
-            # Only needed columns
+            # Only UPPER_MID (SAS L482)
             df_ref = df_ref.select(
                 col("ptgst"),
-                col("region"),
-                col("p_num") if "p_num" in df_ref.columns else lit(None).cast(StringType()).alias("p_num"),
                 col("upper_mid") if "upper_mid" in df_ref.columns else lit(None).cast(StringType()).alias("upper_mid")
             ).dropDuplicates(["ptgst"])
 
@@ -700,19 +704,15 @@ class AZECProcessor(BaseProcessor):
                 how="left"
             ).select(
                 "a.*",
-                when(col("r.region").isNull(), lit("Autres")).otherwise(col("r.region")).alias("region"),
-                col("r.p_num"),
                 col("r.upper_mid")
             )
 
-            self.logger.info("✓ TABLE_PT_GEST joined (region, p_num, upper_mid) - SAS compliant")
+            self.logger.info("✓ TABLE_PT_GEST joined (upper_mid ONLY) - SAS L482 compliant")
             return df
 
         except Exception as e:
             self.logger.warning(f"TABLE_PT_GEST enrichment failed: {e} - applying fallback")
-            return df.withColumn("region", lit("Autres")) \
-                     .withColumn("p_num", lit(None).cast(StringType())) \
-                     .withColumn("upper_mid", lit(None).cast(StringType()))
+            return df.withColumn("upper_mid", lit(None).cast(StringType()))
 
 
     def _enrich_naf_codes(self, df: DataFrame, vision: str) -> DataFrame:
