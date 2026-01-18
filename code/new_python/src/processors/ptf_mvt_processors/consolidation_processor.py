@@ -120,8 +120,8 @@ class ConsolidationProcessor(BaseProcessor):
         df_consolidated = self._apply_common_transformations(df_consolidated)
 
         # Step 5c: Enrich with DO_DEST reference (SAS L416-421)
-        self.logger.step(4.6, "Enriching with DO_DEST reference")
-        df_consolidated = self._enrich_do_dest(df_consolidated)
+        self.logger.step(4.6, "Enriching with DO_DEST reference (monthly)")
+        df_consolidated = self._enrich_do_dest(df_consolidated, vision)
 
         # Step 5d: Apply DESTINAT consolidation logic
         self.logger.step(4.7, "Applying DESTINAT consolidation logic")
@@ -977,49 +977,105 @@ class ConsolidationProcessor(BaseProcessor):
         return df
 
 
-    def _enrich_do_dest(self, df: DataFrame) -> DataFrame:
+    def _enrich_do_dest(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Enrich with DESTINAT from DO_DEST reference before pattern matching.
+        Enrich with DESTINAT from DO_DEST reference.
         
-        Implements SAS logic from PTF_MVTS_CONSOLIDATION_MACRO.sas L416-421:
-        - Joins with DEST.DO_DEST on NOPOL
-        - Sets DESTINAT value from reference
-        - Pattern matching only applies to NULL DESTINAT values
+        SAS L416-421 uses DEST.DO_DEST202110 (fixed October 2021 reference).
+        However, if your data has monthly DO_DEST files, use vision parameter.
+        
+        CRITICAL: DO_DEST may contain date columns that need normalization.
         
         Args:
             df: Consolidated DataFrame
+            vision: Vision in YYYYMM format
         
         Returns:
-            DataFrame with destinat column enriched from reference
+            DataFrame with destinat column enriched from DO_DEST reference
         """
+        from pyspark.sql.functions import to_date, coalesce
+        from pyspark.sql.types import DateType, StringType
+        
         try:
             reader = get_bronze_reader(self)
-            do_dest_df = reader.read_file_group("do_dest", "ref")
             
-            if do_dest_df is not None:  # OPTIMIZED: Removed count() check
-                # Select relevant columns and dedup by nopol
-                do_dest_df = do_dest_df.select(
-                    col("nopol").alias("nopol_ref"),
-                    col("destinat").alias("destinat_ref")
-                ).dropDuplicates(["nopol_ref"])  # Dedup to prevent row multiplication
-                
-                df = df.join(
-                    do_dest_df,
-                    col("nopol") == col("nopol_ref"),
-                    "left"
-                )
-                
-                # Use reference value if available
-                df = df.withColumn(
+            # CRITICAL: SAS uses DO_DEST202110 (fixed ref), but if you have monthly files, use vision
+            # For SAS parity, you might want to use a fixed vision like "202110"
+            # For now, using current vision as per user's data structure
+            do_dest_df = reader.read_file_group("do_dest", vision)
+            
+            if do_dest_df is None:
+                self.logger.warning(f"DO_DEST not available for vision {vision} - skipping destinat enrichment")
+                # Ensure destinat column exists (NULL)
+                if 'destinat' not in df.columns:
+                    df = df.withColumn('destinat', lit(None).cast(StringType()))
+                return df
+            
+            # Verify required columns exist
+            if 'nopol' not in do_dest_df.columns or 'destinat' not in do_dest_df.columns:
+                self.logger.warning("DO_DEST missing required columns (nopol/destinat) - cannot join")
+                if 'destinat' not in df.columns:
+                    df = df.withColumn('destinat', lit(None).cast(StringType()))
+                return df
+            
+            # CRITICAL: Normalize date columns if present (prevents date format errors)
+            # DO_DEST may contain: dtouvch, dtfinch, dtrecep
+            date_cols_to_normalize = ['dtouvch', 'dtfinch', 'dtrecep']
+            for col_name in date_cols_to_normalize:
+                if col_name in do_dest_df.columns:
+                    do_dest_df = do_dest_df.withColumn(
+                        col_name,
+                        coalesce(
+                            to_date(col(col_name), 'yyyyMMdd'),     # Format 1: 20240115
+                            to_date(col(col_name), 'yyyy-MM-dd'),   # Format 2: 2024-01-15
+                            to_date(col(col_name), 'dd/MM/yyyy')    # Format 3: 15/01/2024
+                        ).cast(DateType())
+                    )
+                    self.logger.debug(f"Normalized date column: {col_name}")
+            
+            # Prepare reference data (select only needed columns + dedup)
+            do_dest_select = do_dest_df.select(
+                col("nopol").alias("nopol_ref"),
+                col("destinat").cast(StringType()).alias("destinat_ref")
+            ).dropDuplicates(["nopol_ref"])
+            
+            # Check if main DF has nopol
+            if 'nopol' not in df.columns:
+                self.logger.warning("Main DataFrame missing 'nopol' column - cannot join DO_DEST")
+                if 'destinat' not in df.columns:
+                    df = df.withColumn('destinat', lit(None).cast(StringType()))
+                return df
+            
+            # Left join on nopol
+            df_joined = df.join(
+                do_dest_select,
+                col("nopol") == col("nopol_ref"),
+                "left"
+            )
+            
+            # CRITICAL: SAS logic (L418): "select t1.*, t2.DESTINAT"
+            # This ADDS destinat column (or OVERWRITES if exists)
+            # Python equivalent: Create destinat if missing, else fill NULLs only
+            if 'destinat' in df.columns:
+                # Destinat exists: fill NULLs with reference value
+                df_result = df_joined.withColumn(
                     "destinat",
-                    col("destinat_ref")  # Use joined value directly
-                ).drop("nopol_ref", "destinat_ref")
-                
-                self.logger.info("DO_DEST reference enrichment applied successfully")
+                    when(col("destinat").isNull(), col("destinat_ref"))
+                    .otherwise(col("destinat"))
+                )
             else:
-                self.logger.warning("DO_DEST reference not available - using pattern matching only")
-                
+                # Destinat doesn't exist: create from reference
+                df_result = df_joined.withColumn("destinat", col("destinat_ref"))
+            
+            # Drop temporary join columns
+            df_result = df_result.drop("nopol_ref", "destinat_ref")
+            
+            self.logger.info(f"✓ DO_DEST reference joined for vision {vision}")
+            return df_result
+            
         except Exception as e:
             self.logger.warning(f"DO_DEST enrichment failed: {e}")
-        
-        return df
+            # Ensure destinat exists even on error
+            if 'destinat' not in df.columns:
+                df = df.withColumn('destinat', lit(None).cast(StringType()))
+            return df
