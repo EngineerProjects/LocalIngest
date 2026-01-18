@@ -167,21 +167,25 @@ def calculate_movements(
         df = df.select("*", *[expr.alias(name) for name, expr in missing_cols.items()])
 
     # AFN: New business
+    # CRITICAL: Add isNotNull checks to prevent NULL propagation (PySpark != SAS)
     if creation_date and effective_date:
         afn_cond = lit(False)
 
         if transfer_start:
             afn_cond = afn_cond | (
+                col(effective_date).isNotNull() & col(transfer_start).isNotNull() &
                 (col(effective_date) >= lit(dtdeb_an)) & (col(effective_date) <= lit(dtfin)) &
                 (col(transfer_start) >= lit(dtdeb_an)) & (col(transfer_start) <= lit(dtfin))
             )
 
         afn_cond = afn_cond | (
+            col(creation_date).isNotNull() &
             (col(creation_date) >= lit(dtdeb_an)) & (col(creation_date) <= lit(dtfin))
         )
 
         if transfer_start:
             afn_cond = afn_cond | (
+                col(effective_date).isNotNull() & col(transfer_start).isNotNull() &
                 (year_func(col(effective_date)) < year_func(lit(dtfin))) &
                 (col(transfer_start) >= lit(dtdeb_an)) & (col(transfer_start) <= lit(dtfin))
             )
@@ -205,17 +209,20 @@ def calculate_movements(
 
     # RES: Terminations
     # CRITICAL FIX: SAS checks cdsitp='3' first (L269)
+    # CRITICAL: Add isNotNull checks to prevent NULL propagation (PySpark != SAS)
     if termination_date:
         # Base condition: must be terminated (cdsitp='3')
         res_cond = col("cdsitp") == "3" if "cdsitp" in df.columns else lit(True)
         
         # Date conditions (at least one must be true)
         date_cond = (
+            col(termination_date).isNotNull() &
             (col(termination_date) >= lit(dtdeb_an)) & (col(termination_date) <= lit(dtfin))
         )
 
         if transfer_end:
             date_cond = date_cond | (
+                col(transfer_end).isNotNull() & col(termination_date).isNotNull() &
                 (col(transfer_end) >= lit(dtdeb_an)) & (col(transfer_end) <= lit(dtfin)) &
                 (col(termination_date) <= lit(dtfin))
             )
@@ -280,6 +287,7 @@ def calculate_movements(
                .withColumn("primes_rpc", lit(0))
 
     # NBPTF: Portfolio count
+    # CRITICAL: Add isNotNull checks to prevent NULL propagation (PySpark != SAS)
     nbptf_cond = lit(False)
 
     if 'cssseg' in df.columns and 'cdnatp' in df.columns and 'cdsitp' in df.columns:
@@ -287,8 +295,8 @@ def calculate_movements(
             (col('cssseg') != '5') &
             (col('cdnatp').isin(['R', 'O'])) &
             (
-                ((col('cdsitp') == '1') & (col(creation_date) <= lit(dtfin))) |
-                ((col('cdsitp') == '3') & (col(termination_date) > lit(dtfin)))
+                ((col('cdsitp') == '1') & col(creation_date).isNotNull() & (col(creation_date) <= lit(dtfin))) |
+                ((col('cdsitp') == '3') & col(termination_date).isNotNull() & (col(termination_date) > lit(dtfin)))
             )
         )
     else:
@@ -383,29 +391,32 @@ def calculate_exposures(
 
     if 'cdnatp' in df.columns and 'cdsitp' in df.columns:
         # First OR branch: cdnatp in (R,O) with cdsitp conditions
+        # CRITICAL: Add isNotNull checks to prevent NULL propagation
         branch1 = (
             (col('cdnatp').isin(['R', 'O'])) &
             (
-                ((col('cdsitp') == '1') & (col(creation_date) <= dtfinmn_date)) |
-                ((col('cdsitp') == '3') & (col(termination_date) > dtfinmn_date))
+                ((col('cdsitp') == '1') & col(creation_date).isNotNull() & (col(creation_date) <= dtfinmn_date)) |
+                ((col('cdsitp') == '3') & col(termination_date).isNotNull() & (col(termination_date) > dtfinmn_date))
             )
         )
         
         # Second OR branch: cdsitp in (1,3) with complex date logic (SAS L307-311)
         # Excludes cdnatp = 'F'
+        # CRITICAL: Add isNotNull checks to prevent NULL propagation
         branch2 = (
             (col('cdsitp').isin(['1', '3'])) &
             (col('cdnatp') != 'F') &
             (
                 # Case 1: dtcrepol <= dtfinmn and (dtresilp is null OR dtfinmn1 <= dtresilp < dtfinmn)
-                ((col(creation_date) <= dtfinmn_date) & 
+                (col(creation_date).isNotNull() & (col(creation_date) <= dtfinmn_date) & 
                  (col(termination_date).isNull() | 
-                  ((col(termination_date) >= dtfinmm1_date) & (col(termination_date) < dtfinmn_date)))) |
+                  (col(termination_date).isNotNull() & (col(termination_date) >= dtfinmm1_date) & (col(termination_date) < dtfinmn_date)))) |
                 # Case 2: dtcrepol <= dtfinmn and dtresilp > dtfinmn
-                ((col(creation_date) <= dtfinmn_date) & (col(termination_date) > dtfinmn_date)) |
+                (col(creation_date).isNotNull() & (col(creation_date) <= dtfinmn_date) & 
+                 col(termination_date).isNotNull() & (col(termination_date) > dtfinmn_date)) |
                 # Case 3: dtfinmn1 < dtcrepol <= dtfinmn and dtfinmn1 <= dtresilp
-                ((col(creation_date) > dtfinmm1_date) & (col(creation_date) <= dtfinmn_date) &
-                 (col(termination_date) >= dtfinmm1_date))
+                (col(creation_date).isNotNull() & (col(creation_date) > dtfinmm1_date) & (col(creation_date) <= dtfinmn_date) &
+                 col(termination_date).isNotNull() & (col(termination_date) >= dtfinmm1_date))
             )
         )
         
@@ -498,15 +509,19 @@ def calculate_azec_movements(
         (year(col("datafn")) == annee)
     )
 
+    # AZEC AFN: Product-specific logic
+    # CRITICAL: Add isNotNull checks to prevent NULL propagation
     afn_produit_not_in_list = (
         ~col("produit").isin(AZEC_PRODUIT_LIST) &
         (
             (
+                col("effetpol").isNotNull() & col("datafn").isNotNull() &
                 (col("effetpol") >= lit(dtdeb_an)) &
                 (col("effetpol") <= lit(dtfinmn)) &
                 (col("datafn") <= lit(dtfinmn))
             ) |
             (
+                col("effetpol").isNotNull() & col("datafn").isNotNull() &
                 (col("effetpol") < lit(dtdeb_an)) &
                 (col("datafn") >= lit(dtdeb_an)) &
                 (col("datafn") <= lit(dtfinmn))
@@ -539,15 +554,19 @@ def calculate_azec_movements(
         (year(col("datresil")) == annee)
     )
 
+    # AZEC RES: Product-specific logic
+    # CRITICAL: Add isNotNull checks to prevent NULL propagation
     res_produit_not_in_list = (
         ~col("produit").isin(AZEC_PRODUIT_LIST) &
         (
             (
+                col("datfin").isNotNull() & col("datresil").isNotNull() &
                 (col("datfin") >= lit(dtdeb_an)) &
                 (col("datfin") <= lit(dtfinmn)) &
                 (col("datresil") <= lit(dtfinmn))
             ) |
             (
+                col("datfin").isNotNull() & col("datresil").isNotNull() &
                 (col("datfin") <= lit(dtfinmn)) &
                 (col("datresil") >= lit(dtdeb_an)) &
                 (col("datresil") <= lit(dtfinmn))
@@ -563,20 +582,20 @@ def calculate_azec_movements(
         ).otherwise(lit(0))
     )
 
-    # NBPTF (Portefeuille) - SAS L102-107
-    # Complex condition combining multiple criteria
+    # AZEC NBPTF: Portfolio count
+    # CRITICAL: Add isNotNull checks to prevent NULL propagation
     nbptf_cond = (
         (col("nbptf_non_migres_azec") == 1) &
-        (col("effetpol") <= lit(dtfinmn)) &
-        (col("datafn") <= lit(dtfinmn)) &
+        col("effetpol").isNotNull() & (col("effetpol") <= lit(dtfinmn)) &
+        col("datafn").isNotNull() & (col("datafn") <= lit(dtfinmn)) &
         (
             col("datfin").isNull() |
-            (col("datfin") > lit(dtfinmn)) |
-            (col("datresil") > lit(dtfinmn))
+            (col("datfin").isNotNull() & (col("datfin") > lit(dtfinmn))) |
+            (col("datresil").isNotNull() & (col("datresil") > lit(dtfinmn)))
         ) &
         (
             (col("etatpol") == "E") |
-            ((col("etatpol") == "R") & (col("datfin") >= lit(dtfinmn)))
+            ((col("etatpol") == "R") & col("datfin").isNotNull() & (col("datfin") >= lit(dtfinmn)))
         ) &
         (~col("produit").isin(["DO0", "TRC", "CTR", "CNR"]))  # FIXED: Changed D00 to DO0
     )
