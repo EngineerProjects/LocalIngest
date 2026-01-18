@@ -360,7 +360,7 @@ class BronzeReader:
         df = lowercase_all_columns(df)
         return df
 
-def _clean_sas_nulls(self, df: DataFrame) -> DataFrame:
+    def _clean_sas_nulls(self, df: DataFrame) -> DataFrame:
         """
         Convert SAS-style NULL markers to real Spark NULLs (string columns only):
 
@@ -398,6 +398,7 @@ def _clean_sas_nulls(self, df: DataFrame) -> DataFrame:
                 select_exprs.append(col(c))
 
         return df.select(*select_exprs)
+
 
     def _safe_cast(self, df: DataFrame, schema) -> DataFrame:
         """
