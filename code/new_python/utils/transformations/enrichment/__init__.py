@@ -2,13 +2,13 @@
 Enrichment transformations module.
 
 Contains utilities for data enrichment operations:
-- RISK data enrichment (Q45, Q46, QAN)
 - ISIC code enrichment
 - DESTINAT (construction site destination) enrichment
 - Client data enrichment
+- Segmentation enrichment
 """
 
-from .risk_enrichment import enrich_with_risk_data
+# from .risk_enrichment import enrich_with_risk_data  # Module not yet implemented
 from .isic_enrichment import (
     join_isic_reference_tables,
     assign_isic_codes,
@@ -21,7 +21,6 @@ from .destinat_enrichment import (
 )
 
 __all__ = [
-    'enrich_with_risk_data',
     'join_isic_reference_tables',
     'assign_isic_codes',
     'apply_isic_corrections',

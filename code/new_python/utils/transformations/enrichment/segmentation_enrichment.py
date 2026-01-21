@@ -78,9 +78,14 @@ def load_constrcu_reference(
 
     # 3) Join LOB (cmarch already filtered upstream ideally; still protect)
     #    Only pick the columns we actually need.
+    # SAS defines: CDPROD, CPROD, cmarch, lmarch, lmarch2, cseg, lseg, lseg2, 
+    #              cssseg, lssseg, lssseg2, lprod, segment
     lob_small = (
         lob_ref
-        .select("produit", "cdprod", "cmarch", "segment", "lssseg")
+        .select(
+            "produit", "cdprod", "cprod", "cmarch", "lmarch", 
+            "cseg", "lseg", "cssseg", "lssseg", "lprod", "segment"
+        )
         .dropDuplicates(["produit"])
     )
 
@@ -92,11 +97,12 @@ def load_constrcu_reference(
             "left"
         )
         .select(
-            col("c.police"), col("c.produit"),
-            col("c.typmarc1"), col("c.ltypmar1"),
-            col("c.formule"),  col("c.nat_cnt"),
-            col("l.cdprod"),   col("l.segment"),
-            col("l.lssseg"),   col("l.cmarch")
+            "c.*",  # Preserve ALL columns from CONSTRCU/RISTECCU union
+            col("l.cdprod"),   col("l.cprod"),
+            col("l.cmarch"),   col("l.lmarch"),
+            col("l.cseg"),     col("l.lseg"),
+            col("l.cssseg"),   col("l.lssseg"),
+            col("l.lprod"),    col("l.segment")
         )
     )
 
@@ -201,34 +207,43 @@ def join_constrcu_sas(
         how="left"
     )
 
-    # Coalesce each target (prefer left if exists; otherwise right; otherwise NULL)
-    targets = ["typmarc1", "nat_cnt", "activite", "cdprod", "segment", "lssseg"]
+    # SAS behavior: MERGE preserves ALL left columns + adds right columns
+    # We use coalesce to prefer left values when column exists in both sides
+    # First, collect all columns from left (preserve everything like SAS)
     out = joined
+    
+    # Add/coalesce each target from right side
+    # SAS LOB columns: cdprod, cprod, cmarch, lmarch, cseg, lseg, cssseg, lssseg, lprod, segment
+    # Plus CONSTRCU columns: typmarc1, nat_cnt, activite
+    targets = [
+        "typmarc1", "nat_cnt", "activite",  # From CONSTRCU
+        "cdprod", "cprod", "cmarch", "lmarch", "cseg", "lseg", "cssseg", "lssseg", "lprod", "segment"  # From LOB
+    ]
 
-    # De-qualify left columns first (Spark often qualifies with 'l.'/'r.')
-    # Safely map 'l.col' → 'col' if duplication does not happen
-    for c in out.columns:
-        if c.startswith("l."):
-            base = c.split(".", 1)[1]
-            if base not in out.columns:
-                out = out.withColumnRenamed(c, base)
-
-    # Now coalesce with right-side values
+    # Build select list: all left columns + coalesced right columns
+    left_cols = [c for c in out.columns if c.startswith("l.")]
+    select_exprs = []
+    
+    # First add all left columns (renamed without prefix)
+    for c in left_cols:
+        base = c.split(".", 1)[1]
+        select_exprs.append(col(c).alias(base))
+    
+    # Then add/coalesce target columns from right
     for tgt in targets:
         r_col = f"r.{tgt}"
-        left_has = tgt in out.columns
-        right_has = r_col in out.columns
-        if left_has and right_has:
-            out = out.withColumn(tgt, coalesce(col(tgt), col(r_col)))
-        elif (not left_has) and right_has:
-            out = out.withColumn(tgt, col(r_col))
-        elif not left_has and not right_has:
-            out = out.withColumn(tgt, lit(None))
-
-    # Drop remaining 'r.*' columns and any leftover 'l.*'
-    drop_cols = [c for c in out.columns if c.startswith("r.") or c.startswith("l.")]
-    if drop_cols:
-        out = out.drop(*drop_cols)
+        # Check if column exists in left or right
+        if f"l.{tgt}" in left_cols and r_col in out.columns:
+            # Both exist: coalesce (prefer left)
+            select_exprs.append(coalesce(col(f"l.{tgt}"), col(r_col)).alias(tgt))
+        elif r_col in out.columns:
+            # Only right exists: take right
+            select_exprs.append(col(r_col).alias(tgt))
+        elif f"l.{tgt}" not in left_cols:
+            # Neither exists: create NULL
+            select_exprs.append(lit(None).cast(StringType()).alias(tgt))
+    
+    out = out.select(*select_exprs)
 
     if logger:
         logger.info("✓ CONSTRCU reference joined (SAS-faithful, keys=(police, produit))")

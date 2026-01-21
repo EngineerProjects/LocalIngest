@@ -159,25 +159,21 @@ def join_isic_sui(df: DataFrame, df_sui: DataFrame) -> DataFrame:
         (col("l.produit") == col("r.cdprod"))
     )
 
+    # Join and immediately SELECT to avoid column duplication (SAS: SELECT t1.*, t2.col)
     out = (
         left
         .join(right, join_cond, how="left")
-        .withColumn(
-            "cdnaf2008_temp",
+        .select(
+            "l.*",  # Preserve ALL left columns (SAS t1.*)
             when(
                 (col("l.cmarch") == "6") & col("r.cdnaf08").isNotNull(),
                 col("r.cdnaf08")
-            ).otherwise(lit(None).cast("string"))
-        )
-        .withColumn(
-            "isic_code_sui_temp",
+            ).otherwise(lit(None).cast("string")).alias("cdnaf2008_temp"),
             when(
                 (col("l.cmarch") == "6") & col("r.cdisic").isNotNull(),
                 col("r.cdisic")
-            ).otherwise(lit(None).cast("string"))
+            ).otherwise(lit(None).cast("string")).alias("isic_code_sui_temp")
         )
-        # Do not keep SUI key columns
-        .drop("nopol", "cdprod")
     )
 
     return out
@@ -312,15 +308,15 @@ def map_naf_to_isic(
             )
         )
 
+    # Final SELECT to preserve only left columns + new ISIC columns
+    # SAS: SELECT t1.*, CASE ... END AS ISIC_CODE_TEMP, CASE ... END AS ORIGINE_ISIC_TEMP
     out = (
         left
-        .withColumn("isic_code_temp", isic_temp)
-        .withColumn("origine_isic_temp", origine_temp)
-        # Clean helper columns added by joins
-        .drop("_ptf_naf03_key", "_ptf_naf03_isic",
-              "_ptf_naf08_key", "_ptf_naf08_isic",
-              "_cli_naf03_key", "_cli_naf03_isic",
-              "_cli_naf08_key", "_cli_naf08_isic")
+        .select(
+            "l.*",  # Preserve ALL original columns
+            isic_temp.alias("isic_code_temp"),
+            origine_temp.alias("origine_isic_temp")
+        )
     )
 
     return out
@@ -379,26 +375,16 @@ def join_isic_const_act(df: DataFrame, df_act: DataFrame) -> DataFrame:
 
     joined = left.join(right, join_cond, how="left")
 
-    # Assign CONST_R columns only where SAS conditions hold and the right value is not null
+    # Use explicit SELECT to avoid column duplication (SAS: SELECT t1.*, t2.col AS col_r)
     out = (
         joined
-        .withColumn(
-            "cdnaf08_const_r",
-            when(col("r.cdnaf08").isNotNull(), col("r.cdnaf08")).otherwise(lit(None).cast("string"))
+        .select(
+            "l.*",  # Preserve ALL left columns
+            when(col("r.cdnaf08").isNotNull(), col("r.cdnaf08")).otherwise(lit(None).cast("string")).alias("cdnaf08_const_r"),
+            when(col("r.cdnaf03").isNotNull(), col("r.cdnaf03")).otherwise(lit(None).cast("string")).alias("cdnaf03_const_r"),
+            when(col("r.cdtre").isNotNull(), col("r.cdtre")).otherwise(lit(None).cast("string")).alias("cdtre_const_r"),
+            when(col("r.cdisic").isNotNull(), col("r.cdisic")).otherwise(lit(None).cast("string")).alias("cdisic_const_r")
         )
-        .withColumn(
-            "cdnaf03_const_r",
-            when(col("r.cdnaf03").isNotNull(), col("r.cdnaf03")).otherwise(lit(None).cast("string"))
-        )
-        .withColumn(
-            "cdtre_const_r",
-            when(col("r.cdtre").isNotNull(), col("r.cdtre")).otherwise(lit(None).cast("string"))
-        )
-        .withColumn(
-            "cdisic_const_r",
-            when(col("r.cdisic").isNotNull(), col("r.cdisic")).otherwise(lit(None).cast("string"))
-        )
-        .drop(col("r.actprin"), col("r.cdnaf08"), col("r.cdnaf03"), col("r.cdtre"), col("r.cdisic"))
     )
 
     return out
@@ -612,27 +598,16 @@ def join_isic_const_cht(df: DataFrame, df_cht: DataFrame) -> DataFrame:
 
     joined = left.join(right, join_cond, how="left")
 
-    # Assign CONST_C columns only if right-side value is present
+    # Use explicit SELECT to avoid column duplication (SAS: SELECT t1.*, t2.col AS col_c)
     out = (
         joined
-        .withColumn(
-            "cdnaf08_const_c",
-            when(col("r_cdnaf08").isNotNull(), col("r_cdnaf08")).otherwise(lit(None).cast("string"))
+        .select(
+            "l.*",  # Preserve ALL left columns
+            when(col("r_cdnaf08").isNotNull(), col("r_cdnaf08")).otherwise(lit(None).cast("string")).alias("cdnaf08_const_c"),
+            when(col("r_cdnaf03").isNotNull(), col("r_cdnaf03")).otherwise(lit(None).cast("string")).alias("cdnaf03_const_c"),
+            when(col("r_cdtre").isNotNull(), col("r_cdtre")).otherwise(lit(None).cast("string")).alias("cdtre_const_c"),
+            when(col("r_cdisic").isNotNull(), col("r_cdisic")).otherwise(lit(None).cast("string")).alias("cdisic_const_c")
         )
-        .withColumn(
-            "cdnaf03_const_c",
-            when(col("r_cdnaf03").isNotNull(), col("r_cdnaf03")).otherwise(lit(None).cast("string"))
-        )
-        .withColumn(
-            "cdtre_const_c",
-            when(col("r_cdtre").isNotNull(), col("r_cdtre")).otherwise(lit(None).cast("string"))
-        )
-        .withColumn(
-            "cdisic_const_c",
-            when(col("r_cdisic").isNotNull(), col("r_cdisic")).otherwise(lit(None).cast("string"))
-        )
-        # Drop mapping columns
-        .drop("r_cdnaf08", "r_cdnaf03", "r_cdtre", "r_cdisic", "r.desti_isic")
     )
 
     return out
@@ -840,24 +815,19 @@ def join_isic_hazard_grades(df: DataFrame, df_hazard: DataFrame) -> DataFrame:
 
     joined = left.join(right, join_cond, how="left")
 
-    # Build TEMP hazard columns
+    # Use explicit SELECT to avoid column duplication (SAS: SELECT t1.*, t2.col AS col_temp)
     out = (
         joined
-        .withColumn("hazard_grades_fire_temp", col("h.hazard_grades_fire"))
-        .withColumn("hazard_grades_bi_temp", col("h.hazard_grades_bi"))
-        .withColumn("hazard_grades_rca_temp", col("h.hazard_grades_rca"))
-        .withColumn("hazard_grades_rce_temp", col("h.hazard_grades_rce"))
-        .withColumn("hazard_grades_trc_temp", col("h.hazard_grades_trc"))
-        .withColumn("hazard_grades_rcd_temp", col("h.hazard_grades_rcd"))
-        .withColumn("hazard_grades_do_temp", col("h.hazard_grades_do"))
-        .drop("h.isic_code",
-              "h.hazard_grades_fire",
-              "h.hazard_grades_bi",
-              "h.hazard_grades_rca",
-              "h.hazard_grades_rce",
-              "h.hazard_grades_trc",
-              "h.hazard_grades_rcd",
-              "h.hazard_grades_do")
+        .select(
+            "l.*",  # Preserve ALL left columns
+            col("h.hazard_grades_fire").alias("hazard_grades_fire_temp"),
+            col("h.hazard_grades_bi").alias("hazard_grades_bi_temp"),
+            col("h.hazard_grades_rca").alias("hazard_grades_rca_temp"),
+            col("h.hazard_grades_rce").alias("hazard_grades_rce_temp"),
+            col("h.hazard_grades_trc").alias("hazard_grades_trc_temp"),
+            col("h.hazard_grades_rcd").alias("hazard_grades_rcd_temp"),
+            col("h.hazard_grades_do").alias("hazard_grades_do_temp")
+        )
     )
 
     return out

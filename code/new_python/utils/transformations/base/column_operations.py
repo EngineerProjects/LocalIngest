@@ -122,14 +122,20 @@ def apply_column_config(
         select_exprs.append(lit(int(mois)).alias("moisvue"))
 
     # ---------------------------
-    # 6. Drop columns
+    # 6. Apply SELECT first (SAS: RENAME happens before DROP)
+    # ---------------------------
+    df = df.select(*select_exprs)
+
+    # ---------------------------
+    # 7. Then DROP columns (SAS: DROP applies to output)
     # ---------------------------
     drop_set = set(d.lower() for d in config.get("drop", []))
-    for d in drop_set:
-        if d in df.columns:
-            df = df.drop(d)
+    if drop_set:
+        drop_existing = [c for c in drop_set if c in df.columns]
+        if drop_existing:
+            df = df.drop(*drop_existing)
 
-    return df.select(*select_exprs)
+    return df
 
 
 # =========================================================
