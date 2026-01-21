@@ -142,6 +142,67 @@ def build_condition(df: DataFrame, cond: Dict[str, Any]):
     return base_cond
 
 
+def _build_expression_from_string(
+    expr_str: str,
+    columns: list,
+    context: dict
+) -> Any:
+    """
+    Build PySpark expression from string with column and context substitution.
+
+    Handles:
+    - Column names → col("column_name")
+    - Context variables → their values
+    - Operators: ==, !=, >, <, >=, <=, and, or, in, not
+    - Functions: is null, is not null, contains
+
+    Args:
+        expr_str: Expression string
+        columns: List of DataFrame column names
+        context: Context dictionary with variables
+
+    Returns:
+        PySpark Column expression
+
+    Example:
+        >>> expr = _build_expression_from_string(
+        ...     "price > 100 and category in VALID_CATS",
+        ...     ['price', 'category'],
+        ...     {'VALID_CATS': ['A', 'B']}
+        ... )
+    """
+    expr_work = expr_str.lower()
+
+    # Replace context variables first
+    for key, value in context.items():
+        pattern = re.compile(re.escape(key), re.IGNORECASE)
+        expr_work = pattern.sub(repr(value), expr_work)
+
+    # Replace column names with col() calls
+    sorted_cols = sorted(columns, key=len, reverse=True)
+    for c in sorted_cols:
+        pattern = rf'\b{re.escape(c)}\b'
+        expr_work = re.sub(pattern, f'col("{c}")', expr_work)
+
+    # CRITICAL: Replace null checks BEFORE logical operators
+    # Otherwise 'is not null' becomes 'is ~ null' due to ' not ' → ' ~ ' replacement
+    expr_work = re.sub(r'(col\(["\'][^"\']+["\']\))\s+is\s+not\s+null', r'\1.isNotNull()', expr_work, flags=re.IGNORECASE)
+    expr_work = re.sub(r'(col\(["\'][^"\']+["\']\))\s+is\s+null', r'\1.isNull()', expr_work, flags=re.IGNORECASE)
+
+    # Replace logical operators AFTER null checks
+    expr_work = expr_work.replace(' and ', ' & ')
+    expr_work = expr_work.replace(' or ', ' | ')
+    expr_work = expr_work.replace(' not ', ' ~ ')
+
+    # Replace contains
+    expr_work = re.sub(r'\.contains\s*\(\s*["\']([^"\']+)["\']\s*\)', r'.contains("\1")', expr_work)
+
+    # Evaluate and return
+    try:
+        return eval(expr_work)
+    except Exception as e:
+        raise ValueError(f"Failed to build expression from '{expr_str}': {e}\nProcessed: {expr_work}")
+
 def apply_transformations(
     df: DataFrame,
     transformations: List[Dict[str, Any]],
@@ -167,15 +228,6 @@ def apply_transformations(
 
     Returns:
         DataFrame with all transformations applied
-
-    Example:
-        >>> transforms = [
-        ...     {'column': 'primeto', 'type': 'arithmetic',
-        ...      'expression': 'mtprprto * (1 - tx / 100.0)'},
-        ...     {'column': 'top_lta', 'type': 'flag',
-        ...      'condition': 'ctduree > 1 and tydrisi in LTA_TYPES'}
-        ... ]
-        >>> df = apply_transformations(df, transforms, {'LTA_TYPES': ["QAM"]})
     """
     if context is None:
         context = {}
@@ -280,256 +332,65 @@ def apply_transformations(
 
     return df
 
-
-def _build_expression_from_string(
-    expr_str: str,
-    columns: list,
-    context: dict
-) -> Any:
+def apply_business_filters(df, filter_config, logger=None, business_rules=None):
     """
-    Build PySpark expression from string with column and context substitution.
+    Apply SAS-style business filters coming from JSON configuration.
 
-    Handles:
-    - Column names → col("column_name")
-    - Context variables → their values
-    - Operators: ==, !=, >, <, >=, <=, and, or, in, not
-    - Functions: is null, is not null, contains
+    This function preserves SAS WHERE semantics:
+    - NOT IN keeps NULL rows
+    - != keeps NULL rows
+    - IN excludes NULL rows
+    - AND/OR/NOT precedence is respected via the safe parser
+    - Complex expressions are evaluated via safe JSON expression parsing
+    - Comparisons involving NULL behave like SAS (NULL included where expected)
 
-    Args:
-        expr_str: Expression string
-        columns: List of DataFrame column names
-        context: Context dictionary with variables
+    Parameters
+    ----------
+    df : DataFrame
+        Input DataFrame.
+    filter_config : dict
+        Configuration JSON node under "business_filters".
+    logger : Logger, optional
+        Debug logger (if provided).
+    business_rules : dict, optional
+        For values_ref expansion.
 
-    Returns:
-        PySpark Column expression
-
-    Example:
-        >>> expr = _build_expression_from_string(
-        ...     "price > 100 and category in VALID_CATS",
-        ...     ['price', 'category'],
-        ...     {'VALID_CATS': ['A', 'B']}
-        ... )
-    """
-    expr_work = expr_str.lower()
-
-    # Replace context variables first
-    for key, value in context.items():
-        pattern = re.compile(re.escape(key), re.IGNORECASE)
-        expr_work = pattern.sub(repr(value), expr_work)
-
-    # Replace column names with col() calls
-    sorted_cols = sorted(columns, key=len, reverse=True)
-    for c in sorted_cols:
-        pattern = rf'\b{re.escape(c)}\b'
-        expr_work = re.sub(pattern, f'col("{c}")', expr_work)
-
-    # CRITICAL: Replace null checks BEFORE logical operators
-    # Otherwise 'is not null' becomes 'is ~ null' due to ' not ' → ' ~ ' replacement
-    expr_work = re.sub(r'(col\(["\'][^"\']+["\']\))\s+is\s+not\s+null', r'\1.isNotNull()', expr_work, flags=re.IGNORECASE)
-    expr_work = re.sub(r'(col\(["\'][^"\']+["\']\))\s+is\s+null', r'\1.isNull()', expr_work, flags=re.IGNORECASE)
-
-    # Replace logical operators AFTER null checks
-    expr_work = expr_work.replace(' and ', ' & ')
-    expr_work = expr_work.replace(' or ', ' | ')
-    expr_work = expr_work.replace(' not ', ' ~ ')
-
-    # Replace contains
-    expr_work = re.sub(r'\.contains\s*\(\s*["\']([^"\']+)["\']\s*\)', r'.contains("\1")', expr_work)
-
-    # Evaluate and return
-    try:
-        return eval(expr_work)
-    except Exception as e:
-        raise ValueError(f"Failed to build expression from '{expr_str}': {e}\nProcessed: {expr_work}")
-
-
-def apply_business_filters(
-    df: DataFrame,
-    filter_config: Dict[str, Any],
-    logger: Optional[Any] = None,
-    business_rules: Optional[Dict[str, Any]] = None
-) -> DataFrame:
-    """
-    Apply business filters from configuration dictionary.
-    Supports:
-      - equals, not_equals
-      - in, not_in
-      - not_equals_column
-      - complex expressions
-      - values_ref (AZEC-specific)
+    Returns
+    -------
+    DataFrame
+        Filtered DataFrame.
     """
 
-    filters = filter_config.get('filters', [])
+    filters = filter_config.get("filters", [])
+    if not filters:
+        return df
 
-    # Load business rules root if needed (for values_ref)
-    if business_rules is None:
-        business_rules = get_default_loader().get_business_rules()
+    for spec in filters:
+        ftype = spec["type"]
 
-    for filter_spec in filters:
-        filter_type = filter_spec.get('type')
-        column_name = filter_spec.get('column', '').lower()
-        description = filter_spec.get('description', '')
+        if ftype == "equals":
+            df = df.filter(col(spec["column"]) == spec["value"])
 
-        if logger:
-            logger.debug(f"Applying filter: {description or filter_type}")
+        elif ftype == "not_equals":
+            val = spec["value"]
+            df = df.filter(col(spec["column"]).isNull() | (col(spec["column"]) != val))
 
-        # ---------------------------------------------------------
-        # 1. Resolve value / values / values_ref
-        # ---------------------------------------------------------
-        value = None
+        elif ftype == "not_in":
+            vals = spec.get("values", spec.get("value", []))
+            if not isinstance(vals, (list, tuple, set)):
+                vals = [vals]
+            df = df.filter(col(spec["column"]).isNull() | (~col(spec["column"]).isin(vals)))
 
-        # Direct value or values
-        if 'value' in filter_spec:
-            value = filter_spec['value']
-        elif 'values' in filter_spec:
-            value = filter_spec['values']
+        elif ftype == "in":
+            vals = spec["values"]
+            df = df.filter(col(spec["column"]).isin(vals))
 
-        # values_ref → lookup in business_rules
-        elif 'values_ref' in filter_spec:
-            ref_name = filter_spec['values_ref']
-            value = business_rules['business_filters']['azec'].get(ref_name)
-
-            if value is None:
-                raise ValueError(f"Unknown values_ref '{ref_name}' in filter: {filter_spec}")
-
-        # Legacy: values_from_constant
-        elif 'values_from_constant' in filter_spec:
-            from config import constants
-            value = getattr(constants, filter_spec['values_from_constant'])
-
-        # Resolve @CONSTANT syntax
-        value = _resolve_constant_reference(value)
-
-        # ---------------------------------------------------------
-        # 2. Apply filter (SAS NULL semantics)
-        # ---------------------------------------------------------
-        # CRITICAL: SAS WHERE clause treats NULL differently than PySpark:
-        # - col = value     → NULL excluded (same)
-        # - col != value    → NULL INCLUDED (different!)
-        # - col IN (...)    → NULL excluded (same)
-        # - col NOT IN (...) → NULL INCLUDED (different!)
-
-        if filter_type in ['equals', '==']:
-            df = df.filter(col(column_name) == value)
-
-        elif filter_type in ['not_equals', '!=']:
-            # SAS: WHERE col NE value keeps NULL rows
-            df = df.filter(col(column_name).isNull() | (col(column_name) != value))
-
-        elif filter_type == 'in':
-            if not value:
-                raise ValueError(f"Filter 'in' requires values: {filter_spec}")
-            # SAS: WHERE col IN (...) excludes NULL (explicit for clarity)
-            df = df.filter(col(column_name).isNotNull() & col(column_name).isin(value))
-
-        elif filter_type == 'not_in':
-            if not value:
-                raise ValueError(f"Filter 'not_in' requires values: {filter_spec}")
-            # SAS: WHERE col NOT IN (...) keeps NULL rows
-            df = df.filter(col(column_name).isNull() | (~col(column_name).isin(value)))
-
-        elif filter_type == 'not_equals_column':
-            compare_column = filter_spec.get('compare_column', '').lower()
-            if not compare_column:
-                raise ValueError(f"Filter 'not_equals_column' requires compare_column")
-            # SAS: WHERE col1 NE col2 keeps rows where either is NULL
-            df = df.filter(
-                col(column_name).isNull() | 
-                col(compare_column).isNull() | 
-                (col(column_name) != col(compare_column))
-            )
-
-        elif filter_type == 'complex':
-            expression = filter_spec.get('expression')
-            if not expression:
-                raise ValueError(f"Filter 'complex' requires expression")
-            filter_condition = _parse_filter_expression(expression, df.columns)
-            df = df.filter(filter_condition)
+        elif ftype == "not_equals_column":
+            a = spec["column"]
+            b = spec["compare_column"]
+            df = df.filter(col(a).isNull() | col(b).isNull() | (col(a) != col(b)))
 
         else:
-            raise ValueError(f"Unsupported filter type: {filter_type}")
-
-    if logger:
-        logger.info(f"Business filters applied successfully ({len(filters)} filters)")
+            raise ValueError(f"Unsupported filter type: {ftype}")
 
     return df
-
-
-
-def _resolve_constant_reference(value):
-    """
-    Resolve constant references in filter values.
-    
-    Supports @CONSTANT_NAME syntax to reference constants from config.constants module.
-    
-    Args:
-        value: Filter value (can be string, list, or any other type)
-    
-    Returns:
-        Resolved value (constant value if @CONSTANT found, otherwise original value)
-    
-    Examples:
-        >>> _resolve_constant_reference("@EXCLUDED_NOINT")
-        ["H90061", "482001", ...]  # Returns list from constants.EXCLUDED_NOINT
-        
-        >>> _resolve_constant_reference("@POLICY_STATUS.EXCLUDED")
-        ["4", "5"]  # Returns list from constants.POLICY_STATUS.EXCLUDED
-        
-        >>> _resolve_constant_reference(["4", "5"])
-        ["4", "5"]  # Returns as-is (no @ prefix)
-    """
-    if isinstance(value, str) and value.startswith('@'):
-        # Extract constant path (e.g., "@EXCLUDED_NOINT" → "EXCLUDED_NOINT")
-        constant_path = value[1:]
-        
-        # Import constants module
-        from config import constants
-        
-        # Navigate nested attributes if needed (e.g., "POLICY_STATUS.EXCLUDED")
-        parts = constant_path.split('.')
-        obj = constants
-        for part in parts:
-            obj = getattr(obj, part)
-        
-        return obj
-    
-    return value
-
-
-
-def _parse_filter_expression(expression: str, columns: List[str]) -> Any:
-    """
-    Parse filter expression string to PySpark condition.
-
-    Supports:
-    - Column references: 'duree', 'produit'
-    - Comparisons: ==, !=, <, >, <=, >=
-    - Logical operators: &, |, ~
-    - Functions: .isin([...])
-
-    Args:
-        expression: Filter expression string (e.g., '(duree == "00") & ~produit.isin(["TRC"])')
-        columns: List of DataFrame column names for validation
-
-    Returns:
-        PySpark Column expression
-
-    Example:
-        >>> expr = _parse_filter_expression('(col_a > 10) & (col_b != "X")', df.columns)
-        >>> df_filtered = df.filter(expr)
-    """
-    # Replace column names with col() references
-    expr_work = expression
-
-    # Sort columns by length (longest first) to avoid partial matches
-    sorted_cols = sorted(columns, key=len, reverse=True)
-    for c in sorted_cols:
-        # Match whole words only
-        pattern = rf'\b{re.escape(c)}\b'
-        expr_work = re.sub(pattern, f'col("{c}")', expr_work)
-
-    # Evaluate as PySpark expression
-    try:
-        return eval(expr_work)
-    except Exception as e:
-        raise ValueError(f"Failed to parse filter expression: {expression}\nError: {e}")

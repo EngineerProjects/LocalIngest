@@ -33,7 +33,7 @@ class POLE:
     - '1' = Agents (DCAG, DCPS, DIGITAL)
     - '3' = Courtage (BROKDIV, BROKMID)
     """
-    AGENT = "  1"       # Agents (with spaces for SAS compatibility)
+    AGENT = "1"       # Agents
     COURTAGE = "3"      # Courtage
 
 

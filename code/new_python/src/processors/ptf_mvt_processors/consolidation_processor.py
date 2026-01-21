@@ -52,14 +52,12 @@ class ConsolidationProcessor(BaseProcessor):
 
     def transform(self, df_az: DataFrame, vision: str) -> DataFrame:
         """
-        Consolidate AZ and AZEC data with harmonization and enrichment (using JSON configs).
+        Consolidate AZ and AZEC data with harmonization and enrichment (JSON-driven).
 
-        Args:
-            df_az: AZ DataFrame from read() (lowercase columns)
-            vision: Vision in YYYYMM format
-
-        Returns:
-            Consolidated DataFrame ready for gold layer (all lowercase)
+        SAS parity:
+        - If vision >= 201211 → AZ + AZEC
+        - If vision <  201211 → AZ only
+        - OUTER UNION CORR parity → unionByName + dedup on NOPOL with AZ priority
         """
         year_int, month_int = extract_year_month_int(vision)
 
@@ -67,119 +65,142 @@ class ConsolidationProcessor(BaseProcessor):
         loader = get_default_loader()
         consolidation_config = loader.get_consolidation_config()
 
-        # Step 1: Read AZEC silver data
-        self.logger.step(1, "Reading AZEC silver data")
         silver_reader = SilverReader(self.spark, self.config)
-        df_azec = silver_reader.read_silver_file(f'azec_ptf_{vision}', vision)
 
-        # Step 2: Harmonize AZ schema (rename if needed)
-        self.logger.step(2, "Harmonizing AZ schema")
-        az_harmonization = consolidation_config['az_harmonization']
+        # -----------------------------
+        # Step A — Read AZEC if allowed
+        # -----------------------------
+        if int(vision) >= 201211:
+            self.logger.step(1, f"Reading AZEC silver data (vision >= 201211 → include AZEC)")
+            df_azec = silver_reader.read_silver_file(f"azec_ptf_{vision}", vision)  # suffix vision
+        else:
+            self.logger.step(1, f"Vision {vision} < 201211 → AZ only (no AZEC)")
+            df_azec = None
+
+        # -----------------------------------
+        # Step B — Harmonize AZ (rename/alias)
+        # -----------------------------------
+        self.logger.step(2, "Harmonizing AZ schema (JSON)")
+        az_harmonization = consolidation_config["az_harmonization"]
         df_az = self._harmonize_schema(df_az, az_harmonization)
 
-        # Step 3: Harmonize AZEC schema (rename columns to match AZ)
-        self.logger.step(3, "Harmonizing AZEC schema")
-        azec_harmonization = consolidation_config['azec_harmonization']
-        df_azec = self._harmonize_schema(df_azec, azec_harmonization)
+        # --------------------------------------
+        # Step C — Harmonize AZEC (if applicable)
+        # --------------------------------------
+        if df_azec is not None:
+            self.logger.step(3, "Harmonizing AZEC schema (JSON)")
+            azec_harmonization = consolidation_config["azec_harmonization"]
+            df_azec = self._harmonize_schema(df_azec, azec_harmonization)
+            df_azec = df_azec.withColumn("dircom", lit(DIRCOM.AZEC))
 
-        # Step 3b: Apply AZEC-specific transformations
-        self.logger.step(3.5, "Applying AZEC-specific transformations")
-        df_azec = self._apply_azec_transformations(df_azec)
+            # -----------------------------
+            # Step D — AZ + AZEC consolidation
+            # -----------------------------
+            self.logger.step(4, "Union AZ + AZEC (OUTER UNION CORR parity)")
+            df_consolidated = df_az.unionByName(df_azec, allowMissingColumns=True)
 
-        # Step 4: Add DIRCOM for AZEC (if not already present)
-        df_azec = df_azec.withColumn('dircom', lit(DIRCOM.AZEC))
-        
-        # Step 5: Union AZ + AZEC
-        self.logger.step(4, "Consolidating AZ + AZEC")
-        df_consolidated = df_az.unionByName(df_azec, allowMissingColumns=True)
-        
-        # CRITICAL FIX: SAS uses OUTER UNION CORR which auto-deduplicates
-        # unionByName() = UNION ALL (keeps duplicates), so we must dedup manually
-        # SAS PTF_MVTS_CONSOLIDATION_MACRO.sas L70: OUTER UNION CORR
-        # SAS deduplicates AZ first (L505-507), then unions with AZEC
-        # This gives AZ priority when same nopol exists in both sources
-        # 
-        # FIXED: Order by dircom DESC to prioritize 'AZ ' over 'AZEC' alphabetically
-        df_consolidated = df_consolidated.orderBy(
-            col("dircom").desc(),  # 'AZ ' > 'AZEC' → AZ has priority
-            "nopol"
-        ).dropDuplicates(["nopol"])
-        
-        # Step 4.1: Extract MOIS_ECHEANCE and JOUR_ECHEANCE from dtechann
-        # SAS L49-50 (AZ): input(substr(put(DTECHANN, 5.), ...) AS MOIS_ECHEANCE
-        # SAS L76 (AZEC): month(DTECHANN) AS MOIS_ECHEANCE, day(DTECHANN) AS JOUR_ECHEANCE
-        from pyspark.sql.functions import month, dayofmonth
-        
-        df_consolidated = df_consolidated.withColumn('mois_echeance', month(col('dtechann')))
-        df_consolidated = df_consolidated.withColumn('jour_echeance', dayofmonth(col('dtechann')))
-        
-        self.logger.info("✓ Extracted MOIS_ECHEANCE and JOUR_ECHEANCE from dtechann")
+            # Deduplicate with AZ priority
+            priority = when(col("dircom").isin("AZ", "AZ "), lit(1)).otherwise(lit(0))
+            df_consolidated = (
+                df_consolidated
+                .withColumn("_priority_dircom", priority)
+                .orderBy(col("_priority_dircom").desc(), col("nopol"))
+                .dropDuplicates(["nopol"])
+                .drop("_priority_dircom")
+            )
+        else:
+            df_consolidated = df_az
 
-        # Step 5b: Apply common transformations (CDTRE, etc.)
+        # ----------------------------------------------------------
+        # Step E — Extract MOIS/JOUR ECHEANCE from DTECHANN (common)
+        # ----------------------------------------------------------
+        self.logger.step(4.1, "Extracting MOIS_ECHEANCE / JOUR_ECHEANCE from DTECHANN")
+        if "dtechann" in df_consolidated.columns:
+            df_consolidated = df_consolidated.withColumn("mois_echeance", month(col("dtechann")))
+            df_consolidated = df_consolidated.withColumn("jour_echeance", dayofmonth(col("dtechann")))
+
+        # ----------------------------------------------
+        # Step F — Common transformations (e.g., CDTRE *)
+        # ----------------------------------------------
         self.logger.step(4.5, "Applying common transformations")
         df_consolidated = self._apply_common_transformations(df_consolidated)
 
-        # Step 5c: Enrich with DO_DEST reference (SAS L416-421)
+        # ------------------------------------------------
+        # Step G — DO_DEST (monthly or fixed reference)
+        # ------------------------------------------------
         self.logger.step(4.6, "Enriching with DO_DEST reference (monthly)")
         df_consolidated = self._enrich_do_dest(df_consolidated, vision)
 
-        # Step 5d: Apply DESTINAT consolidation logic
+        # -------------------------------------------------------------
+        # Step H — DESTINAT consolidation and pattern matching (SAS)
+        # -------------------------------------------------------------
         self.logger.step(4.7, "Applying DESTINAT consolidation logic")
         from utils.transformations.enrichment import apply_destinat_consolidation_logic
         df_consolidated = apply_destinat_consolidation_logic(df_consolidated)
 
-        # Step 5e: Calculate DESTINAT for Chantiers (pattern matching)
         self.logger.step(5, "Calculating DESTINAT for construction sites")
         from utils.transformations.enrichment import calculate_destinat
         df_consolidated = calculate_destinat(df_consolidated, self.logger)
 
-        # Step 6: Enrich with IRD risk data
+        # -----------------------------------------
+        # Step I — IRD Risk Q46/Q45/QAN enrichment
+        # -----------------------------------------
         self.logger.step(5.5, "Enriching with IRD risk data")
         df_consolidated = self._enrich_ird_risk(df_consolidated, vision)
 
-        # Step 6c: Apply fallback logic (DTRCPPR)
+        # -------------------------------------------------
+        # Step J — Fallbacks (DTRCPPR from DTREFFIN, etc.)
+        # -------------------------------------------------
         self.logger.step(5.7, "Applying fallback logic")
         df_consolidated = self._apply_fallback_logic(df_consolidated)
-        
-        # Step 6d: Enrich with client data (SIRET/SIREN)
+
+        # ---------------------------------------
+        # Step K — Client (SIREN/SIRET) enrichment
+        # ---------------------------------------
         self.logger.step(5.8, "Enriching client data (SIRET/SIREN)")
         df_consolidated = self._enrich_client_data(df_consolidated, vision)
-        
-        # Step 6e: Enrich with Euler risk notes
+
+        # --------------------------------------
+        # Step L — Euler credit risk notes join
+        # --------------------------------------
         self.logger.step(5.9, "Enriching Euler risk notes (note_euler)")
         df_consolidated = self._enrich_euler_risk_note(df_consolidated, vision)
-        
-        # Step 6f: Enrich with special product activity codes
+
+        # ---------------------------------------------------
+        # Step M — Special product activity (IPFM0024/63/99)
+        # ---------------------------------------------------
         self.logger.step(6, "Enriching special product activity codes (TypeAct)")
         df_consolidated = self._enrich_special_product_activity(df_consolidated, vision)
-        
-        # Step 6g: Enrich with W6 NAF and Client CDNAF codes
+
+        # ---------------------------------------------------
+        # Step N — W6 & Client NAF codes, ISIC + corrections
+        # ---------------------------------------------------
         self.logger.step(6.05, "Enriching NAF codes (W6 + CLIENT)")
         df_consolidated = self._enrich_w6_naf_and_client_cdnaf(df_consolidated)
-        
-        # Step 6h: Add ISIC codes and HAZARD_GRADES
+
         self.logger.step(6.1, "Adding ISIC codes and HAZARD_GRADES")
         df_consolidated = self._add_isic_codes(df_consolidated, vision)
-        
-        # Step 6i: Apply ISIC code corrections (manual fixes for known bad codes)
+
         self.logger.step(6.2, "Applying ISIC code corrections")
         from utils.transformations.enrichment import apply_isic_corrections
         df_consolidated = apply_isic_corrections(df_consolidated)
-        
-        # Step 6j: Add ISIC global code (SAS L563-570)
+
         self.logger.step(6.3, "Adding ISIC global code mapping")
         df_consolidated = self._add_isic_global_code(df_consolidated)
-        
-        # Step 6k: Add special business flags (SAS L596-600)
+
+        # ---------------------------------------------------------
+        # Step O — Business flags (Berlioz / Partenariat)
+        # ---------------------------------------------------------
         self.logger.step(6.4, "Adding special business flags")
         df_consolidated = self._add_business_flags(df_consolidated)
-        
-        # Step 7: Add placeholders for any remaining missing columns
-        self.logger.step(6.9, "Adding placeholders for any remaining missing columns")
+
+        # ---------------------------------------------------------
+        # Step P — Placeholders for optional enrichments
+        # ---------------------------------------------------------
+        self.logger.step(6.9, "Adding placeholders for remaining missing columns")
         df_consolidated = self._add_placeholders(df_consolidated)
-        
+
         self.logger.info("Consolidation completed successfully")
-        
         return df_consolidated
 
 
@@ -211,58 +232,48 @@ class ConsolidationProcessor(BaseProcessor):
         
         return df
 
+
     def write(self, df: DataFrame, vision: str) -> None:
         """
         Write consolidated data to gold layer with exact SAS column schema.
-        
-        FIXED: Selects only SAS output columns in correct order, dropping all
-        intermediate/temp columns that SAS would not output.
-        
-        Based on: PTF_MVTS_CONSOLIDATION_MACRO.sas L441-442 (RETAIN statement)
-        
-        Args:
-            df: Consolidated DataFrame (lowercase columns)
-            vision: Vision in YYYYMM format
+
+        - Selects only SAS output columns in correct order (GOLD_COLUMNS_PTF_MVT)
+        - Convention entreprise : nom de fichier suffixé par la vision
         """
         from config.constants import GOLD_COLUMNS_PTF_MVT
-        
-        # CRITICAL: Rename desti_isic → destinat_isic BEFORE calculating existing columns
-        # (Internal ISIC processing uses desti_isic to match reference tables)
-        if 'desti_isic' in df.columns:
-            self.logger.info("✓ Found 'desti_isic' column - renaming to 'destinat_isic'")
-            df = df.withColumnRenamed('desti_isic', 'destinat_isic')
-        else:
-            self.logger.warning("✗ Column 'desti_isic' NOT FOUND in DataFrame - cannot rename to destinat_isic!")
-            self.logger.warning(f"Available columns containing 'isic': {[c for c in df.columns if 'isic' in c.lower()]}")
-        
-        # Select only columns that exist (allows for graceful degradation if data missing)
+
+        # Renommage éventuel de 'desti_isic' → 'destinat_isic'
+        if "desti_isic" in df.columns:
+            self.logger.info("✓ Renaming 'desti_isic' → 'destinat_isic'")
+            df = df.withColumnRenamed("desti_isic", "destinat_isic")
+
+        # Colonnes finales
         existing_gold_cols = [c for c in GOLD_COLUMNS_PTF_MVT if c in df.columns]
-        
-        # Log any expected columns that are missing
+
+        # Logs
         missing_cols = set(GOLD_COLUMNS_PTF_MVT) - set(df.columns)
         if missing_cols:
-            self.logger.warning(f"Expected columns missing from output (will be NULL): {sorted(missing_cols)[:10]}...")
-        
-        # Log any extra columns that will be dropped
+            self.logger.warning(f"Missing expected GOLD columns (NULL in output): {sorted(list(missing_cols))[:10]} ...")
+
         extra_cols = set(df.columns) - set(GOLD_COLUMNS_PTF_MVT)
         if extra_cols:
-            self.logger.info(f"Dropping {len(extra_cols)} intermediate columns (e.g., {list(extra_cols)[:5]}).")
-        
+            self.logger.info(f"Dropping {len(extra_cols)} intermediate columns (e.g., {list(extra_cols)[:5]})")
+
         df_final = df.select(existing_gold_cols)
-        
-        # Log detailed output stats
+
+        # Stats
         row_count = df_final.count()
-        col_count = len(df_final.columns)
-        self.logger.info(f"Final gold output: {col_count} columns, {row_count:,} rows (SAS-compliant schema)")
-        if missing_cols:
-            self.logger.warning(f"Note: {len(missing_cols)} columns are NULL (missing from processing): {sorted(missing_cols)[:5]}...")
-        
+        self.logger.info(f"Final gold output: {len(existing_gold_cols)} columns, {row_count:,} rows")
+
         from utils.helpers import write_to_layer
         write_to_layer(
-            df_final, self.config, 'gold', f'ptf_mvt_{vision}', vision, self.logger
+            df=df_final,
+            config=self.config,
+            layer="gold",
+            filename=f"ptf_mvt_{vision}",
+            vision=vision,
+            logger=self.logger
         )
-
-
 
     def _harmonize_schema(
         self,
@@ -459,26 +470,15 @@ class ConsolidationProcessor(BaseProcessor):
 
     def _apply_fallback_logic(self, df: DataFrame) -> DataFrame:
         """
-        Apply fallback logic for missing dates.
-        
-        Based on: SAS PTF_MVTS_CONSOLIDATION_MACRO.sas L373-379
-        
-        Logic:
-        - If DTRCPPR is missing and DTREFFIN exists, use DTREFFIN for DTRCPPR
-        
-        Args:
-            df: DataFrame with IRD columns
-            
-        Returns:
-            DataFrame with fallback applied
+        Apply fallback logic for missing dates (SAS L373–379):
+        - If DTRCPPR is missing and DTREFFIN exists → DTRCPPR = DTREFFIN
         """
-        if 'dtrcppr' in df.columns and 'dtreffin' in df.columns:
+        if "dtrcppr" in df.columns and "dtreffin" in df.columns:
             df = df.withColumn(
-                'dtrcppr',
-                when(col('dtrcppr').isNull() & col('dtreffin').isNotNull(), col('dtreffin'))
-                .otherwise(col('dtrcppr'))
+                "dtrcppr",
+                when(col("dtrcppr").isNull() & col("dtreffin").isNotNull(), col("dtreffin"))
+                .otherwise(col("dtrcppr"))
             )
-        
         return df
 
     def _enrich_ird_risk(self, df: DataFrame, vision: str) -> DataFrame:
@@ -542,7 +542,7 @@ class ConsolidationProcessor(BaseProcessor):
         Returns:
             DataFrame with ISIC columns added (may be NULL if data missing)
         """
-        from utils.transformations.enrichment import (
+        from utils.transformations import (
             join_isic_reference_tables,
             assign_isic_codes,
             add_partenariat_berlitz_flags

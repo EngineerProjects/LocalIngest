@@ -1,338 +1,47 @@
+# -*- coding: utf-8 -*-
 """
 ISIC Codification for Construction Data Pipeline.
 
 Implements the complete ISIC code assignment logic from CODIFICATION_ISIC_CONSTRUCTION.sas.
 Assigns ISIC codes and HAZARD_GRADES based on multiple fallback strategies.
 
-Based on: CODIFICATION_ISIC_CONSTRUCTION.sas (300+ lines)
+Order of precedence (SAS-faithful):
+  1) Contracts with activity (CDNATP='R') via mapping ACT
+  2) Construction-site destination (CDNATP='C') via DESTI parsing + mapping CHT
+  3) Fallbacks via NAF:
+        NAF08_PTF > NAF03_PTF > NAF03_CLI > NAF08_CLI
+  4) SUI (tracking) if still empty
+  5) Hazard grades mapping from ISIC reference
 """
 
-from pyspark.sql import DataFrame # type: ignore
-from pyspark.sql.functions import ( # type: ignore
-    col, when, lit, upper, regexp_extract, coalesce,
-    trim, length, substring
-)
 from typing import Dict, Optional, Any
-import re
+from pyspark.sql import DataFrame  # type: ignore
+from pyspark.sql.functions import (  # type: ignore
+    col, when, lit, upper, trim,
+    least, greatest, coalesce
+)
+
+from types import SimpleNamespace
+
+# Import your existing helper
+from utils.processor_helpers import get_bronze_reader
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+ISIC_CORRECTIONS = {
+    "22000": "022000", " 22000": "022000",
+    "24021": "024000", " 24021": "024000",
+    "242025": "242005",
+    "329020": "329000",
+    "731024": "731000",
+    "81020": "081000", " 81020": "081000",
+    "81023": "081000", " 81023": "081000",
+    "981020": "981000",
+}
 
 
 def assign_isic_codes(
-    df: DataFrame,
-    vision: str,
-    logger: Optional[Any] = None
-) -> DataFrame:
-    """
-    Assign ISIC codes and HAZARD_GRADES to construction portfolio data.
-
-    Implements full ISIC codification logic with multiple fallback strategies:
-    1. NAF08 from IRD_SUIVI_ENGAGEMENTS (if available)
-    2. NAF03 from portfolio data
-    3. NAF03 from client data
-    4. NAF08 from client data
-    5. Activity-based ISIC (CDNATP='R')
-    6. Construction site destination ISIC (CDNATP='C')
-
-    Args:
-        df: Input DataFrame (must have cmarch, cseg, cssseg, cdprod, etc.)
-        vision: Vision in YYYYMM format
-        logger: Optional logger instance
-
-    Returns:
-        DataFrame with ISIC columns added:
-        - cdisic: ISIC code
-        - origine_isic: Origin of ISIC code
-        - hazard_grades_fire: Fire risk grade
-        - hazard_grades_bi: Business interruption grade
-        - hazard_grades_rca: Post-delivery liability grade
-        - hazard_grades_rce: Contractor liability grade
-        - hazard_grades_trc: All-risk construction grade
-        - hazard_grades_rcd: Ten-year liability grade
-        - hazard_grades_do: Structural damage grade
-
-    Example:
-        >>> df = assign_isic_codes(df, '202509', logger)
-    """
-    if logger:
-        logger.info("Starting ISIC codification process")
-
-    # Initialize columns that aren't added during joins
-    if "origine_isic" not in df.columns:
-        df = df.withColumn("origine_isic", lit(None).cast("string"))
-    if "isic_code_sui" not in df.columns:
-        df = df.withColumn("isic_code_sui", lit(None).cast("string"))
-
-    # Only process construction market (cmarch = '6')
-    is_construction = col("cmarch") == "6"
-
-    # Step 1: Assign CDNAF2008 from IRD_SUIVI_ENGAGEMENTS (if joined earlier)
-    # Populate cdnaf2008 column for later MAPPING_CDNAF2008_ISIC join (SAS line 75)
-    if "cdnaf08_sui" in df.columns and "cdisic_sui" in df.columns:
-        df = df.withColumn(
-            "cdnaf2008",
-            when(is_construction & col("cdnaf08_sui").isNotNull(), col("cdnaf08_sui"))
-            .otherwise(col("cdnaf2008"))
-        )
-        df = df.withColumn(
-            "isic_code_sui",
-            when(is_construction & col("cdisic_sui").isNotNull(), col("cdisic_sui"))
-            .otherwise(col("isic_code_sui"))
-        )
-
-    # Step 2: Assign ISIC for activity-based contracts (CDNATP='R')
-    # Uses MAPPING_ISIC_CONST_ACT (joined earlier)
-    if "cdisic_const_r" in df.columns:
-        df = df.withColumn(
-            "cdisic",
-            when(
-                is_construction & (col("cdnatp") == "R") & col("cdisic_const_r").isNotNull(),
-                col("cdisic_const_r")
-            ).otherwise(col("cdisic"))
-        )
-        df = df.withColumn(
-            "origine_isic",
-            when(
-                is_construction & (col("cdnatp") == "R") & col("cdisic_const_r").isNotNull(),
-                lit("ACTPRIN")
-            ).otherwise(col("origine_isic"))
-        )
-
-    # Step 3: Assign ISIC for construction site contracts (CDNATP='C')
-    # Parse DSTCSC field to determine destination type
-    df = _assign_destination_isic(df, is_construction, logger)
-
-    # Step 4: Assign ISIC from construction site destination mapping
-    # Uses MAPPING_ISIC_CONST_CHT (if joined earlier)
-    if "cdisic_const_c" in df.columns:
-        df = df.withColumn(
-            "cdisic",
-            when(
-                is_construction &
-                (col("cdnatp") == "C") &
-                col("desti_isic").isNotNull() &
-                col("cdisic_const_c").isNotNull(),
-                col("cdisic_const_c")
-            ).otherwise(col("cdisic"))
-        )
-        df = df.withColumn(
-            "origine_isic",
-            when(
-                is_construction &
-                (col("cdnatp") == "C") &
-                col("desti_isic").isNotNull() &
-                col("cdisic_const_c").isNotNull(),
-                lit("DESTI_CHT")
-            ).otherwise(col("origine_isic"))
-        )
-
-    # Step 5: Assign ISIC from NAF codes (fallback strategy)
-    # Priority: NAF08_PTF > NAF03_PTF > NAF03_CLI > NAF08_CLI
-    if "isic_from_naf08" in df.columns:
-        df = df.withColumn(
-            "cdisic",
-            when(
-                is_construction & col("cdisic").isNull() & col("isic_from_naf08").isNotNull(),
-                col("isic_from_naf08")
-            ).otherwise(col("cdisic"))
-        )
-        df = df.withColumn(
-            "origine_isic",
-            when(
-                is_construction & col("origine_isic").isNull() & col("isic_from_naf08").isNotNull(),
-                lit("NAF08")
-            ).otherwise(col("origine_isic"))
-        )
-
-    if "isic_from_naf03" in df.columns:
-        df = df.withColumn(
-            "cdisic",
-            when(
-                is_construction & col("cdisic").isNull() & col("isic_from_naf03").isNotNull(),
-                col("isic_from_naf03")
-            ).otherwise(col("cdisic"))
-        )
-        df = df.withColumn(
-            "origine_isic",
-            when(
-                is_construction & col("origine_isic").isNull() & col("isic_from_naf03").isNotNull(),
-                lit("NAF03")
-            ).otherwise(col("origine_isic"))
-        )
-
-    # Step 6: Use ISIC from SUI if still null
-    df = df.withColumn(
-        "cdisic",
-        when(
-            is_construction & col("cdisic").isNull() & col("isic_code_sui").isNotNull(),
-            col("isic_code_sui")
-        ).otherwise(col("cdisic"))
-    )
-    df = df.withColumn(
-        "origine_isic",
-        when(
-            is_construction & col("origine_isic").isNull() & col("isic_code_sui").isNotNull(),
-            lit("SUI")
-        ).otherwise(col("origine_isic"))
-    )
-
-    # Step 7: Assign HAZARD_GRADES (if table_isic_tre_naf joined)
-    df = _assign_hazard_grades(df, is_construction, logger)
-
-    if logger:
-        logger.success("ISIC codification completed")
-
-    return df
-
-
-def _assign_destination_isic(
-    df: DataFrame,
-    is_construction,
-    logger: Optional[Any] = None
-) -> DataFrame:
-    """
-    Assign DESTI_ISIC based on DSTCSC field pattern matching.
-
-    Implements the complex pattern matching from CODIFICATION_ISIC_CONSTRUCTION.sas L95-170.
-
-    Args:
-        df: Input DataFrame
-        is_construction: Construction market filter condition
-        logger: Optional logger
-
-    Returns:
-        DataFrame with desti_isic column populated
-    """
-    if "dstcsc" not in df.columns:
-        return df
-
-    if logger:
-        logger.debug("Assigning DESTI_ISIC from DSTCSC patterns")
-
-    # Build cascading when conditions for pattern matching
-    desti_expr = (
-        when(upper(col("dstcsc")).rlike("(COLL)"), lit("RESIDENTIEL"))
-        .when(upper(col("dstcsc")).rlike("(MAISON)"), lit("MAISON"))
-        .when(upper(col("dstcsc")).rlike("(LOGE)"), lit("RESIDENTIEL"))
-        .when(upper(col("dstcsc")).rlike("(APPA)"), lit("RESIDENTIEL"))
-        .when(upper(col("dstcsc")).rlike("(HABIT)"), lit("RESIDENTIEL"))
-        .when(upper(col("dstcsc")).rlike("(INDUS)"), lit("INDUSTRIE"))
-        .when(upper(col("dstcsc")).rlike("(BUREAU)"), lit("BUREAU"))
-        .when(upper(col("dstcsc")).rlike("(STOCK)"), lit("INDUSTRIE_LIGHT"))
-        .when(upper(col("dstcsc")).rlike("(SUPPORT)"), lit("INDUSTRIE_LIGHT"))
-        .when(upper(col("dstcsc")).rlike("(COMMER)"), lit("COMMERCE"))
-        .when(upper(col("dstcsc")).rlike("(GARAGE)"), lit("INDUSTRIE"))
-        .when(upper(col("dstcsc")).rlike("(TELECOM)"), lit("INDUSTRIE"))
-        .when(upper(col("dstcsc")).rlike("(R\\+)"), lit("RESIDENTIEL"))
-        .when(upper(col("dstcsc")).rlike("(HOTEL)"), lit("BUREAU"))
-        .when(upper(col("dstcsc")).rlike("(TOURIS)"), lit("BUREAU"))
-        .when(upper(col("dstcsc")).rlike("(VAC)"), lit("BUREAU"))
-        .when(upper(col("dstcsc")).rlike("(LOIS)"), lit("BUREAU"))
-        .when(upper(col("dstcsc")).rlike("(AGRIC)"), lit("INDUSTRIE_LIGHT"))
-        .when(upper(col("dstcsc")).rlike("(CLINI )"), lit("HOPITAL"))
-        .when(upper(col("dstcsc")).rlike("(HOP)"), lit("HOPITAL"))
-        .when(upper(col("dstcsc")).rlike("(HOSP)"), lit("HOPITAL"))
-        .when(upper(col("dstcsc")).rlike("(RESID)"), lit("RESIDENTIEL"))
-        .when(upper(col("dstcsc")).rlike("(CIAL)"), lit("COMMERCE"))
-        .when(upper(col("dstcsc")).rlike("(SPOR)"), lit("COMMERCE"))
-        .when(upper(col("dstcsc")).rlike("(ECOL)"), lit("BUREAU"))
-        .when(upper(col("dstcsc")).rlike("(ENSEI)"), lit("BUREAU"))
-        .when(upper(col("dstcsc")).rlike("(CHIR)"), lit("HOPITAL"))
-        .when(upper(col("dstcsc")).rlike("(BAT)"), lit("MAISON"))
-        .when(upper(col("dstcsc")).rlike("(INDIV)"), lit("MAISON"))
-        .when(upper(col("dstcsc")).rlike("(VRD)"), lit("VOIRIE"))
-        .when(upper(col("dstcsc")).rlike("(MOB.*SOURIS)"), lit("AUTRES_GC"))
-        .when(upper(col("dstcsc")).rlike("(SOUMIS)"), lit("AUTRES_BAT"))
-        .when(upper(col("dstcsc")).rlike("(NON SOUMIS)"), lit("AUTRES_GC"))
-        .when(upper(col("dstcsc")).rlike("(PHOTOV)"), lit("PHOTOV"))
-        .when(upper(col("dstcsc")).rlike("(PARK)"), lit("VOIRIE"))
-        .when(upper(col("dstcsc")).rlike("(STATIONNEMENT)"), lit("VOIRIE"))
-        .when(upper(col("dstcsc")).rlike("(MANEGE)"), lit("NON_RESIDENTIEL"))
-        .when(upper(col("dstcsc")).rlike("(MED)"), lit("BUREAU"))
-        .when(upper(col("dstcsc")).rlike("(BANC)"), lit("BUREAU"))
-        .when(upper(col("dstcsc")).rlike("(BANQ)"), lit("BUREAU"))
-        .when(upper(col("dstcsc")).rlike("(AGENCE)"), lit("BUREAU"))
-        .when(upper(col("dstcsc")).rlike("(CRECHE)"), lit("BUREAU"))
-        .when(upper(col("dstcsc")).rlike("(EHPAD)"), lit("RESIDENTIEL"))
-        .when(upper(col("dstcsc")).rlike("(ENTREPOT)"), lit("INDUSTRIE_LIGHT"))
-        .when(upper(col("dstcsc")).rlike("(HANGAR)"), lit("INDUSTRIE_LIGHT"))
-        .when(upper(col("dstcsc")).rlike("(AQUAT)"), lit("COMMERCE"))
-        .when(upper(col("dstcsc")).rlike("(LGTS)"), lit("RESIDENTIEL"))
-        .when(upper(col("dstcsc")).rlike("(LOGIS)"), lit("RESIDENTIEL"))
-        .when(upper(col("dstcsc")).rlike("(LOGS)"), lit("RESIDENTIEL"))
-        .when(upper(col("dstcsc")).rlike("(RESTAURA)"), lit("BUREAU"))
-        .when(upper(col("dstcsc")).rlike("(HAB)"), lit("RESIDENTIEL"))
-        # Numeric codes
-        .when(col("dstcsc").isin(["01", "02", "03", "03+22", "04", "06", "08", "1", "2", "3", "4", "6", "8"]),
-              lit("RESIDENTIEL"))
-        .when(col("dstcsc").isin(["22"]), lit("MAISON"))
-        .when(col("dstcsc").isin(["27", "99"]), lit("AUTRES_GC"))
-        .otherwise(lit(None))
-    )
-
-    # Apply only for construction sites
-    df = df.withColumn(
-        "desti_isic",  # Internal column name (matches reference table)
-        when(
-            is_construction & (col("cdnatp") == "C") & (col("cdprod") != "01059"),
-            desti_expr
-        ).otherwise(col("desti_isic") if "desti_isic" in df.columns else lit(None))
-    )
-
-    return df
-
-
-def _assign_hazard_grades(
-    df: DataFrame,
-    is_construction,
-    logger: Optional[Any] = None
-) -> DataFrame:
-    """
-    Assign HAZARD_GRADES from table_isic_tre_naf (if joined).
-
-    Implements HAZARD_GRADES assignment from CODIFICATION_ISIC_CONSTRUCTION.sas L204-225.
-
-    Args:
-        df: Input DataFrame
-        is_construction: Construction market filter condition
-        logger: Optional logger
-
-    Returns:
-        DataFrame with hazard_grades columns populated
-    """
-    # Initialize all hazard_grades expressions in dictionary
-    hazard_mapping = {
-        "hazard_grades_fire_isic": "hazard_grades_fire",
-        "hazard_grades_bi_isic": "hazard_grades_bi",
-        "hazard_grades_rca_isic": "hazard_grades_rca",
-        "hazard_grades_rce_isic": "hazard_grades_rce",
-        "hazard_grades_trc_isic": "hazard_grades_trc",
-        "hazard_grades_rcd_isic": "hazard_grades_rcd",
-        "hazard_grades_do_isic": "hazard_grades_do"
-    }
-
-    # Build all column expressions at once
-    new_columns = {}
-    for source_col, target_col in hazard_mapping.items():
-        if source_col in df.columns:
-            # If source exists, use it when construction and not null
-            new_columns[target_col] = when(
-                is_construction & col(source_col).isNotNull(),
-                col(source_col)
-            ).otherwise(col(target_col) if target_col in df.columns else lit(None).cast("string"))
-        elif target_col not in df.columns:
-            # Initialize if doesn't exist
-            new_columns[target_col] = lit(None).cast("string")
-
-    # Apply all in single select
-    if new_columns:
-        df = df.select("*", *[expr.alias(name) for name, expr in new_columns.items()])
-
-    if logger:
-        logger.debug(f"HAZARD_GRADES assigned from ISIC table ({len(new_columns)} columns)")
-
-    return df
-
-
-def join_isic_reference_tables(
     df: DataFrame,
     spark,
     config,
@@ -340,303 +49,1093 @@ def join_isic_reference_tables(
     logger: Optional[Any] = None
 ) -> DataFrame:
     """
-    Join all ISIC reference tables to portfolio data.
+    Full SAS ISIC codification pipeline orchestrator.
+    Reproduces CODIFICATION_ISIC_CONSTRUCTION.sas end-to-end.
 
-    Joins:
-    1. IRD_SUIVI_ENGAGEMENTS_{vision} - NAF08 and CDISIC from tracking
-    2. MAPPING_CDNAF2003_ISIC_{vision} - NAF03 � ISIC mapping
-    3. MAPPING_CDNAF2008_ISIC_{vision} - NAF08 � ISIC mapping
-    4. MAPPING_ISIC_CONST_ACT_{vision} - Activity � ISIC for CDNATP='R'
-    5. MAPPING_ISIC_CONST_CHT_{vision} - Destination � ISIC for CDNATP='C'
-    6. table_isic_tre_naf_{vision} - ISIC � HAZARD_GRADES
-    7. _LG_202306 - ISIC local � ISIC global
-
-    Args:
-        df: Input DataFrame
-        spark: SparkSession
-        config: ConfigLoader instance
-        vision: Vision in YYYYMM format
-        logger: Optional logger
-
-    Returns:
-        DataFrame with all ISIC reference data joined
+    Steps:
+      1. Load reference tables (SUI, ACT, CHT, NAF03, NAF08, HAZARD)
+      2. Apply SAS join order:
+            §3.1 join_isic_sui
+            §3.3 map_naf_to_isic                  (cascade NAF -> ISIC)
+            §3.4 join_isic_const_act              (ACT contracts, CDNATP='R')
+            §3.5 compute_destination_isic         (DSTCSC parsing)
+            §3.6 join_isic_const_cht              (CHT contracts, CDNATP='C')
+      3. Finalize ISIC codes (overwrite rules)
+      4. Join hazard grades
+      5. Drop temporary columns
     """
-    from src.reader import BronzeReader
-
-    reader = BronzeReader(spark, config)
-    year, month = vision[:4], vision[4:6]
 
     if logger:
-        logger.info("Joining ISIC reference tables")
+        logger.info(f"[ISIC] Starting full ISIC codification pipeline for vision {vision}")
 
-    # Columns will be added right before the joins that need them
+    # ============================================================
+    # LOAD REFERENCE TABLES (SAS §1)
+    # ============================================================
+    if logger: logger.debug("[ISIC] Loading reference tables...")
 
-    # Removed count() calls - they trigger expensive full table scans
-    # Spark's lazy evaluation means join will only execute when needed
+    df_sui    = load_sui_table(spark, config, vision, logger)
+    df_act    = load_mapping_const_act(spark, config, vision, logger)
+    df_cht    = load_mapping_const_cht(spark, config, vision, logger)
+    df_naf03  = load_mapping_naf2003(spark, config, vision, logger)
+    df_naf08  = load_mapping_naf2008(spark, config, vision, logger)
+    df_hazard = load_hazard_grades(spark, config, vision, logger)
 
-    # 1. Join IRD_SUIVI_ENGAGEMENTS (if available)
+    # ============================================================
+    # APPLY SAS JOIN ORDER (3.1 → 3.6)
+    # ============================================================
+
+    # --- 3.1: SUI join
+    if logger: logger.debug("[ISIC] Step 3.1: Joining SUI reference")
+    df = join_isic_sui(df, df_sui)
+
+    # --- 3.3: NAF cascade (PTF NAF08 → PTF NAF03 → CLI NAF03 → CLI NAF08)
+    if logger: logger.debug("[ISIC] Step 3.3: Mapping NAF -> ISIC cascade")
+    df = map_naf_to_isic(df, df_naf03, df_naf08)
+
+    # --- 3.4: ACT mapping (CDNATP='R')
+    if logger: logger.debug("[ISIC] Step 3.4: Joining CONST_ACT (CDNATP='R')")
+    df = join_isic_const_act(df, df_act)
+
+    # --- 3.5: DESTI_ISIC parsing using DSTCSC
+    if logger: logger.debug("[ISIC] Step 3.5: Computing DESTI_ISIC from DSTCSC patterns")
+    df = compute_destination_isic(df)
+
+    # --- 3.6: CHT mapping (CDNATP='C')
+    if logger: logger.debug("[ISIC] Step 3.6: Joining CONST_CHT (CDNATP='C')")
+    df = join_isic_const_cht(df, df_cht)
+
+    # ============================================================
+    # FINALIZATION (SAS §4)
+    # ============================================================
+    if logger: logger.debug("[ISIC] Step 4: Finalizing ISIC codes")
+    df = finalize_isic_codes(df)
+
+    # ============================================================
+    # HAZARD GRADES JOIN (SAS §5)
+    # ============================================================
+    if logger: logger.debug("[ISIC] Step 5: Joining hazard grades")
+    df = join_isic_hazard_grades(df, df_hazard)
+
+    # ============================================================
+    # CLEANUP (drop temp columns)
+    # ============================================================
+    if logger: logger.debug("[ISIC] Dropping temporary ISIC columns")
+    df = drop_isic_temp_columns(df)
+
+    if logger:
+        logger.info("[ISIC] ISIC codification pipeline completed successfully")
+
+    return df
+
+def join_isic_sui(df: DataFrame, df_sui: DataFrame) -> DataFrame:
+    """
+    Join ISIC/NAF information coming from SUI (Suivi des Engagements).
+    Strict SAS-compliant logic for Section 3.1 of CODIFICATION_ISIC_CONSTRUCTION.sas.
+
+    SAS Rules:
+    - LEFT JOIN on (POLICE = NOPOL AND PRODUIT = CDPROD)
+    - Add:
+        CDNAF2008_TEMP     ← cdnaf08 from SUI
+        ISIC_CODE_SUI_TEMP ← cdisic from SUI
+    - Apply only for construction business (CMARCH = '6')
+    - Do NOT overwrite the final ISIC fields here. Only store TEMP values.
+    """
+
+    # If SUI is unavailable, simply add NULL TEMP columns (SAS equivalent of empty join)
+    if df_sui is None:
+        return (
+            df
+            .withColumn("cdnaf2008_temp", lit(None).cast("string"))
+            .withColumn("isic_code_sui_temp", lit(None).cast("string"))
+        )
+
+    # Aliases
+    left = df.alias("l")
+    right = df_sui.alias("r")
+
+    # Base join condition
+    join_cond = (
+        (col("l.police") == col("r.nopol")) &
+        (col("l.produit") == col("r.cdprod"))
+    )
+
+    out = (
+        left
+        .join(right, join_cond, how="left")
+        .withColumn(
+            "cdnaf2008_temp",
+            when(
+                (col("l.cmarch") == "6") & col("r.cdnaf08").isNotNull(),
+                col("r.cdnaf08")
+            ).otherwise(lit(None).cast("string"))
+        )
+        .withColumn(
+            "isic_code_sui_temp",
+            when(
+                (col("l.cmarch") == "6") & col("r.cdisic").isNotNull(),
+                col("r.cdisic")
+            ).otherwise(lit(None).cast("string"))
+        )
+        # Do not keep SUI key columns
+        .drop("nopol", "cdprod")
+    )
+
+    return out
+
+def map_naf_to_isic(
+    df: DataFrame,
+    df_naf03: DataFrame,
+    df_naf08: DataFrame
+) -> DataFrame:
+    """
+    SAS Section 3.3 — NAF→ISIC cascade with strict priority and origin tags.
+
+    Joins (LEFT) with cmarch='6' in ON clause:
+      - PTF NAF03:   ref_naf03.isic_code  on df.cdnaf
+      - PTF NAF08:   ref_naf08.isic_code  on df.cdnaf2008_temp
+      - CLI NAF03:   ref_naf03.isic_code  on df.cdnaf03_cli
+      - CLI NAF08:   ref_naf08.isic_code  on df.cdnaf08_w6
+
+    Produces TEMP columns only:
+      - isic_code_temp
+      - origine_isic_temp
+
+    Notes:
+      - Keeps all left rows (left join)
+      - Conditions apply only for construction (cmarch='6'), as in SAS
+      - Null-safe; if refs are missing, falls back to NULL/empty strings appropriately
+    """
+
+    # Ensure key columns exist on left; if not, add them as NULL (SAS keeps blanks; we use NULL)
+    needed_left = ["cdnaf", "cdnaf2008_temp", "cdnaf03_cli", "cdnaf08_w6", "cmarch"]
+    cur = df
+    for c in needed_left:
+        if c not in cur.columns:
+            cur = cur.withColumn(c, lit(None).cast("string"))
+
+    # Prepare alias
+    left = cur.alias("l")
+
+    # 1) PTF NAF03 (t2)
+    if df_naf03 is not None and set(["cdnaf_2003", "isic_code"]).issubset(set(df_naf03.columns)):
+        t2 = df_naf03.select(
+            col("cdnaf_2003").alias("_ptf_naf03_key"),
+            col("isic_code").alias("_ptf_naf03_isic")
+        ).dropDuplicates(["_ptf_naf03_key"])
+        left = (
+            left
+            .join(
+                t2,
+                (col("l.cmarch") == "6") & (col("l.cdnaf") == col("_ptf_naf03_key")),
+                how="left"
+            )
+        )
+    else:
+        # Columns not available → add NULL placeholders to keep expression simple
+        left = left.withColumn("_ptf_naf03_isic", lit(None).cast("string"))
+
+    # 2) PTF NAF08 (t3)
+    if df_naf08 is not None and set(["cdnaf_2008", "isic_code"]).issubset(set(df_naf08.columns)):
+        t3 = df_naf08.select(
+            col("cdnaf_2008").alias("_ptf_naf08_key"),
+            col("isic_code").alias("_ptf_naf08_isic")
+        ).dropDuplicates(["_ptf_naf08_key"])
+        left = (
+            left
+            .join(
+                t3,
+                (col("l.cmarch") == "6") & (col("l.cdnaf2008_temp") == col("_ptf_naf08_key")),
+                how="left"
+            )
+        )
+    else:
+        left = left.withColumn("_ptf_naf08_isic", lit(None).cast("string"))
+
+    # 3) CLI NAF03 (t4)
+    if df_naf03 is not None and set(["cdnaf_2003", "isic_code"]).issubset(set(df_naf03.columns)):
+        t4 = df_naf03.select(
+            col("cdnaf_2003").alias("_cli_naf03_key"),
+            col("isic_code").alias("_cli_naf03_isic")
+        ).dropDuplicates(["_cli_naf03_key"])
+        left = (
+            left
+            .join(
+                t4,
+                (col("l.cmarch") == "6") & (col("l.cdnaf03_cli") == col("_cli_naf03_key")),
+                how="left"
+            )
+        )
+    else:
+        left = left.withColumn("_cli_naf03_isic", lit(None).cast("string"))
+
+    # 4) CLI NAF08 (t5)
+    if df_naf08 is not None and set(["cdnaf_2008", "isic_code"]).issubset(set(df_naf08.columns)):
+        t5 = df_naf08.select(
+            col("cdnaf_2008").alias("_cli_naf08_key"),
+            col("isic_code").alias("_cli_naf08_isic")
+        ).dropDuplicates(["_cli_naf08_key"])
+        left = (
+            left
+            .join(
+                t5,
+                (col("l.cmarch") == "6") & (col("l.cdnaf08_w6") == col("_cli_naf08_key")),
+                how="left"
+            )
+        )
+    else:
+        left = left.withColumn("_cli_naf08_isic", lit(None).cast("string"))
+
+    # Build ISIC_CODE_TEMP with SAS priority:
+    #   PTF NAF08 (t3) → PTF NAF03 (t2) → CLI NAF03 (t4) → CLI NAF08 (t5) → "" (SAS)
+    isic_temp = when(col("_ptf_naf08_isic").isNotNull(), col("_ptf_naf08_isic")) \
+        .otherwise(
+            when(col("_ptf_naf03_isic").isNotNull(), col("_ptf_naf03_isic"))
+            .otherwise(
+                when(col("_cli_naf03_isic").isNotNull(), col("_cli_naf03_isic"))
+                .otherwise(
+                    when(col("_cli_naf08_isic").isNotNull(), col("_cli_naf08_isic"))
+                    .otherwise(lit(None).cast("string"))  # SAS uses "", we prefer NULL to align with Spark NULL semantics
+                )
+            )
+        )
+
+    # Build ORIGINE_ISIC_TEMP consistently with the same cascade
+    origine_temp = when(col("_ptf_naf08_isic").isNotNull(), lit("NATIF")) \
+        .otherwise(
+            when(col("_ptf_naf03_isic").isNotNull(), lit("NAF03"))
+            .otherwise(
+                when(col("_cli_naf03_isic").isNotNull(), lit("CLI03"))
+                .otherwise(
+                    when(col("_cli_naf08_isic").isNotNull(), lit("CLI08"))
+                    .otherwise(lit(""))
+                )
+            )
+        )
+
+    out = (
+        left
+        .withColumn("isic_code_temp", isic_temp)
+        .withColumn("origine_isic_temp", origine_temp)
+        # Clean helper columns added by joins
+        .drop("_ptf_naf03_key", "_ptf_naf03_isic",
+              "_ptf_naf08_key", "_ptf_naf08_isic",
+              "_cli_naf03_key", "_cli_naf03_isic",
+              "_cli_naf08_key", "_cli_naf08_isic")
+    )
+
+    return out
+
+def join_isic_const_act(df: DataFrame, df_act: DataFrame) -> DataFrame:
+    """
+    SAS Section 3.4 — Activity contracts (CDNATP='R') mapping.
+    Adds *_CONST_R columns using a LEFT JOIN on ACTPRIN with cmarch='6' and cdnatp='R' in the ON clause.
+
+    Output columns created (matching SAS):
+      - cdnaf08_const_r
+      - cdnaf03_const_r
+      - cdtre_const_r
+      - cdisic_const_r
+
+    Behavior:
+      - If mapping is missing/unavailable, creates the columns as NULL (SAS-compatible).
+      - Only applies to construction (cmarch='6') and activity contracts (cdnatp='R').
+      - Does NOT overwrite any final ISIC fields here (finalization happens later).
+    """
+    # Ensure required left columns exist (Spark NULL behaves like SAS blanks for our purpose)
+    needed_left = ["actprin", "cmarch", "cdnatp"]
+    cur = df
+    for c in needed_left:
+        if c not in cur.columns:
+            cur = cur.withColumn(c, lit(None).cast("string"))
+
+    # If reference mapping is unavailable or incomplete, add NULL columns and return
+    required_right = {"actprin", "cdnaf08", "cdnaf03", "cdtre", "cdisic"}
+    if df_act is None or not required_right.issubset(set(df_act.columns)):
+        out = cur
+        if "cdnaf08_const_r" not in out.columns:
+            out = out.withColumn("cdnaf08_const_r", lit(None).cast("string"))
+        if "cdnaf03_const_r" not in out.columns:
+            out = out.withColumn("cdnaf03_const_r", lit(None).cast("string"))
+        if "cdtre_const_r" not in out.columns:
+            out = out.withColumn("cdtre_const_r", lit(None).cast("string"))
+        if "cdisic_const_r" not in out.columns:
+            out = out.withColumn("cdisic_const_r", lit(None).cast("string"))
+        return out
+
+    # Build join with SAS ON conditions (cmarch='6' and cdnatp='R')
+    left = cur.alias("l")
+    right = (
+        df_act
+        .select("actprin", "cdnaf08", "cdnaf03", "cdtre", "cdisic")
+        .dropDuplicates(["actprin"])
+        .alias("r")
+    )
+
+    join_cond = (
+        (col("l.actprin") == col("r.actprin")) &
+        (col("l.cmarch") == lit("6")) &
+        (col("l.cdnatp") == lit("R"))
+    )
+
+    joined = left.join(right, join_cond, how="left")
+
+    # Assign CONST_R columns only where SAS conditions hold and the right value is not null
+    out = (
+        joined
+        .withColumn(
+            "cdnaf08_const_r",
+            when(col("r.cdnaf08").isNotNull(), col("r.cdnaf08")).otherwise(lit(None).cast("string"))
+        )
+        .withColumn(
+            "cdnaf03_const_r",
+            when(col("r.cdnaf03").isNotNull(), col("r.cdnaf03")).otherwise(lit(None).cast("string"))
+        )
+        .withColumn(
+            "cdtre_const_r",
+            when(col("r.cdtre").isNotNull(), col("r.cdtre")).otherwise(lit(None).cast("string"))
+        )
+        .withColumn(
+            "cdisic_const_r",
+            when(col("r.cdisic").isNotNull(), col("r.cdisic")).otherwise(lit(None).cast("string"))
+        )
+        .drop(col("r.actprin"), col("r.cdnaf08"), col("r.cdnaf03"), col("r.cdtre"), col("r.cdisic"))
+    )
+
+    return out
+
+def compute_destination_isic(df: DataFrame) -> DataFrame:
+    """
+    SAS Section 3.5 — DESTI_ISIC assignment for construction site (chantier) contracts.
+
+    Rules (strict SAS):
+      - Apply only when cmarch='6' and cdnatp='C'
+      - cdprod='01059' -> DESTI_ISIC='VENTE'
+      - For cdprod in ('00548','01071') with an already available ISIC (from prior cascade),
+        keep existing ISIC: do not force a DESTI_ISIC value (leave null)
+      - Otherwise, parse DSTCSC to assign one of:
+        RESIDENTIEL, MAISON, INDUSTRIE, BUREAU, INDUSTRIE_LIGHT, COMMERCE,
+        HOPITAL, VOIRIE, AUTRES_GC, AUTRES_BAT, PHOTOV, NON_RESIDENTIEL, etc.
+      - If ISIC_CODE_TEMP is empty AND DESTI_ISIC is empty -> default to 'AUTRES_BAT'
+
+    Inputs expected on `df`:
+      - cmarch, cdnatp, cdprod, dstcsc
+      - isic_code_temp (from prior NAF cascade), isic_code_sui_temp (optional)
+
+    Output:
+      - Adds/overwrites 'desti_isic' (string)
+    """
+    # Ensure expected columns exist (Spark null-safe)
+    cur = df
+    required = ["cmarch", "cdnatp", "cdprod", "dstcsc", "isic_code_temp", "isic_code_sui_temp"]
+    for c in required:
+        if c not in cur.columns:
+            cur = cur.withColumn(c, lit(None).cast("string"))
+
+    is_construction_chantier = (col("cmarch") == "6") & (col("cdnatp") == "C")
+    has_existing_isic = col("isic_code_temp").isNotNull() | col("isic_code_sui_temp").isNotNull()
+    dst = upper(col("dstcsc"))
+
+    # Pattern cascade per SAS (PRXMATCH equivalents)
+    pattern_based = (
+        when(dst.rlike("(COLL)"),         lit("RESIDENTIEL"))
+        .when(dst.rlike("(MAISON)"),      lit("MAISON"))
+        .when(dst.rlike("(LOGE)"),        lit("RESIDENTIEL"))
+        .when(dst.rlike("(APPA)"),        lit("RESIDENTIEL"))
+        .when(dst.rlike("(HABIT)"),       lit("RESIDENTIEL"))
+        .when(dst.rlike("(INDUS)"),       lit("INDUSTRIE"))
+        .when(dst.rlike("(BUREAU)"),      lit("BUREAU"))
+        .when(dst.rlike("(STOCK)"),       lit("INDUSTRIE_LIGHT"))
+        .when(dst.rlike("(SUPPORT)"),     lit("INDUSTRIE_LIGHT"))
+        .when(dst.rlike("(COMMER)"),      lit("COMMERCE"))
+        .when(dst.rlike("(GARAGE)"),      lit("INDUSTRIE"))
+        .when(dst.rlike("(TELECOM)"),     lit("INDUSTRIE"))
+        .when(dst.rlike("(R\\+)"),        lit("RESIDENTIEL"))
+        .when(dst.rlike("(HOTEL)"),       lit("BUREAU"))
+        .when(dst.rlike("(TOURIS)"),      lit("BUREAU"))
+        .when(dst.rlike("(VAC)"),         lit("BUREAU"))
+        .when(dst.rlike("(LOIS)"),        lit("BUREAU"))
+        .when(dst.rlike("(AGRIC)"),       lit("INDUSTRIE_LIGHT"))
+        .when(dst.rlike("(CLINI )"),      lit("HOPITAL"))
+        .when(dst.rlike("(HOP)"),         lit("HOPITAL"))
+        .when(dst.rlike("(HOSP)"),        lit("HOPITAL"))
+        .when(dst.rlike("(RESID)"),       lit("RESIDENTIEL"))
+        .when(dst.rlike("(CIAL)"),        lit("COMMERCE"))
+        .when(dst.rlike("(SPOR)"),        lit("COMMERCE"))
+        .when(dst.rlike("(ECOL)"),        lit("BUREAU"))
+        .when(dst.rlike("(ENSEI)"),       lit("BUREAU"))
+        .when(dst.rlike("(CHIR)"),        lit("HOPITAL"))
+        .when(dst.rlike("(BAT)"),         lit("MAISON"))
+        .when(dst.rlike("(INDIV)"),       lit("MAISON"))
+        .when(dst.rlike("(VRD)"),         lit("VOIRIE"))
+        .when(dst.rlike("(NON SOUMIS)"),  lit("AUTRES_GC"))
+        .when(dst.rlike("(SOUMIS)"),      lit("AUTRES_BAT"))
+        .when(dst.rlike("(PHOTOV)"),      lit("PHOTOV"))
+        .when(dst.rlike("(PARK)"),        lit("VOIRIE"))
+        .when(dst.rlike("(STATIONNEMENT)"), lit("VOIRIE"))
+        .when(dst.rlike("(MANEGE)"),      lit("NON_RESIDENTIEL"))
+        .when(dst.rlike("(MED)"),         lit("BUREAU"))
+        .when(dst.rlike("(BANC)"),        lit("BUREAU"))
+        .when(dst.rlike("(BANQ)"),        lit("BUREAU"))
+        .when(dst.rlike("(AGENCE)"),      lit("BUREAU"))
+        .when(dst.rlike("(CRECHE)"),      lit("BUREAU"))
+        .when(dst.rlike("(EHPAD)"),       lit("RESIDENTIEL"))
+        .when(dst.rlike("(ENTREPOT)"),    lit("INDUSTRIE_LIGHT"))
+        .when(dst.rlike("(HANGAR)"),      lit("INDUSTRIE_LIGHT"))
+        .when(dst.rlike("(AQUAT)"),       lit("COMMERCE"))
+        .when(dst.rlike("(LGTS)"),        lit("RESIDENTIEL"))
+        .when(dst.rlike("(LOGTS)"),       lit("RESIDENTIEL"))
+        .when(dst.rlike("(LOGS)"),        lit("RESIDENTIEL"))
+    )
+
+    # Numeric code mapping per SAS (exact groupings)
+    num_code_based = (
+        when(col("dstcsc").isin("01", "02", "03", "03+22", "04", "06", "08", "1", "2", "3", "4", "6", "8"),
+             lit("RESIDENTIEL"))
+        .when(col("dstcsc") == "22", lit("MAISON"))
+        .when(col("dstcsc").isin("27", "99"), lit("AUTRES_GC"))
+        .when(col("dstcsc").isin("05", "07", "09", "10", "13", "14", "16", "5", "7", "9"),
+             lit("BUREAU"))
+        .when(col("dstcsc").isin("17", "23"), lit("COMMERCE"))
+        .when(col("dstcsc") == "15", lit("HOPITAL"))
+        .when(col("dstcsc") == "25", lit("STADE"))
+        .when(col("dstcsc").isin("12", "18", "19"), lit("INDUSTRIE"))
+        .when(col("dstcsc").isin("11", "20", "21"), lit("INDUSTRIE_LIGHT"))
+        .when(col("dstcsc").isin("24", "26", "28"), lit("VOIRIE"))
+    )
+
+    # Start with a NULL desti_isic
+    cur = cur.withColumn("desti_isic", lit(None).cast("string"))
+
+    # Special product 01059: set VENTE (only for construction chantier)
+    cur = cur.withColumn(
+        "desti_isic",
+        when(is_construction_chantier & (col("cdprod") == "01059"), lit("VENTE"))
+        .otherwise(col("desti_isic"))
+    )
+
+    # For other chantier contracts (excluding 01059, and excluding 00548/01071 with existing ISIC):
+    eligible_for_parsing = (
+        is_construction_chantier &
+        (col("cdprod") != "01059") &
+        ~( (col("cdprod").isin("00548", "01071")) & has_existing_isic )
+    )
+
+    # Apply pattern parsing first
+    cur = cur.withColumn(
+        "desti_isic",
+        when(
+            eligible_for_parsing & col("desti_isic").isNull() & col("dstcsc").isNotNull(),
+            pattern_based
+        ).otherwise(col("desti_isic"))
+    )
+
+    # Then apply numeric code fallback (still only if not set)
+    cur = cur.withColumn(
+        "desti_isic",
+        when(
+            eligible_for_parsing & col("desti_isic").isNull() & col("dstcsc").isNotNull(),
+            num_code_based
+        ).otherwise(col("desti_isic"))
+    )
+
+    # Final default: if no ISIC found and desti_isic still empty -> 'AUTRES_BAT'
+    # (SAS: if ISIC_CODE_TEMP="" and DESTI_ISIC="" then "AUTRES_BAT")
+    cur = cur.withColumn(
+        "desti_isic",
+        when(
+            is_construction_chantier &
+            col("desti_isic").isNull() &
+            col("isic_code_temp").isNull(),
+            lit("AUTRES_BAT")
+        ).otherwise(col("desti_isic"))
+    )
+
+    return cur
+
+def join_isic_const_cht(df: DataFrame, df_cht: DataFrame) -> DataFrame:
+    """
+    SAS Section 3.6 — Construction site (CHT) ISIC mapping.
+    
+    Applies mapping for chantier contracts using DESTI_ISIC categories.
+
+    SAS logic replicated exactly:
+      LEFT JOIN mapping_isic_const_cht
+        ON (l.desti_isic = r.desti_isic AND l.cmarch='6' AND l.cdnatp='C')
+
+    Produces the following TEMP-like columns:
+      - cdnaf08_const_c
+      - cdnaf03_const_c
+      - cdtre_const_c
+      - cdisic_const_c
+
+    These columns are NOT final. Final overwrite happens later (Section 4).
+    """
+
+    # Ensure required columns exist on the left side
+    needed_left = ["desti_isic", "cmarch", "cdnatp"]
+    cur = df
+    for c in needed_left:
+        if c not in cur.columns:
+            cur = cur.withColumn(c, lit(None).cast("string"))
+
+    # If mapping table is missing, create NULL CONST_C columns and return
+    required_right = {"desti_isic", "cdnaf08", "cdnaf03", "cdtre", "cdisic"}
+    if df_cht is None or not required_right.issubset(set(df_cht.columns)):
+        out = cur
+        for cname in ["cdnaf08_const_c", "cdnaf03_const_c", "cdtre_const_c", "cdisic_const_c"]:
+            if cname not in out.columns:
+                out = out.withColumn(cname, lit(None).cast("string"))
+        return out
+
+    # Prepare reference table
+    right = (
+        df_cht
+        .select(
+            col("desti_isic"),
+            col("cdnaf08").alias("r_cdnaf08"),
+            col("cdnaf03").alias("r_cdnaf03"),
+            col("cdtre").alias("r_cdtre"),
+            col("cdisic").alias("r_cdisic")
+        )
+        .dropDuplicates(["desti_isic"])
+        .alias("r")
+    )
+
+    left = cur.alias("l")
+
+    # The exact SAS ON condition:
+    join_cond = (
+        (col("l.desti_isic") == col("r.desti_isic")) &
+        (col("l.cmarch") == lit("6")) &
+        (col("l.cdnatp") == lit("C"))
+    )
+
+    joined = left.join(right, join_cond, how="left")
+
+    # Assign CONST_C columns only if right-side value is present
+    out = (
+        joined
+        .withColumn(
+            "cdnaf08_const_c",
+            when(col("r_cdnaf08").isNotNull(), col("r_cdnaf08")).otherwise(lit(None).cast("string"))
+        )
+        .withColumn(
+            "cdnaf03_const_c",
+            when(col("r_cdnaf03").isNotNull(), col("r_cdnaf03")).otherwise(lit(None).cast("string"))
+        )
+        .withColumn(
+            "cdtre_const_c",
+            when(col("r_cdtre").isNotNull(), col("r_cdtre")).otherwise(lit(None).cast("string"))
+        )
+        .withColumn(
+            "cdisic_const_c",
+            when(col("r_cdisic").isNotNull(), col("r_cdisic")).otherwise(lit(None).cast("string"))
+        )
+        # Drop mapping columns
+        .drop("r_cdnaf08", "r_cdnaf03", "r_cdtre", "r_cdisic", "r.desti_isic")
+    )
+
+    return out
+
+
+def finalize_isic_codes(df: DataFrame) -> DataFrame:
+    """
+    SAS Section 4 — Finalization of ISIC codes.
+    
+    Applies final overwrite rules based on contract type (ACT/CHT)
+    using *_CONST_R and *_CONST_C columns.
+    
+    Produces FINAL columns:
+        cdnaf2008
+        cdnaf
+        cdtre
+        destinat_isic
+        isic_code
+        origine_isic
+        isic_code_sui
+
+    Drops TEMP columns afterwards.
+    """
+
+    cur = df
+
+    # Ensure required columns exist
+    temp_cols = [
+        "cdnaf2008_temp", "cdnaf03_temp", "cdtre_temp",
+        "isic_code_temp", "origine_isic_temp", "desti_isic_temp",
+        "isic_code_sui_temp"
+    ]
+    for c in temp_cols:
+        if c not in cur.columns:
+            cur = cur.withColumn(c, lit(None).cast("string"))
+
+    # Helper: does the CONST_R/C exist?
+    for c in [
+        "cdnaf08_const_r", "cdnaf03_const_r", "cdtre_const_r", "cdisic_const_r",
+        "cdnaf08_const_c", "cdnaf03_const_c", "cdtre_const_c", "cdisic_const_c"
+    ]:
+        if c not in cur.columns:
+            cur = cur.withColumn(c, lit(None).cast("string"))
+
+    # ==============================
+    # Activity contracts (CDNATP='R')
+    # ==============================
+    cond_act = (
+        (col("cmarch") == "6") &
+        (col("cdnatp") == "R") &
+        col("cdisic_const_r").isNotNull()
+    )
+
+    cur = (
+        cur
+        .withColumn(
+            "cdnaf2008_temp",
+            when(cond_act, col("cdnaf08_const_r")).otherwise(col("cdnaf2008_temp"))
+        )
+        .withColumn(
+            "cdnaf_temp",   # Equivalent to SAS’s CDNAF assignment
+            when(cond_act, col("cdnaf03_const_r")).otherwise(col("cdnaf_temp"))
+        )
+        .withColumn(
+            "cdtre_temp",
+            when(cond_act, col("cdtre_const_r")).otherwise(col("cdtre_temp"))
+        )
+        .withColumn(
+            "desti_isic_temp",
+            when(cond_act, lit(None).cast("string")).otherwise(col("desti_isic_temp"))
+        )
+        .withColumn(
+            "isic_code_temp",
+            when(cond_act, col("cdisic_const_r")).otherwise(col("isic_code_temp"))
+        )
+        .withColumn(
+            "origine_isic_temp",
+            when(cond_act, lit("NCLAT")).otherwise(col("origine_isic_temp"))
+        )
+    )
+
+    # ==============================
+    # Construction-site contracts (CDNATP='C')
+    # ==============================
+    cond_cht = (
+        (col("cmarch") == "6") &
+        (col("cdnatp") == "C") &
+        col("cdisic_const_c").isNotNull()
+    )
+
+    cur = (
+        cur
+        .withColumn(
+            "cdnaf2008_temp",
+            when(cond_cht, col("cdnaf08_const_c")).otherwise(col("cdnaf2008_temp"))
+        )
+        .withColumn(
+            "cdnaf_temp",
+            when(cond_cht, col("cdnaf03_const_c")).otherwise(col("cdnaf_temp"))
+        )
+        .withColumn(
+            "cdtre_temp",
+            when(cond_cht, col("cdtre_const_c")).otherwise(col("cdtre_temp"))
+        )
+        .withColumn(
+            "desti_isic_temp",
+            when(cond_cht, col("desti_isic")).otherwise(col("desti_isic_temp"))
+        )
+        .withColumn(
+            "isic_code_temp",
+            when(cond_cht, col("cdisic_const_c")).otherwise(col("isic_code_temp"))
+        )
+        .withColumn(
+            "origine_isic_temp",
+            when(cond_cht, lit("DESTI")).otherwise(col("origine_isic_temp"))
+        )
+    )
+
+    # Build final output fields exactly as SAS does
+    cur = (
+        cur
+        .withColumn("cdnaf2008", col("cdnaf2008_temp"))
+        .withColumn("cdnaf", col("cdnaf_temp"))
+        .withColumn("cdtre", col("cdtre_temp"))
+        .withColumn("isic_code", col("isic_code_temp"))
+        .withColumn("origine_isic", col("origine_isic_temp"))
+        .withColumn("destinat_isic", col("desti_isic_temp"))
+        .withColumn("isic_code_sui", col("isic_code_sui_temp"))
+    )
+
+    # Drop TEMP columns (SAS removes these)
+    drop_list = [
+        "cdnaf2008_temp", "cdnaf_temp", "cdtre_temp",
+        "isic_code_temp", "origine_isic_temp", "desti_isic_temp",
+        "isic_code_sui_temp",
+
+        "cdnaf08_const_r", "cdnaf03_const_r", "cdtre_const_r", "cdisic_const_r",
+        "cdnaf08_const_c", "cdnaf03_const_c", "cdtre_const_c", "cdisic_const_c"
+    ]
+
+    for c in drop_list:
+        if c in cur.columns:
+            cur = cur.drop(c)
+
+    return cur
+
+def join_isic_hazard_grades(df: DataFrame, df_hazard: DataFrame) -> DataFrame:
+    """
+    SAS Section 5 — Join hazard grades based on final ISIC code.
+    
+    Joins hazard grades using:
+        LEFT JOIN df_hazard ON df_hazard.isic_code = df.isic_code
+    
+    Produces TEMP columns as SAS does:
+        hazard_grades_fire_temp
+        hazard_grades_bi_temp
+        hazard_grades_rca_temp
+        hazard_grades_rce_temp
+        hazard_grades_trc_temp
+        hazard_grades_rcd_temp
+        hazard_grades_do_temp
+
+    Notes:
+      - If hazard table missing, create all hazard TEMP columns as NULL.
+      - Join uses FINAL isic_code (SAS uses ISIC_CODE_TEMP before finalization).
+        Our pipeline finalizes ISIC before hazard join, but semantically equivalent
+        because final ISIC_CODE == ISIC_CODE_TEMP after finalization.
+    """
+
+    # If hazard reference missing, create empty hazard TEMP columns
+    if df_hazard is None or "isic_code" not in df_hazard.columns:
+        out = df
+        for cname in [
+            "hazard_grades_fire_temp",
+            "hazard_grades_bi_temp",
+            "hazard_grades_rca_temp",
+            "hazard_grades_rce_temp",
+            "hazard_grades_trc_temp",
+            "hazard_grades_rcd_temp",
+            "hazard_grades_do_temp",
+        ]:
+            if cname not in out.columns:
+                out = out.withColumn(cname, lit(None).cast("string"))
+        return out
+
+    # Prepare hazard reference table
+    hazard_cols = [
+        "isic_code",
+        "hazard_grades_fire",
+        "hazard_grades_bi",
+        "hazard_grades_rca",
+        "hazard_grades_rce",
+        "hazard_grades_trc",
+        "hazard_grades_rcd",
+        "hazard_grades_do",
+    ]
+
+    available_cols = [c for c in hazard_cols if c in df_hazard.columns]
+
+    right = df_hazard.select(*available_cols).alias("h")
+    left = df.alias("l")
+
+    # SAS join condition: t2.ISIC_CODE = final ISIC_CODE
+    join_cond = col("l.isic_code") == col("h.isic_code")
+
+    joined = left.join(right, join_cond, how="left")
+
+    # Build TEMP hazard columns
+    out = (
+        joined
+        .withColumn("hazard_grades_fire_temp", col("h.hazard_grades_fire"))
+        .withColumn("hazard_grades_bi_temp", col("h.hazard_grades_bi"))
+        .withColumn("hazard_grades_rca_temp", col("h.hazard_grades_rca"))
+        .withColumn("hazard_grades_rce_temp", col("h.hazard_grades_rce"))
+        .withColumn("hazard_grades_trc_temp", col("h.hazard_grades_trc"))
+        .withColumn("hazard_grades_rcd_temp", col("h.hazard_grades_rcd"))
+        .withColumn("hazard_grades_do_temp", col("h.hazard_grades_do"))
+        .drop("h.isic_code",
+              "h.hazard_grades_fire",
+              "h.hazard_grades_bi",
+              "h.hazard_grades_rca",
+              "h.hazard_grades_rce",
+              "h.hazard_grades_trc",
+              "h.hazard_grades_rcd",
+              "h.hazard_grades_do")
+    )
+
+    return out
+
+def drop_isic_temp_columns(df: DataFrame) -> DataFrame:
+    """
+    Final SAS cleanup step — remove all temporary and intermediate ISIC columns.
+
+    SAS drops:
+      - *_CONST_R
+      - *_CONST_C
+      - *_TEMP
+      - DESTI_ISIC (SAS keeps DESTINAT_ISIC instead)
+      - any helper join columns
+
+    We replicate the exact list from CODIFICATION_ISIC_CONSTRUCTION.sas.
+    """
+
+    to_drop = [
+        # CONST R
+        "cdnaf08_const_r", "cdnaf03_const_r", "cdtre_const_r", "cdisic_const_r",
+        # CONST C
+        "cdnaf08_const_c", "cdnaf03_const_c", "cdtre_const_c", "cdisic_const_c",
+
+        # TEMP main fields
+        "cdnaf2008_temp", "cdnaf_temp", "cdtre_temp",
+        "isic_code_temp", "origine_isic_temp", "desti_isic_temp",
+        "isic_code_sui_temp",
+
+        # Hazard TEMP fields
+        "hazard_grades_fire_temp",
+        "hazard_grades_bi_temp",
+        "hazard_grades_rca_temp",
+        "hazard_grades_rce_temp",
+        "hazard_grades_trc_temp",
+        "hazard_grades_rcd_temp",
+        "hazard_grades_do_temp",
+
+        # DESTI_ISIC (raw chantier category — final output uses DESTINAT_ISIC)
+        "desti_isic",
+    ]
+
+    cur = df
+    for c in to_drop:
+        if c in cur.columns:
+            cur = cur.drop(c)
+
+    return cur
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+def load_sui_table(spark, config, vision: str, logger=None):
+    """
+    Charge la table IRD_SUIVI_ENGAGEMENTS pour la vision donnée.
+    Reproduit le comportement SAS : si la vision n'existe pas, on peut fallback à 'ref'.
+
+    Retourne un DataFrame avec :
+      - nopol
+      - cdprod
+      - cdnaf08
+      - cdisic
+    """
+    from utils.processor_helpers import get_bronze_reader
+    from pyspark.sql.functions import col
+
+    reader = get_bronze_reader(SimpleNamespace(spark=spark, config=config, logger=logger))
+
     try:
         df_sui = reader.read_file_group("ird_suivi_engagements", vision)
-        if df_sui is not None:  # OPTIMIZED: Removed count() check
-            df = df.join(
-                df_sui.select("nopol", "cdprod",
-                             col("cdnaf08").alias("cdnaf08_sui"),  # Production uses CDNAF08
-                             col("cdisic").alias("cdisic_sui")),
-                on=["nopol", "cdprod"],
-                how="left"
-            )
-            if logger:
-                logger.debug("Joined IRD_SUIVI_ENGAGEMENTS")
     except Exception as e:
         if logger:
-            logger.warning(f"IRD_SUIVI_ENGAGEMENTS not available: {e}")
-
-    # CRITICAL: Use SELECT to FORCE column creation (matching SAS lines 88-90)
-    # withColumn doesn't work with Spark lazy evaluation - must use select()
-    df = df.select(
-        "*",
-        lit(None).cast("string").alias("cdnaf2008"),
-        lit(None).cast("string").alias("desti_isic"),  # Internal name
-        lit(None).cast("string").alias("cdisic")
-    )
-
-    # 2. Join MAPPING_CDNAF2003_ISIC
-    try:
-        df_naf03 = reader.read_file_group("mapping_cdnaf2003_isic", vision)
-        if df_naf03 is not None:  # OPTIMIZED: Removed count() check
-            df = df.join(
-                df_naf03.select(
-                    col("cdnaf_2003").alias("cdnaf"),
-                    col("isic_code").alias("isic_from_naf03")
-                ),
-                on=["cdnaf"],
-                how="left"
-            )
+            logger.warning(f"SUI {vision} introuvable, tentative 'ref': {e}")
+        try:
+            df_sui = reader.read_file_group("ird_suivi_engagements", vision="ref")
+        except Exception as e2:
             if logger:
-                logger.debug("Joined MAPPING_CDNAF2003_ISIC")
-    except Exception as e:
-        if logger:
-            logger.warning(f"MAPPING_CDNAF2003_ISIC not available: {e}")
+                logger.error(f"SUI indisponible en 'ref' également : {e2}")
+            return None
 
-    # 3. Join MAPPING_CDNAF2008_ISIC
-    # Column cdnaf2008 now exists (created unconditionally after IRD join)
-    try:
-        df_naf08 = reader.read_file_group("mapping_cdnaf2008_isic", vision)
-        if df_naf08 is not None:  # OPTIMIZED: Removed count() check
-            df = df.join(
-                df_naf08.select(
-                    col("cdnaf_2008").alias("cdnaf2008"),
-                    col("isic_code").alias("isic_from_naf08")
-                ),
-                on=["cdnaf2008"],
-                how="left"
-            )
-            if logger:
-                logger.debug("Joined MAPPING_CDNAF2008_ISIC")
-    except Exception as e:
+    if df_sui is None or not df_sui.columns:
         if logger:
-            logger.warning(f"MAPPING_CDNAF2008_ISIC not available: {e}")
+            logger.warning("Table SUI vide ou sans colonnes")
+        return None
 
-    # 4. Join MAPPING_ISIC_CONST_ACT (for CDNATP='R')
+    # Colonnes SAS nécessaires (après lowercase du BronzeReader)
+    needed = []
+    if "nopol" in df_sui.columns:       needed.append(col("nopol"))
+    if "cdprod" in df_sui.columns:      needed.append(col("cdprod"))
+    if "cdnaf08" in df_sui.columns:     needed.append(col("cdnaf08"))
+    if "cdisic" in df_sui.columns:      needed.append(col("cdisic"))
+
+    if not needed:
+        if logger:
+            logger.warning("SUI ne contient aucune colonne utile pour ISIC")
+        return None
+
+    return df_sui.select(*needed).dropDuplicates(["nopol", "cdprod"])
+
+
+def load_mapping_const_act(spark, config, vision: str, logger=None):
+    """
+    Charge le mapping des contrats à activité (MAPPING_ISIC_CONST_ACT).
+    Colonnes nécessaires selon SAS :
+      - actprin
+      - cdnaf08
+      - cdnaf03
+      - cdtre
+      - cdisic
+    """
+    from utils.processor_helpers import get_bronze_reader
+    from pyspark.sql.functions import col
+
+    reader = get_bronze_reader(SimpleNamespace(spark=spark, config=config, logger=logger))
+
+    # Essayer vision → fallback ref
     try:
         df_act = reader.read_file_group("mapping_isic_const_act", vision)
-        if df_act is not None:  # OPTIMIZED: Removed count() check
-            df = df.join(
-                df_act.select(
-                    "actprin",
-                    col("cdnaf08").alias("cdnaf08_const_r"),  # Production uses CDNAF08
-                    col("cdtre").alias("cdtre_const_r"),
-                    col("cdnaf03").alias("cdnaf03_const_r"),  # Production uses CDNAF03
-                    col("cdisic").alias("cdisic_const_r")
-                ),
-                on=["actprin"],
-                how="left"
-            )
-            if logger:
-                logger.debug("Joined MAPPING_ISIC_CONST_ACT")
-    except Exception as e:
+    except:
         if logger:
-            logger.warning(f"MAPPING_ISIC_CONST_ACT not available: {e}")
+            logger.info("mapping_isic_const_act: fallback vision='ref'")
+        try:
+            df_act = reader.read_file_group("mapping_isic_const_act", vision="ref")
+        except:
+            return None
 
-    # 5. Join MAPPING_ISIC_CONST_CHT (for CDNATP='C')
-    # Column name: Reference table has 'desti_isic', we keep it for join compatibility
-    if "desti_isic" not in df.columns:
-        df = df.withColumn("desti_isic", lit(None).cast("string"))
-    
+    if df_act is None or not df_act.columns:
+        return None
+
+    cols = {}
+    for c in ["actprin", "cdnaf08", "cdnaf03", "cdtre", "cdisic"]:
+        if c in df_act.columns:
+            cols[c] = col(c)
+        elif c.upper() in df_act.columns:
+            cols[c] = col(c.upper()).alias(c)
+
+    if "actprin" not in cols:
+        return None  # impossible de joindre comme SAS
+
+    return df_act.select(*cols.values()).dropDuplicates(["actprin"])
+
+
+def load_mapping_const_cht(spark, config, vision: str, logger=None):
+    """
+    Charge le mapping ISIC des chantiers selon DESTI_ISIC.
+    Colonnes utiles :
+      - desti_isic
+      - cdnaf08
+      - cdnaf03
+      - cdtre
+      - cdisic
+    """
+    from utils.processor_helpers import get_bronze_reader
+    from pyspark.sql.functions import col
+
+    reader = get_bronze_reader(SimpleNamespace(spark=spark, config=config, logger=logger))
+
     try:
         df_cht = reader.read_file_group("mapping_isic_const_cht", vision)
-        if df_cht is not None:  # OPTIMIZED: Removed count() check
-            # Join on desti_isic (reference table column name)
-            df = df.join(
-                df_cht.select(
-                    col("desti_isic"),  # Reference table column
-                    col("cdnaf08").alias("cdnaf08_const_c"),
-                    col("cdtre").alias("cdtre_const_c"),
-                    col("cdnaf03").alias("cdnaf03_const_c"),
-                    col("cdisic").alias("cdisic_const_c")
-                ),
-                on=["desti_isic"],  # Join on original column name
-                how="left"
-            )
-            if logger:
-                logger.debug("Joined MAPPING_ISIC_CONST_CHT")
-    except Exception as e:
+    except:
         if logger:
-            logger.warning(f"MAPPING_ISIC_CONST_CHT not available: {e}")
+            logger.info("mapping_isic_const_cht: fallback 'ref'")
+        try:
+            df_cht = reader.read_file_group("mapping_isic_const_cht", vision="ref")
+        except:
+            return None
 
-    # 6. Join table_isic_tre_naf (HAZARD_GRADES)
-    # First ensure cdisic column exists
-    if "cdisic" not in df.columns:
-        df = df.withColumn("cdisic", lit(None).cast("string"))
-    
+    if df_cht is None or not df_cht.columns:
+        return None
+
+    cols = {}
+    for c in ["desti_isic", "cdnaf08", "cdnaf03", "cdtre", "cdisic"]:
+        if c in df_cht.columns:
+            cols[c] = col(c)
+        elif c.upper() in df_cht.columns:
+            cols[c] = col(c.upper()).alias(c)
+
+    if "desti_isic" not in cols:
+        return None
+
+    return df_cht.select(*cols.values()).dropDuplicates(["desti_isic"])
+
+
+def load_mapping_naf2003(spark, config, vision: str, logger=None):
+    from utils.processor_helpers import get_bronze_reader
+    from pyspark.sql.functions import col
+
+    reader = get_bronze_reader(SimpleNamespace(spark=spark, config=config, logger=logger))
+
     try:
-        df_hazard = reader.read_file_group("table_isic_tre_naf", vision)
-        if df_hazard is not None:  # OPTIMIZED: Removed count() check
-            df = df.join(
-                df_hazard.select(
-                    col("isic_code"),
-                    col("hazard_grades_fire").alias("hazard_grades_fire_isic"),
-                    col("hazard_grades_bi").alias("hazard_grades_bi_isic"),
-                    col("hazard_grades_rca").alias("hazard_grades_rca_isic"),
-                    col("hazard_grades_rce").alias("hazard_grades_rce_isic"),
-                    col("hazard_grades_trc").alias("hazard_grades_trc_isic"),
-                    col("hazard_grades_rcd").alias("hazard_grades_rcd_isic"),
-                    col("hazard_grades_do").alias("hazard_grades_do_isic")
-                ),
-                on=[df["cdisic"] == df_hazard["isic_code"]],
-                how="left"
-            )
-            if logger:
-                logger.debug("Joined table_isic_tre_naf for HAZARD_GRADES")
-    except Exception as e:
-        if logger:
-            logger.warning(f"table_isic_tre_naf not available: {e}")
+        df_naf03 = reader.read_file_group("mapping_cdnaf2003_isic", vision)
+    except:
+        try:
+            df_naf03 = reader.read_file_group("mapping_cdnaf2003_isic", vision="ref")
+        except:
+            return None
 
-    # 7. Join ISIC_LG_202306 (ISIC local → global)
+    if df_naf03 is None or not df_naf03.columns:
+        return None
+
+    if "cdnaf_2003" not in df_naf03.columns or "isic_code" not in df_naf03.columns:
+        return None
+
+    return df_naf03.select("cdnaf_2003", "isic_code").dropDuplicates(["cdnaf_2003"])
+
+
+def load_mapping_naf2008(spark, config, vision: str, logger=None):
+    from utils.processor_helpers import get_bronze_reader
+    from pyspark.sql.functions import col
+
+    reader = get_bronze_reader(SimpleNamespace(spark=spark, config=config, logger=logger))
+
     try:
-        df_isic_global = reader.read_file_group("isic_lg", "202306")  # Fixed version
-        if df_isic_global is not None:  # OPTIMIZED: Removed count() check
-            df = df.join(
-                df_isic_global.select(
-                    col("isic_local"),
-                    col("isic_global")
-                ),
-                on=[df["cdisic"] == df_isic_global["isic_local"]],  # Use cdisic not isic_code
-                how="left"
-            )
-            if logger:
-                logger.debug("Joined ISIC_LG for ISIC global mapping")
-    except Exception as e:
-        if logger:
-            logger.warning(f"ISIC_LG not available: {e}")
+        df_naf08 = reader.read_file_group("mapping_cdnaf2008_isic", vision)
+    except:
+        try:
+            df_naf08 = reader.read_file_group("mapping_cdnaf2008_isic", vision="ref")
+        except:
+            return None
 
-    if logger:
-        logger.success("All available ISIC reference tables joined")
+    if df_naf08 is None or not df_naf08.columns:
+        return None
 
-    return df
+    if "cdnaf_2008" not in df_naf08.columns or "isic_code" not in df_naf08.columns:
+        return None
+
+    return df_naf08.select("cdnaf_2008", "isic_code").dropDuplicates(["cdnaf_2008"])
 
 
-# =========================================================================
-# ISIC CODE CORRECTIONS
-# =========================================================================
-
-def apply_isic_corrections(df: DataFrame) -> DataFrame:
+def load_hazard_grades(spark, config, vision: str, logger=None):
     """
-    Apply manual corrections to known bad ISIC codes.
-    
-    These corrections fix errors in the reference mapping tables where
-    ISIC codes are incorrectly formatted or mapped.
-    
-    Based on: PTF_MVTS_CONSOLIDATION_MACRO.sas L576-590
-    
-    Args:
-        df: DataFrame with cdisic column
-        
-    Returns:
-        DataFrame with corrected cdisic values
-        
-    Example:
-        >>> from utils.transformations.isic_codification import apply_isic_corrections
-        >>> df = apply_isic_corrections(df)
+    Charge la table des hazard grades ISIC.
     """
-    if "cdisic" not in df.columns:
-        return df
-    
-    # Apply corrections in cascade (SAS L578-589)
-    # Note: Using trim() to handle both " 22000" and "22000" cases
-    df = df.withColumn(
-        "cdisic",
-        when(trim(col("cdisic")) == "22000", "022000")
-        .when(trim(col("cdisic")) == "24021", "024000")
-        .when(col("cdisic") == "242025", "242005")
-        .when(col("cdisic") == "329020", "329000")
-        .when(col("cdisic") == "731024", "731000")
-        .when(trim(col("cdisic")) == "81020", "081000")
-        .when(trim(col("cdisic")) == "81023", "081000")
-        .when(col("cdisic") == "981020", "981000")
-        .otherwise(col("cdisic"))
-    )
-    
-    return df
+    from utils.processor_helpers import get_bronze_reader
+    from pyspark.sql.functions import col
+
+    reader = get_bronze_reader(SimpleNamespace(spark=spark, config=config, logger=logger))
+
+    try:
+        df = reader.read_file_group("table_isic_tre_naf", vision)
+    except:
+        try:
+            df = reader.read_file_group("table_isic_tre_naf", "ref")
+        except:
+            return None
+
+    if df is None or not df.columns:
+        return None
+
+    cols = []
+    for c in df.columns:
+        if c.lower() in [
+            "isic_code",
+            "hazard_grades_fire",
+            "hazard_grades_bi",
+            "hazard_grades_rca",
+            "hazard_grades_rce",
+            "hazard_grades_trc",
+            "hazard_grades_rcd",
+            "hazard_grades_do"
+        ]:
+            cols.append(col(c).alias(c.lower()))
+
+    if "isic_code" not in [c._jc.toString().lower() for c in cols]:
+        return None
+
+    return df.select(*cols).dropDuplicates(["isic_code"])
 
 
-# Mapping of corrections for documentation/reference
-ISIC_CORRECTIONS = {
-    "22000": "022000",    # Missing leading zero
-    " 22000": "022000",   # Leading space + missing zero
-    "24021": "024000",    # Wrong code + missing zero
-    " 24021": "024000",   # Leading space + wrong code
-    "242025": "242005",   # Typo in last digit
-    "329020": "329000",   # Wrong precision
-    "731024": "731000",   # Wrong precision
-    "81020": "081000",    # Missing leading zero
-    " 81020": "081000",   # Leading space + missing zero
-    "81023": "081000",    # Wrong code + missing zero
-    " 81023": "081000",   # Leading space + wrong code
-    "981020": "981000",   # Wrong precision
-}
-
-
-# =========================================================================
-# PARTNERSHIP AND BERLIOZ FLAGS
-# =========================================================================
 
 def add_partenariat_berlitz_flags(df: DataFrame) -> DataFrame:
     """
-    Add partnership and Berlioz flags based on intermediary codes.
-    
-    Flags specific intermediaries with special business relationships:
-    - Berlioz: NOINT = '4A5766'
-    - Partnership: NOINT in ('4A6160', '4A6947', '4A6956')
-    
-    Based on: PTF_MVTS_CONSOLIDATION_MACRO.sas L596-600
-    
-    Args:
-        df: Input DataFrame with noint column (intermediary code)
-    
-    Returns:
-        DataFrame with top_berlioz and top_partenariat flag columns added
-        
-    Example:
-        >>> from utils.transformations.isic_codification import add_partenariat_berlitz_flags
-        >>> df = add_partenariat_berlitz_flags(df)
+    Flags Berlioz/Partenariat d'après NOINT (consolidation SAS).
     """
     if "noint" not in df.columns:
-        # If no noint column, add NULL flags
-        df = df.withColumn("top_berlioz", lit(0))
-        df = df.withColumn("top_partenariat", lit(0))
-        return df
-    
-    # Add Berlioz flag (SAS L598)
-    df = df.withColumn(
-        "top_berlioz",
-        when(col("noint") == "4A5766", lit(1)).otherwise(lit(0))
-    )
-    
-    # Add Partnership flag (SAS L599)
-    df = df.withColumn(
-        "top_partenariat",
-        when(col("noint").isin(["4A6160", "4A6947", "4A6956"]), lit(1)).otherwise(lit(0))
-    )
-    
+        return df.withColumn("top_berlioz", lit(0)).withColumn("top_partenariat", lit(0))
+
+    df = df.withColumn("top_berlioz", when(col("noint") == "4A5766", lit(1)).otherwise(lit(0)))
+    df = df.withColumn("top_partenariat", when(col("noint").isin(["4A6160", "4A6947", "4A6956"]), lit(1)).otherwise(lit(0)))
     return df

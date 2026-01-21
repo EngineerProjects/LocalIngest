@@ -57,8 +57,6 @@ class BronzeReader:
         Pipeline configuration accessor.
     reading_config_path : str, optional
         Path to reading_config.json. If None, loads from project config directory.
-    verify_schemas : bool, default False
-        Kept for backward compatibility (no-op in this baseline).
     logger : logging.Logger, optional
         Optional logger; if provided, the reader will log info/warnings.
 
@@ -70,17 +68,16 @@ class BronzeReader:
     * Dynamic columns can be injected based on the filename pattern (vectorized by _source_file).
     """
 
+
     def __init__(
         self,
         spark: SparkSession,
         config: ConfigLoader,
         reading_config_path: Optional[str] = None,
-        verify_schemas: bool = False,
         logger=None
     ):
         self.spark = spark
         self.config = config
-        self.verify_schemas = verify_schemas  # no-op in this baseline (kept for compatibility)
         self.logger = logger
 
         # Load reading configuration
@@ -88,7 +85,8 @@ class BronzeReader:
             project_root = Path(__file__).parent.parent
             reading_config_path = project_root / "config" / "reading_config.json"
 
-        with open(reading_config_path, 'r', encoding='LATIN9') as f:
+        # ✅ Use UTF-8 (safer for JSON)
+        with open(reading_config_path, 'r', encoding='utf-8') as f:
             self.reading_config = json.load(f)
 
         # Schema registry
@@ -106,7 +104,7 @@ class BronzeReader:
     ) -> DataFrame:
         """
         Read a file group from the bronze layer with:
-        lowercasing → union → SAS cleanup → cast (optional) → filters (optional).
+        lowercasing → per-fragment → SAS cleanup → cast (optional) → filters (optional) → union.
 
         Parameters
         ----------
@@ -129,6 +127,7 @@ class BronzeReader:
         FileNotFoundError
             If no files matching the patterns are found in the bronze layer.
         """
+
         if file_group not in self.reading_config['file_groups']:
             raise ValueError(f"File group '{file_group}' not found in reading_config.json")
 
@@ -151,7 +150,7 @@ class BronzeReader:
         schema = self.get_schema(schema_name) if schema_name else None
 
         # -------------------------------------------
-        # 1) Read all fragments RAW (no cast) + _source_file + dynamic columns
+        # 1) Read fragments RAW (no cast), add _source_file, dynamic columns
         # -------------------------------------------
         fragments: List[DataFrame] = []
 
@@ -174,8 +173,22 @@ class BronzeReader:
                 if dynamic_columns:
                     df_part = self._apply_dynamic_columns(df_part, dynamic_columns)
 
-                # Ensure lowercasing (already done in _read_by_format; re-assert here if needed)
+                # Ensure lowercase (already done in _read_by_format; re-assert here if needed)
                 df_part = lowercase_all_columns(df_part)
+
+                # -------------------------------------------
+                # 2) CLEAN + CAST + FILTERS **PER FRAGMENT** (SAS WHERE per SELECT)
+                # -------------------------------------------
+                df_part = self._clean_sas_nulls(df_part)
+
+                if schema:
+                    df_part = self._safe_cast(df_part, schema)
+
+                if filters:
+                    df_part = self._apply_read_filters(df_part, filters)
+
+                if custom_filters:
+                    df_part = self._apply_read_filters(df_part, custom_filters)
 
                 fragments.append(df_part)
 
@@ -190,33 +203,15 @@ class BronzeReader:
             )
 
         # -------------------------------------------
-        # 2) UNION all fragments
+        # 3) UNION all **already filtered** fragments
         # -------------------------------------------
         df = fragments[0]
         for nxt in fragments[1:]:
             df = df.unionByName(nxt, allowMissingColumns=True)
 
-        # -------------------------------------------
-        # 3) CLEAN (SAS → NULL) once, string columns only
-        # -------------------------------------------
-        df = self._clean_sas_nulls(df)
-
-        # -------------------------------------------
-        # 4) CAST once (if schema provided)
-        # -------------------------------------------
-        if schema:
-            df = self._safe_cast(df, schema)
-
-        # -------------------------------------------
-        # 5) FILTERS once (after clean/cast)
-        # -------------------------------------------
-        if filters:
-            df = self._apply_read_filters(df, filters)
-
-        if custom_filters:
-            df = self._apply_read_filters(df, custom_filters)
-
+        # Nothing else to do (clean/cast/filters done per fragment)
         return df
+
 
     def list_available_file_groups(self) -> List[str]:
         """

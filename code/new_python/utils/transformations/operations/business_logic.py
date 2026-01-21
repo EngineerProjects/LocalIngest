@@ -1,458 +1,270 @@
+# -*- coding: utf-8 -*-
 """
 Business logic transformations for Construction Data Pipeline.
 
-Handles domain-specific calculations:
-- Capital extraction (SMP, LCI, PERTE_EXP, RISQUE_DIRECT)
-- Movement indicators (AFN, RES, RPT, RPC, NBPTF)
-- Exposure calculations (expo_ytd, expo_gli)
-- Business filters (construction market, policy exclusions)
+This module provides:
+- Capital extraction from labeled capital fields (AZ side, LBCAPI*/MTCAPI*)
+- Movement indicators:
+    * AZ:    calculate_az_movements (AFN, RES, RPT, RPC, NBPTF)
+    * AZEC:  calculate_azec_movements (NBAFN, NBRES, NBPTF)
+- Exposure calculations (YTD, GLI) with a column mapping (AZ / AZEC)
+- Suspension calculation (AZEC only)
+
+Design notes
+------------
+- AZ and AZEC movement logics are different and MUST be separate functions.
+- Date literals are always converted to DateType (SAS uses numeric dates).
+- No reliance on eval() outside controlled, explicit transformations.
+- All outputs use lowercase column names to ensure consistency.
 """
 
-from pyspark.sql import DataFrame # type: ignore
-from pyspark.sql.functions import ( # type: ignore
-    col, when, lit, coalesce, upper, greatest, least,
-    year, month, datediff, date_sub
-)
-from pyspark.sql.types import DoubleType, IntegerType # type: ignore
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from functools import reduce
 
+from pyspark.sql import DataFrame
+from pyspark.sql.types import DoubleType, IntegerType
+from pyspark.sql.functions import (
+    col, when, lit, coalesce, upper, greatest, least, to_date,
+    year as year_func, month as month_func, datediff, date_add, date_sub
+)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _to_date_lit(d: str):
+    """Return a typed date literal (yyyy-MM-dd) as a PySpark Column."""
+    return to_date(lit(d), 'yyyy-MM-dd')
+
+def _get_date_columns_from_context(dates: Dict[str, str]) -> Dict[str, Any]:
+    """
+    Normalize date keys coming from helpers.compute_date_ranges() (lowercase).
+    Returns typed Spark date columns matching SAS naming.
+    """
+    return {
+        "DTFIN":    _to_date_lit(dates["dtfin"]),
+        "DTDEB_AN": _to_date_lit(dates["dtdeb_an"]),
+        "DTFINMN":  _to_date_lit(dates["dtfinmn"]),
+        "DTFINMN1": _to_date_lit(dates["dtfinmm1"]),
+    }
+
+# ---------------------------------------------------------------------------
+# Capitals (AZ – LBCAPI/MTCAPI scanning via config)
+# ---------------------------------------------------------------------------
 
 def extract_capitals(df: DataFrame, config: Dict[str, Dict]) -> DataFrame:
     """
-    Extract capital amounts by matching keywords in label columns.
+    Extract capital amounts scanning labeled fields (LBCAPIk / MTCAPIk) as in SAS.
 
-    This function implements the SAS capital extraction logic that loops through
-    14 MTCAPI/LBCAPI fields and extracts amounts based on label pattern matching.
+    The config format (per target column):
+    {
+      "perte_exp": {
+        "keywords": ["PERTE EXPLOITATION", "PERTES D'EXPLOITATION", ...],
+        "exclude_keywords": [],
+        "label_prefix": "lbcapi",
+        "amount_prefix": "mtcapi",
+        "num_indices": 14
+      },
+      ...
+    }
 
-    SAS Reference: PTF_MVTS_AZ_MACRO.sas lines 195-231
-    Logic: %Do k=1 %To 14; UPDATE WHERE index(lbcapi&k., "keyword") > 0
-
-    Searches label columns (e.g., lbcapi1-14) for specific keywords and extracts
-    corresponding amounts (e.g., mtcapi1-14). Uses FIRST MATCH strategy - once a
-    field matches, its amount is taken (mimics SAS UPDATE behavior).
-
-    Args:
-        df: Input DataFrame
-        config: Capital extraction configuration with structure:
-            {
-                'lci_100': {
-                    'keywords': ['LCI GLOBAL DU CONTRAT', 'CAPITAL REFERENCE OU LCI'],
-                    'exclude_keywords': [],  # Optional
-                    'label_prefix': 'lbcapi',
-                    'amount_prefix': 'mtcapi',
-                    'num_indices': 14
-                },
-                'smp_100': {
-                    'keywords': ['SMP GLOBAL DU CONTRAT', 'SMP RETENU'],
-                    'exclude_keywords': ['RISQUE DIRECT'],  # Exclude "SINIS MAX POSSIBLE RISQUE DIRECT"
-                    'label_prefix': 'lbcapi',
-                    'amount_prefix': 'mtcapi',
-                    'num_indices': 14
-                },
-                ...
-            }
-
-    Returns:
-        DataFrame with extracted capital columns (lowercase)
-
-    Example:
-        >>> from config.variables import CAPITAL_EXTRACTION_CONFIG
-        >>> df = extract_capitals(df, CAPITAL_EXTRACTION_CONFIG)
+    SAS behavior ("last write wins"):
+    - Iterate k = 1..14. If a label matches the keywords (case-insensitive)
+      and does not match any excluded keyword, assign MTCAPIk to the target.
+    - The last matching k overwrites previous results.
     """
     for target_col, extraction_config in config.items():
         keywords = extraction_config['keywords']
         exclude_keywords = extraction_config.get('exclude_keywords', [])
         label_prefix = extraction_config['label_prefix'].lower()
         amount_prefix = extraction_config['amount_prefix'].lower()
-        num_indices = extraction_config['num_indices']
+        num_indices = int(extraction_config['num_indices'])
 
-        # Build cascading when() expression for FIRST MATCH strategy
-        # This mimics SAS UPDATE behavior where first match wins
-        result_expr = lit(0).cast(DoubleType())
+        # Default (SAS initializes to 0)
+        result_expr = lit(0.0).cast(DoubleType())
 
-        # Loop backwards so earlier fields take precedence (SAS processes 1→14 with UPDATE)
-        for i in range(num_indices, 0, -1):
+        for i in range(1, num_indices + 1):
             label_col = f"{label_prefix}{i}"
             amount_col = f"{amount_prefix}{i}"
-
             if label_col not in df.columns or amount_col not in df.columns:
                 continue
 
-            # Check if label contains any keyword (case-insensitive)
-            keyword_matches = reduce(
-                lambda a, b: a | b,
-                [upper(col(label_col)).contains(kw.upper()) for kw in keywords]
-            )
+            kw_exprs = [upper(col(label_col)).contains(kw.upper()) for kw in keywords]
+            if not kw_exprs:
+                continue
+            match_expr = reduce(lambda a, b: a | b, kw_exprs)
 
-            # Exclude if contains any exclude keyword
             if exclude_keywords:
-                exclude_matches = reduce(
-                    lambda a, b: a | b,
-                    [upper(col(label_col)).contains(kw.upper()) for kw in exclude_keywords]
-                )
-                keyword_matches = keyword_matches & ~exclude_matches
+                ex_exprs = [upper(col(label_col)).contains(ek.upper()) for ek in exclude_keywords]
+                match_expr = match_expr & (~reduce(lambda a, b: a | b, ex_exprs))
 
-            # Build cascading when: if this field matches, use it, otherwise use accumulated result
-            result_expr = when(
-                keyword_matches,
-                coalesce(col(amount_col), lit(0))
-            ).otherwise(result_expr)
+            # "last write wins"
+            result_expr = when(match_expr, coalesce(col(amount_col), lit(0.0))).otherwise(result_expr)
 
         df = df.withColumn(target_col.lower(), result_expr)
 
     return df
 
 
-def calculate_movements(
+# ---------------------------------------------------------------------------
+# Movements — AZ
+# ---------------------------------------------------------------------------
+
+def calculate_az_movements(
     df: DataFrame,
     dates: Dict[str, str],
     annee: int,
-    column_mapping: Dict[str, str] = None
+    column_mapping: Optional[Dict[str, str]] = None
 ) -> DataFrame:
     """
-    Calculate movement indicators: AFN, RES, RPT, RPC, NBPTF.
+    Calculate AZ movement indicators (AFN, RES, RPT, RPC, NBPTF) exactly as SAS az_mvt_ptf.
 
-    Supports both AZ and AZEC data through column mapping configuration.
+    SAS references (Step 5):
+      - NBPTF: CSSSEG != '5' AND CDNATP in ('R','O')
+               AND ( (cdsitp='1' AND dtcrepol <= DTFIN) OR (cdsitp='3' AND dtresilp > DTFIN) )
+      - AFN:
+          (DTDEB_AN <= dteffan <= DTFIN AND DTDEB_AN <= dttraan <= DTFIN)
+        OR (DTDEB_AN <= dtcrepol <= DTFIN)
+        OR (year(dteffan) < year(DTFIN) AND DTDEB_AN <= dttraan <= DTFIN)
+      - RES (exclude chantiers):
+          CDNATP != 'C' AND cdsitp='3' AND
+          ( (DTDEB_AN <= dtresilp <= DTFIN)
+            OR (DTDEB_AN <= dttraar <= DTFIN AND dtresilp <= DTFIN) )
+      - RPC (replaced):
+          NBRES=1 + RP on any cdtypli* in year(DTFIN)
+      - RPT (replacing):
+          NBAFN=1 + RE on any cdtypli* in year(DTFIN)
 
-    Movement types:
-    - AFN (Affaires Nouvelles): New policies
-    - RES (Résiliations): Terminated policies
-    - RPT (Remplaçants): Replacement policies (new) - AZ only
-    - RPC (Remplacements): Replaced policies (old) - AZ only
-    - NBPTF: Portfolio count
-
-    Args:
-        df: Input DataFrame
-        dates: Date ranges from helpers.compute_date_ranges()
-        annee: Year as integer
-        column_mapping: Column mapping from variables.MOVEMENT_COLUMN_MAPPING
-
-    Returns:
-        DataFrame with movement columns added
-
-    Example:
-        >>> from config.variables import MOVEMENT_COLUMN_MAPPING
-        >>> df = calculate_movements(df, dates, 2025, MOVEMENT_COLUMN_MAPPING['az'])
+    Preconditions:
+      - 'primeto' exists. If not, will compute when 'mtprprto' and 'tx' present.
     """
-    from pyspark.sql.functions import year as year_func # type: ignore
+    # Column defaults (AZ schema)
+    creation_date   = "dtcrepol"
+    effective_date  = "dteffan"
+    termination_date= "dtresilp"
+    transfer_start  = "dttraan"
+    transfer_end    = "dttraar"
+    type_col1, type_col2, type_col3 = "cdtypli1", "cdtypli2", "cdtypli3"
+    type_date1, type_date2, type_date3 = "dttypli1", "dttypli2", "dttypli3"
 
-    if column_mapping is None:
-        from config.variables import MOVEMENT_COLUMN_MAPPING
-        column_mapping = MOVEMENT_COLUMN_MAPPING['az']
+    # Map overrides if provided
+    if column_mapping:
+        creation_date   = column_mapping.get('creation_date',   creation_date)
+        effective_date  = column_mapping.get('effective_date',  effective_date)
+        termination_date= column_mapping.get('termination_date',termination_date)
+        transfer_start  = column_mapping.get('transfer_start',  transfer_start)
+        transfer_end    = column_mapping.get('transfer_end',    transfer_end)
+        type_col1       = column_mapping.get('type_col1',       type_col1)
+        type_col2       = column_mapping.get('type_col2',       type_col2)
+        type_col3       = column_mapping.get('type_col3',       type_col3)
+        type_date1      = column_mapping.get('type_date1',      type_date1)
+        type_date2      = column_mapping.get('type_date2',      type_date2)
+        type_date3      = column_mapping.get('type_date3',      type_date3)
 
-    creation_date = column_mapping.get('creation_date')
-    effective_date = column_mapping.get('effective_date')
-    termination_date = column_mapping.get('termination_date')
-    transfer_start = column_mapping.get('transfer_start')
-    transfer_end = column_mapping.get('transfer_end')
-    type_col1 = column_mapping.get('type_col1')
-    type_col2 = column_mapping.get('type_col2')
-    type_col3 = column_mapping.get('type_col3')
-    type_date1 = column_mapping.get('type_date1')
-    type_date2 = column_mapping.get('type_date2')
-    type_date3 = column_mapping.get('type_date3')
+    # Ensure lowercase columns exist
+    for c in [creation_date, effective_date, termination_date, transfer_start, transfer_end,
+              type_col1, type_col2, type_col3, type_date1, type_date2, type_date3]:
+        # Create missing columns as NULL to avoid crashes (defensive)
+        if c and c not in df.columns:
+            df = df.withColumn(c, lit(None))
 
-    dtfin = dates['DTFIN']
-    dtdeb_an = dates['DTDEB_AN']
+    # Dates
+    d = _get_date_columns_from_context(dates)
+    dtfin, dtdeb_an = d["DTFIN"], d["DTDEB_AN"]
 
-    # Initialize movement columns (optimized: collect missing columns then add in one select)
-    missing_cols = {
-        col_name: lit(0)
-        for col_name in ['nbafn', 'nbres', 'nbrpt', 'nbrpc', 'nbptf',
-                         'primes_afn', 'primes_res', 'primes_rpt', 'primes_rpc', 'primes_ptf']
-        if col_name not in df.columns
-    }
-    if missing_cols:
-        df = df.select("*", *[expr.alias(name) for name, expr in missing_cols.items()])
+    # Ensure primeto
+    if "primeto" not in df.columns:
+        if "mtprprto" in df.columns and "tx" in df.columns:
+            df = df.withColumn("primeto", col("mtprprto") * (lit(1.0) - (col("tx") / 100.0)))
+        else:
+            df = df.withColumn("primeto", lit(0.0))
 
-    # AFN: New business
-    # CRITICAL: Add isNotNull checks to prevent NULL propagation (PySpark != SAS)
-    if creation_date and effective_date:
-        afn_cond = lit(False)
+    # Initialize outputs if missing
+    for c in ['nbafn','nbres','nbrpt','nbrpc','nbptf','primes_afn','primes_res','primes_rpt','primes_rpc','primes_ptf']:
+        if c not in df.columns:
+            df = df.withColumn(c, lit(0))
 
-        if transfer_start:
-            afn_cond = afn_cond | (
-                col(effective_date).isNotNull() & col(transfer_start).isNotNull() &
-                (col(effective_date) >= lit(dtdeb_an)) & (col(effective_date) <= lit(dtfin)) &
-                (col(transfer_start) >= lit(dtdeb_an)) & (col(transfer_start) <= lit(dtfin))
-            )
-
-        afn_cond = afn_cond | (
-            col(creation_date).isNotNull() &
-            (col(creation_date) >= lit(dtdeb_an)) & (col(creation_date) <= lit(dtfin))
+    # --- NBPTF ---
+    nbptf_cond = (
+        (col('cssseg') != '5') &
+        (col('cdnatp').isin('R', 'O')) &
+        (
+            ((col('cdsitp') == '1') & (col(creation_date) <= dtfin)) |
+            ((col('cdsitp') == '3') & (col(termination_date) >  dtfin))
         )
-
-        if transfer_start:
-            afn_cond = afn_cond | (
-                col(effective_date).isNotNull() & col(transfer_start).isNotNull() &
-                (year_func(col(effective_date)) < year_func(lit(dtfin))) &
-                (col(transfer_start) >= lit(dtdeb_an)) & (col(transfer_start) <= lit(dtfin))
-            )
-
-        if type_col1:
-            afn_cond = afn_cond & ~(
-                (col(type_col1) == "RE") | (col(type_col2) == "RE") | (col(type_col3) == "RE")
-            )
-
-        # Optimized: calculate nbafn and primes_afn together
-        nbafn_expr = when(afn_cond, lit(1)).otherwise(lit(0))
-        # Drop before redefining to avoid ambiguous reference
-        df = df.drop("nbafn", "primes_afn")
-        df = df.select(
-            "*",
-            nbafn_expr.alias("nbafn"),
-            # FIXED: Use afn_cond directly instead of comparing Column expression with literal
-            # Bug was: when(nbafn_expr == 1, ...) compares Column object, not evaluated value
-            when(afn_cond, col("primeto")).otherwise(lit(0)).alias("primes_afn")
-        )
-
-    # RES: Terminations
-    # CRITICAL FIX: SAS checks cdsitp='3' first (L269)
-    # CRITICAL: Add isNotNull checks to prevent NULL propagation (PySpark != SAS)
-    if termination_date:
-        # Base condition: must be terminated (cdsitp='3')
-        res_cond = col("cdsitp") == "3" if "cdsitp" in df.columns else lit(True)
-        
-        # Date conditions (at least one must be true)
-        date_cond = (
-            col(termination_date).isNotNull() &
-            (col(termination_date) >= lit(dtdeb_an)) & (col(termination_date) <= lit(dtfin))
-        )
-
-        if transfer_end:
-            date_cond = date_cond | (
-                col(transfer_end).isNotNull() & col(termination_date).isNotNull() &
-                (col(transfer_end) >= lit(dtdeb_an)) & (col(transfer_end) <= lit(dtfin)) &
-                (col(termination_date) <= lit(dtfin))
-            )
-        
-        # Combine: cdsitp='3' AND (date conditions)
-        res_cond = res_cond & date_cond
-
-        # Exclude replacement types
-        if type_col1:
-            res_cond = res_cond & ~(
-                (col(type_col1) == "RP") | (col(type_col2) == "RP") | (col(type_col3) == "RP")
-            )
-
-        # Exclude chantiers (construction sites)
-        if 'cdnatp' in df.columns:
-            res_cond = res_cond & (col("cdnatp") != "C")
-
-        # Optimized: calculate nbres and primes_res together
-        nbres_expr = when(res_cond, lit(1)).otherwise(lit(0))
-        # Drop before redefining to avoid ambiguous reference
-        df = df.drop("nbres", "primes_res")
-        df = df.select(
-            "*",
-            nbres_expr.alias("nbres"),
-            # FIXED: Use res_cond directly instead of comparing Column expression with literal
-            when(res_cond, col("primeto")).otherwise(lit(0)).alias("primes_res")
-        )
-
-    # RPT/RPC: Replacements (AZ only)
-    # SAS L272-286: If policy is AFN/RES with replacement type, mark as RPT/RPC and reset AFN/RES to 0
-    if type_col1 and type_date1:
-        # Build RPC condition: NBRES=1 and has RP type in current year
-        rpc_cond = (col("nbres") == 1) & (
-            ((col(type_col1) == "RP") & (year_func(col(type_date1)) == year_func(lit(dtfin)))) |
-            ((col(type_col2) == "RP") & (year_func(col(type_date2)) == year_func(lit(dtfin)))) |
-            ((col(type_col3) == "RP") & (year_func(col(type_date3)) == year_func(lit(dtfin))))
-        )
-
-        # Build RPT condition: NBAFN=1 and has RE type in current year
-        rpt_cond = (col("nbafn") == 1) & (
-            ((col(type_col1) == "RE") & (year_func(col(type_date1)) == year_func(lit(dtfin)))) |
-            ((col(type_col2) == "RE") & (year_func(col(type_date2)) == year_func(lit(dtfin)))) |
-            ((col(type_col3) == "RE") & (year_func(col(type_date3)) == year_func(lit(dtfin))))
-        )
-
-        # Step 1: Add nbrpc and nbrpt columns (these may already exist from initialization, so use withColumn to replace)
-        df = df.withColumn("nbrpc", when(rpc_cond, lit(1)).otherwise(lit(0))) \
-               .withColumn("nbrpt", when(rpt_cond, lit(1)).otherwise(lit(0))) \
-               .withColumn("primes_rpc", when(col("nbrpc") == 1, col("primeto")).otherwise(lit(0))) \
-               .withColumn("primes_rpt", when(col("nbrpt") == 1, col("primeto")).otherwise(lit(0)))
-        
-        # Step 2: Reset nbafn/nbres to 0 if they became replacements (SAS: UPDATE sets to 0)
-        df = df.withColumn("nbafn", when(col("nbrpt") == 1, lit(0)).otherwise(col("nbafn"))) \
-               .withColumn("nbres", when(col("nbrpc") == 1, lit(0)).otherwise(col("nbres"))) \
-               .withColumn("primes_afn", when(col("nbrpt") == 1, lit(0)).otherwise(col("primes_afn"))) \
-               .withColumn("primes_res", when(col("nbrpc") == 1, lit(0)).otherwise(col("primes_res")))
-    else:
-        # If no type columns, ensure nbrpt/nbrpc exist and are 0
-        df = df.withColumn("nbrpt", lit(0)) \
-               .withColumn("nbrpc", lit(0)) \
-               .withColumn("primes_rpt", lit(0)) \
-               .withColumn("primes_rpc", lit(0))
-
-    # NBPTF: Portfolio count
-    # CRITICAL: Add isNotNull checks to prevent NULL propagation (PySpark != SAS)
-    nbptf_cond = lit(False)
-
-    if 'cssseg' in df.columns and 'cdnatp' in df.columns and 'cdsitp' in df.columns:
-        nbptf_cond = (
-            (col('cssseg') != '5') &
-            (col('cdnatp').isin(['R', 'O'])) &
-            (
-                ((col('cdsitp') == '1') & col(creation_date).isNotNull() & (col(creation_date) <= lit(dtfin))) |
-                ((col('cdsitp') == '3') & col(termination_date).isNotNull() & (col(termination_date) > lit(dtfin)))
-            )
-        )
-    else:
-        nbptf_cond = (
-            (col("nbafn") == 0) & (col("nbres") == 0) &
-            (col("nbrpt") == 0) & (col("nbrpc") == 0)
-        )
-
-    # Optimized: calculate nbptf and primes_ptf together
-    nbptf_expr = when(nbptf_cond, lit(1)).otherwise(lit(0))
-    # Drop before redefining to avoid ambiguous reference
-    df = df.drop("nbptf", "primes_ptf")
-    df = df.select(
-        "*",
-        nbptf_expr.alias("nbptf"),
-        # FIXED: Use nbptf_cond directly instead of comparing Column expression with literal
-        when(nbptf_cond, col("primeto")).otherwise(lit(0)).alias("primes_ptf")
     )
+    df = df.withColumn("nbptf", when(nbptf_cond, lit(1)).otherwise(lit(0))) \
+           .withColumn("primes_ptf", when(col("nbptf") == 1, col("primeto")).otherwise(lit(0)))
+
+    # --- AFN ---
+    afn_cond = (
+        (
+            (col(effective_date).isNotNull()) &
+            (col(transfer_start).isNotNull()) &
+            (col(effective_date) >= dtdeb_an) & (col(effective_date) <= dtfin) &
+            (col(transfer_start) >= dtdeb_an) & (col(transfer_start) <= dtfin)
+        ) |
+        (
+            (col(creation_date).isNotNull()) &
+            (col(creation_date) >= dtdeb_an) & (col(creation_date) <= dtfin)
+        ) |
+        (
+            (col(effective_date).isNotNull()) &
+            (year_func(col(effective_date)) < year_func(dtfin)) &
+            (col(transfer_start).isNotNull()) &
+            (col(transfer_start) >= dtdeb_an) & (col(transfer_start) <= dtfin)
+        )
+    )
+    df = df.withColumn("nbafn", when(afn_cond, lit(1)).otherwise(lit(0))) \
+           .withColumn("primes_afn", when(col("nbafn") == 1, col("primeto")).otherwise(lit(0)))
+
+    # --- RES (exclude chantiers) ---
+    res_cond = (
+        (col("cdnatp") != "C") &
+        (col("cdsitp") == "3") &
+        (
+            ((col(termination_date).isNotNull()) &
+             (col(termination_date) >= dtdeb_an) & (col(termination_date) <= dtfin)) |
+            ((col(transfer_end).isNotNull()) &
+             (col(transfer_end) >= dtdeb_an) & (col(transfer_end) <= dtfin) &
+             (col(termination_date).isNotNull()) & (col(termination_date) <= dtfin))
+        )
+    )
+    df = df.withColumn("nbres", when(res_cond, lit(1)).otherwise(lit(0))) \
+           .withColumn("primes_res", when(col("nbres") == 1, col("primeto")).otherwise(lit(0)))
+
+    # --- RPC (replaced) ---
+    rpc_cond = (col("nbres") == 1) & (
+        ((col(type_col1) == "RP") & (year_func(col(type_date1)) == year_func(dtfin))) |
+        ((col(type_col2) == "RP") & (year_func(col(type_date2)) == year_func(dtfin))) |
+        ((col(type_col3) == "RP") & (year_func(col(type_date3)) == year_func(dtfin)))
+    )
+    df = df.withColumn("nbrpc", when(rpc_cond, lit(1)).otherwise(lit(0))) \
+           .withColumn("primes_rpc", when(col("nbrpc") == 1, col("primeto")).otherwise(lit(0))) \
+           .withColumn("nbres", when(col("nbrpc") == 1, lit(0)).otherwise(col("nbres"))) \
+           .withColumn("primes_res", when(col("nbrpc") == 1, lit(0)).otherwise(col("primes_res")))
+
+    # --- RPT (replacing) ---
+    rpt_cond = (col("nbafn") == 1) & (
+        ((col(type_col1) == "RE") & (year_func(col(type_date1)) == year_func(dtfin))) |
+        ((col(type_col2) == "RE") & (year_func(col(type_date2)) == year_func(dtfin))) |
+        ((col(type_col3) == "RE") & (year_func(col(type_date3)) == year_func(dtfin)))
+    )
+    df = df.withColumn("nbrpt", when(rpt_cond, lit(1)).otherwise(lit(0))) \
+           .withColumn("primes_rpt", when(col("nbrpt") == 1, col("primeto")).otherwise(lit(0))) \
+           .withColumn("nbafn", when(col("nbrpt") == 1, lit(0)).otherwise(col("nbafn"))) \
+           .withColumn("primes_afn", when(col("nbrpt") == 1, lit(0)).otherwise(col("primes_afn")))
 
     return df
 
 
-def calculate_exposures(
-    df: DataFrame,
-    dates: Dict[str, str],
-    annee: int,
-    column_mapping: Dict[str, str] = None
-) -> DataFrame:
-    """
-    Calculate exposure metrics: expo_ytd and expo_gli.
+# Backward-compatibility alias (AZ processors may import calculate_movements)
+calculate_movements = calculate_az_movements
 
-    expo_ytd: Year-to-date exposure (days in year / 365)
-    expo_gli: Monthly exposure (days in month / 30)
 
-    Args:
-        df: Input DataFrame
-        dates: Date ranges dictionary
-        annee: Year as integer
-        column_mapping: Column mapping from variables.EXPOSURE_COLUMN_MAPPING
-
-    Returns:
-        DataFrame with exposure columns added
-
-    Example:
-        >>> from config.variables import EXPOSURE_COLUMN_MAPPING
-        >>> df = calculate_exposures(df, dates, 2025, EXPOSURE_COLUMN_MAPPING['az'])
-    """
-    if column_mapping is None:
-        from config.variables import EXPOSURE_COLUMN_MAPPING
-        column_mapping = EXPOSURE_COLUMN_MAPPING['az']
-
-    creation_date = column_mapping.get('creation_date')
-    termination_date = column_mapping.get('termination_date')
-
-    dtfin = dates['DTFIN']
-    dtdeb_an = dates['DTDEB_AN']
-    dtdeb_mm = dates.get('dtdebn', dtdeb_an)
-    
-    # Calculate month length for expo_gli (SAS: "&dtfinmn"d - "&dtfinmm1"d)
-    # dtfinmn = last day of current month, dtfinmm1 = last day of previous month
-    dtfinmn = dates['dtfinmn']
-    dtfinmm1 = dates['dtfinmm1']
-    
-    # Import to_date to convert string dates to date type
-    from pyspark.sql.functions import to_date # type: ignore
-    
-    # Convert string dates to date type to preserve date columns
-    dtfin_date = to_date(lit(dtfin), 'yyyy-MM-dd')
-    dtdeb_an_date = to_date(lit(dtdeb_an), 'yyyy-MM-dd')
-    dtdeb_mm_date = to_date(lit(dtdeb_mm), 'yyyy-MM-dd')
-    dtfinmn_date = to_date(lit(dtfinmn), 'yyyy-MM-dd')
-    dtfinmm1_date = to_date(lit(dtfinmm1), 'yyyy-MM-dd')
-
-    # Calculate exposure start date
-    df = df.withColumn(
-        "dt_deb_expo",
-        when(col(creation_date) < dtdeb_an_date, dtdeb_an_date).otherwise(col(creation_date))
-    )
-
-    # Calculate exposure end date
-    df = df.withColumn(
-        "dt_fin_expo",
-        when(
-            col(termination_date).isNotNull() & (col(termination_date) < dtfin_date),
-            col(termination_date)
-        ).otherwise(dtfin_date)
-    )
-
-    # Apply business filter for exposure calculation
-    # SAS Reference: PTF_MVTS_AZ_MACRO.sas L304-311
-    expo_where_cond = lit(True)
-
-    if 'cdnatp' in df.columns and 'cdsitp' in df.columns:
-        # First OR branch: cdnatp in (R,O) with cdsitp conditions
-        # CRITICAL: Add isNotNull checks to prevent NULL propagation
-        branch1 = (
-            (col('cdnatp').isin(['R', 'O'])) &
-            (
-                ((col('cdsitp') == '1') & col(creation_date).isNotNull() & (col(creation_date) <= dtfinmn_date)) |
-                ((col('cdsitp') == '3') & col(termination_date).isNotNull() & (col(termination_date) > dtfinmn_date))
-            )
-        )
-        
-        # Second OR branch: cdsitp in (1,3) with complex date logic (SAS L307-311)
-        # Excludes cdnatp = 'F'
-        # CRITICAL: Add isNotNull checks to prevent NULL propagation
-        branch2 = (
-            (col('cdsitp').isin(['1', '3'])) &
-            (col('cdnatp') != 'F') &
-            (
-                # Case 1: dtcrepol <= dtfinmn and (dtresilp is null OR dtfinmn1 <= dtresilp < dtfinmn)
-                (col(creation_date).isNotNull() & (col(creation_date) <= dtfinmn_date) & 
-                 (col(termination_date).isNull() | 
-                  (col(termination_date).isNotNull() & (col(termination_date) >= dtfinmm1_date) & (col(termination_date) < dtfinmn_date)))) |
-                # Case 2: dtcrepol <= dtfinmn and dtresilp > dtfinmn
-                (col(creation_date).isNotNull() & (col(creation_date) <= dtfinmn_date) & 
-                 col(termination_date).isNotNull() & (col(termination_date) > dtfinmn_date)) |
-                # Case 3: dtfinmn1 < dtcrepol <= dtfinmn and dtfinmn1 <= dtresilp
-                (col(creation_date).isNotNull() & (col(creation_date) > dtfinmm1_date) & (col(creation_date) <= dtfinmn_date) &
-                 col(termination_date).isNotNull() & (col(termination_date) >= dtfinmm1_date))
-            )
-        )
-        
-        expo_where_cond = branch1 | branch2
-
-    # Calculate expo_ytd
-    # CRITICAL FIX: SAS uses year-end (Dec 31), NOT month-end for denominator
-    # SAS Reference: PTF_MVTS_AZ_MACRO.sas L299
-    # Original: ((mdy(12,31,&annee.) - "&DTDEB_AN"d) + 1)
-    # Python must use December 31st, not DTFIN (which is last day of vision month)
-    year_end_date = to_date(lit(f"{annee}-12-31"), 'yyyy-MM-dd')
-    year_days = datediff(year_end_date, dtdeb_an_date) + 1
-    
-    df = df.withColumn(
-        "expo_ytd",
-        when(
-            expo_where_cond &
-            (col("dt_deb_expo") <= dtfin_date) & (col("dt_fin_expo") >= dtdeb_an_date),
-            (datediff(least(col("dt_fin_expo"), dtfin_date), greatest(col("dt_deb_expo"), dtdeb_an_date)) + 1) / year_days
-        ).otherwise(lit(0))
-    )
-
-    # Calculate expo_gli with actual month days (SAS L131: "&dtfinmn"d - "&dtfinmm1"d)
-    month_days = datediff(dtfinmn_date, dtfinmm1_date)
-    
-    df = df.withColumn(
-        "expo_gli",
-        when(
-            expo_where_cond &
-            (col("dt_deb_expo") <= dtfin_date) & (col("dt_fin_expo") >= dtdeb_mm_date),
-            (datediff(least(col("dt_fin_expo"), dtfin_date), greatest(col("dt_deb_expo"), dtdeb_mm_date)) + 1) / month_days
-        ).otherwise(lit(0))
-    )
-
-    return df
-
+# ---------------------------------------------------------------------------
+# Movements — AZEC
+# ---------------------------------------------------------------------------
 
 def calculate_azec_movements(
     df: DataFrame,
@@ -461,222 +273,275 @@ def calculate_azec_movements(
     mois: int
 ) -> DataFrame:
     """
-    Calculate AZEC-specific movement indicators: NBAFN, NBRES, NBPTF.
+    Calculate AZEC-specific movement indicators (NBAFN, NBRES, NBPTF) per SAS azec_mvt_ptf.
 
-    AZEC has different logic than AZ:
-    - Product-specific date logic (AZEC_PRODUIT_LIST vs others)
-    - Different date fields (datafn, datresil vs dtcrepol, dtresilp)
-    - Migration handling (NBPTF_NON_MIGRES_AZEC)
-
-    Based on SAS PTF_MVTS_AZEC_MACRO.sas L143-173
-
-    Args:
-        df: Input DataFrame with AZEC data
-        dates: Date ranges from helpers.compute_date_ranges()
-        annee: Year as integer
-        mois: Month as integer
-
-    Returns:
-        DataFrame with NBAFN, NBRES, NBPTF columns added
-
-    Example:
-        >>> df = calculate_azec_movements(df, dates, 2025, 9)
+    Key differences vs AZ:
+      - Product-specific behavior (product list)
+      - Date fields: effetpol/datafn/datfin/datresil
+      - Uses NBPTF_NON_MIGRES_AZEC
     """
     from config.variables import AZEC_PRODUIT_LIST
 
-    dtdeb_an = dates['DTDEB_AN']
-    dtfinmn = dates['dtfinmn']  # Last day of month
+    d = _get_date_columns_from_context(dates)
+    dtdeb_an, dtfinmn = d["DTDEB_AN"], d["DTFINMN"]
 
-    # Initialize movement columns
-    df = df.withColumn("nbafn", lit(0))
-    df = df.withColumn("nbres", lit(0))
-    df = df.withColumn("nbptf", lit(0))
+    # Initialize
+    for c in ["nbafn", "nbres", "nbptf"]:
+        if c not in df.columns:
+            df = df.withColumn(c, lit(0))
 
-    # NBAFN (Affaires Nouvelles) - SAS L82-89
-    # Base condition: ETATPOL = "R" AND PRODUIT NOT IN ("CNR", "DO0") AND NBPTF_NON_MIGRES_AZEC = 1
-    base_afn_cond = (
+    # Base conditions
+    base_afn = (
         (col("etatpol") == "R") &
-        (~col("produit").isin(["CNR", "DO0"])) &  # FIXED: Changed D00 to DO0
+        (~col("produit").isin("CNR", "DO0")) &
+        (col("nbptf_non_migres_azec") == 1)
+    )
+    base_res = (
+        (col("etatpol") == "R") &
+        (~col("produit").isin("CNR", "DO0")) &
         (col("nbptf_non_migres_azec") == 1)
     )
 
-    # Product-specific logic for NBAFN
-    # If PRODUIT in AZEC_PRODUIT_LIST: month(datafn) <= mois AND year(datafn) = annee
-    # Else: Complex date logic with effetpol and datafn
-    afn_produit_in_list = (
+    # AFN — produits spéciaux vs autres
+    afn_in_list = (
         col("produit").isin(AZEC_PRODUIT_LIST) &
-        (month(col("datafn")) <= mois) &
-        (year(col("datafn")) == annee)
+        (month_func(col("datafn")) <= lit(mois)) &
+        (year_func(col("datafn")) == lit(annee))
     )
-
-    # AZEC AFN: Product-specific logic
-    # CRITICAL: Add isNotNull checks to prevent NULL propagation
-    afn_produit_not_in_list = (
+    afn_not_in_list = (
         ~col("produit").isin(AZEC_PRODUIT_LIST) &
         (
             (
                 col("effetpol").isNotNull() & col("datafn").isNotNull() &
-                (col("effetpol") >= lit(dtdeb_an)) &
-                (col("effetpol") <= lit(dtfinmn)) &
-                (col("datafn") <= lit(dtfinmn))
+                (col("effetpol") >= dtdeb_an) & (col("effetpol") <= dtfinmn) &
+                (col("datafn")   <= dtfinmn)
             ) |
             (
                 col("effetpol").isNotNull() & col("datafn").isNotNull() &
-                (col("effetpol") < lit(dtdeb_an)) &
-                (col("datafn") >= lit(dtdeb_an)) &
-                (col("datafn") <= lit(dtfinmn))
+                (col("effetpol") <  dtdeb_an) &
+                (col("datafn")   >= dtdeb_an) & (col("datafn") <= dtfinmn)
             )
         )
     )
+    df = df.withColumn("nbafn", when(base_afn & (afn_in_list | afn_not_in_list), lit(1)).otherwise(lit(0)))
 
-    df = df.withColumn(
-        "nbafn",
-        when(
-            base_afn_cond & (afn_produit_in_list | afn_produit_not_in_list),
-            lit(1)
-        ).otherwise(lit(0))
-    )
-
-    # NBRES (Résiliations) - SAS L92-99
-    # Base condition: Same as NBAFN
-    base_res_cond = (
-        (col("etatpol") == "R") &
-        (~col("produit").isin(["CNR", "DO0"])) &  # FIXED: Changed D00 to DO0
-        (col("nbptf_non_migres_azec") == 1)
-    )
-
-    # Product-specific logic for NBRES
-    # If PRODUIT in AZEC_PRODUIT_LIST: month(datresil) <= mois AND year(datresil) = annee
-    # Else: Complex date logic with datfin and datresil
-    res_produit_in_list = (
+    # RES — produits spéciaux vs autres
+    res_in_list = (
         col("produit").isin(AZEC_PRODUIT_LIST) &
-        (month(col("datresil")) <= mois) &
-        (year(col("datresil")) == annee)
+        (month_func(col("datresil")) <= lit(mois)) &
+        (year_func(col("datresil")) == lit(annee))
     )
-
-    # AZEC RES: Product-specific logic
-    # CRITICAL: Add isNotNull checks to prevent NULL propagation
-    res_produit_not_in_list = (
+    res_not_in_list = (
         ~col("produit").isin(AZEC_PRODUIT_LIST) &
         (
             (
                 col("datfin").isNotNull() & col("datresil").isNotNull() &
-                (col("datfin") >= lit(dtdeb_an)) &
-                (col("datfin") <= lit(dtfinmn)) &
-                (col("datresil") <= lit(dtfinmn))
+                (col("datfin")    >= dtdeb_an) & (col("datfin")    <= dtfinmn) &
+                (col("datresil")  <= dtfinmn)
             ) |
             (
                 col("datfin").isNotNull() & col("datresil").isNotNull() &
-                (col("datfin") <= lit(dtfinmn)) &
-                (col("datresil") >= lit(dtdeb_an)) &
-                (col("datresil") <= lit(dtfinmn))
+                (col("datfin")    <= dtfinmn) &
+                (col("datresil")  >= dtdeb_an) & (col("datresil") <= dtfinmn)
             )
         )
     )
+    df = df.withColumn("nbres", when(base_res & (res_in_list | res_not_in_list), lit(1)).otherwise(lit(0)))
 
-    df = df.withColumn(
-        "nbres",
-        when(
-            base_res_cond & (res_produit_in_list | res_produit_not_in_list),
-            lit(1)
-        ).otherwise(lit(0))
-    )
-
-    # AZEC NBPTF: Portfolio count
-    # CRITICAL: Add isNotNull checks to prevent NULL propagation
+    # NBPTF — actif à fin de mois, hors DO0/TRC/CTR/CNR (SAS)
     nbptf_cond = (
         (col("nbptf_non_migres_azec") == 1) &
-        col("effetpol").isNotNull() & (col("effetpol") <= lit(dtfinmn)) &
-        col("datafn").isNotNull() & (col("datafn") <= lit(dtfinmn)) &
+        col("effetpol").isNotNull() & (col("effetpol") <= dtfinmn) &
+        col("datafn").isNotNull()   & (col("datafn")   <= dtfinmn) &
         (
             col("datfin").isNull() |
-            (col("datfin").isNotNull() & (col("datfin") > lit(dtfinmn))) |
-            (col("datresil").isNotNull() & (col("datresil") > lit(dtfinmn)))
+            (col("datfin")   > dtfinmn) |
+            (col("datresil") > dtfinmn)
         ) &
         (
             (col("etatpol") == "E") |
-            ((col("etatpol") == "R") & col("datfin").isNotNull() & (col("datfin") >= lit(dtfinmn)))
+            ((col("etatpol") == "R") & (col("datfin") >= dtfinmn))
         ) &
-        (~col("produit").isin(["DO0", "TRC", "CTR", "CNR"]))  # FIXED: Changed D00 to DO0
+        (~col("produit").isin("DO0", "TRC", "CTR", "CNR"))
     )
+    df = df.withColumn("nbptf", when(nbptf_cond, lit(1)).otherwise(lit(0)))
+
+    return df
+
+# ---------------------------------------------------------------------------
+# Exposures (AZ / AZEC via mapping)
+# ---------------------------------------------------------------------------
+
+def calculate_exposures(
+    df: DataFrame,
+    dates: Dict[str, str],
+    annee: int,
+    column_mapping: Dict[str, str]
+) -> DataFrame:
+    """
+    Compute expo_ytd and expo_gli using SAS-like inclusive windows.
+
+    Mapping provides:
+      - creation_date: dtcrepol (AZ) or effetpol (AZEC)
+      - termination_date: dtresilp (AZ) or datfin (AZEC)
+
+    YTD:
+      expo_ytd = max(0, (min(term, DTFIN) - max(crea, DTDEB_AN) + 1)) / (Dec31(annee) - DTDEB_AN + 1)
+    GLI (current month):
+      expo_gli = max(0, (min(term, DTFIN) - max(crea, DTFINMN1+1) + 1)) / (DTFIN - DTFINMN1)
+
+    The selection perimeter matches SAS WHERE conditions used for exposure scopes.
+    """
+    creation_date = column_mapping['creation_date']
+    termination_date = column_mapping['termination_date']
+
+    # Dates
+    d = _get_date_columns_from_context(dates)
+    dtfin, dtdeb_an, dtfinmn, dtfinmn1 = d["DTFIN"], d["DTDEB_AN"], d["DTFINMN"], d["DTFINMN1"]
+    dtdeb_mois = date_add(dtfinmn1, 1)
+
+    # Exposure perimeter (SAS-like). This clause is AZ-oriented but safe for AZEC if mapping matches.
+    expo_where_cond = lit(True)
+    if 'cdnatp' in df.columns and 'cdsitp' in df.columns:
+        branch1 = (
+            (col('cdnatp').isin('R','O')) &
+            (
+                ((col('cdsitp') == '1') & (col(creation_date) <= dtfinmn)) |
+                ((col('cdsitp') == '3') & (col(termination_date) >  dtfinmn))
+            )
+        )
+        branch2 = (
+            (col('cdsitp').isin('1','3')) &
+            (coalesce(col('cdnatp'), lit('X')) != 'F') &
+            (
+                ((col(creation_date) <= dtfinmn) &
+                 (col(termination_date).isNull() |
+                  ((col(termination_date) >= dtfinmn1) & (col(termination_date) < dtfinmn)))) |
+                ((col(creation_date) <= dtfinmn) & (col(termination_date) > dtfinmn)) |
+                ((col(creation_date) >  dtfinmn1) & (col(creation_date) <= dtfinmn) &
+                 (col(termination_date) >= dtfinmn1))
+            )
+        )
+        expo_where_cond = branch1 | branch2
+
+    # Denominators
+    year_end = _to_date_lit(f"{annee}-12-31")
+    denom_ytd = (datediff(year_end, dtdeb_an) + 1)  # inclusive
+    denom_gli = datediff(dtfin, dtfinmn1)           # days in current month
+
+    # Numerators
+    num_ytd = (datediff(least(col(termination_date), dtfin), greatest(col(creation_date), dtdeb_an)) + 1)
+    num_gli = (datediff(least(col(termination_date), dtfin), greatest(col(creation_date), dtdeb_mois)) + 1)
 
     df = df.withColumn(
-        "nbptf",
-        when(nbptf_cond, lit(1)).otherwise(lit(0))
+        "expo_ytd",
+        when(
+            expo_where_cond &
+            (col(creation_date) <= dtfin) &
+            (col(termination_date) >= dtdeb_an),
+            (when(num_ytd > 0, num_ytd).otherwise(lit(0))) / denom_ytd
+        ).otherwise(lit(0.0))
+    ).withColumn(
+        "dt_deb_expo",
+        greatest(col(creation_date), dtdeb_an)
+    ).withColumn(
+        "dt_fin_expo",
+        when(col(termination_date).isNotNull() & (col(termination_date) < dtfin), col(termination_date))
+        .otherwise(dtfin)
+    ).withColumn(
+        "expo_gli",
+        when(
+            expo_where_cond &
+            (col(creation_date) <= dtfin) &
+            (col(termination_date) >= dtdeb_mois) &
+            (denom_gli > 0),
+            (when(num_gli > 0, num_gli).otherwise(lit(0))) / denom_gli
+        ).otherwise(lit(0.0))
     )
 
     return df
 
+def calculate_exposures_azec(
+    df: DataFrame,
+    dates: Dict[str, str]
+) -> DataFrame:
+    """
+    Compute AZEC exposures (YTD, GLI) exactly like SAS Step 5 (no perimeter).
+      - expo_ytd = max(0, (min(datfin, DTFIN) - max(effetpol, DTDEB_AN) + 1)) / (Dec31(annee) - DTDEB_AN + 1)
+      - expo_gli = max(0, (min(datfin, DTFIN) - max(effetpol, DTFINMN1 + 1) + 1)) / (DTFIN - DTFINMN1)
+      - dt_deb_expo = max(effetpol, DTDEB_AN)
+      - dt_fin_expo = min(datfin, DTFIN)
+    """
+    d = _get_date_columns_from_context(dates)
+    dtfin, dtdeb_an, dtfinmn, dtfinmn1 = d["DTFIN"], d["DTDEB_AN"], d["DTFINMN"], d["DTFINMN1"]
+    dtdeb_mois = date_add(dtfinmn1, 1)
+
+    # Dénominateurs (SAS : inclusif YTD)
+    year_end = _to_date_lit(str(int(dates['dtdeb_an'][:4]) + 0) + "-12-31")  # annee = dtdeb_an.year
+    denom_ytd = (datediff(year_end, dtdeb_an) + 1)
+    denom_gli = datediff(dtfin, dtfinmn1)  # nb jours dans le mois courant
+
+    # Numérateurs (inclusif +1)
+    num_ytd = (datediff(least(col("datfin"), dtfin), greatest(col("effetpol"), dtdeb_an)) + 1)
+    num_gli = (datediff(least(col("datfin"), dtfin), greatest(col("effetpol"), dtdeb_mois)) + 1)
+
+    df = df.withColumn(
+        "expo_ytd",
+        when(
+            (col("effetpol").isNotNull()) & (col("datfin").isNotNull()),
+            (when(num_ytd > 0, num_ytd).otherwise(lit(0))) / denom_ytd
+        ).otherwise(lit(0.0))
+    ).withColumn(
+        "dt_deb_expo",
+        greatest(col("effetpol"), dtdeb_an)
+    ).withColumn(
+        "dt_fin_expo",
+        least(col("datfin"), dtfin)
+    ).withColumn(
+        "expo_gli",
+        when(
+            (col("effetpol").isNotNull()) & (col("datfin").isNotNull()) & (denom_gli > 0),
+            (when(num_gli > 0, num_gli).otherwise(lit(0))) / denom_gli
+        ).otherwise(lit(0.0))
+    )
+
+    return df
+
+# ---------------------------------------------------------------------------
+# Suspension — AZEC
+# ---------------------------------------------------------------------------
 
 def calculate_azec_suspension(df: DataFrame, dates: Dict[str, str]) -> DataFrame:
     """
-    Calculate nbj_susp_ytd (suspension period in days) for AZEC contracts.
-
-    Handles contracts with suspension periods during the year-to-date period.
-
-    Based on SAS PTF_MVTS_AZEC_MACRO.sas L188-203
-
-    Args:
-        df: Input DataFrame
-        dates: Date ranges dictionary
-
-    Returns:
-        DataFrame with nbj_susp_ytd column added
-
-    Example:
-        >>> df = calculate_azec_suspension(df, dates)
+    Calculate nbj_susp_ytd (suspension days) for AZEC (SAS Step 5).
+    CASE
+      WHEN (DTDEBN <= datresil <= DTFINMN) OR (DTDEBN <= datfin <= DTFINMN)
+        THEN min(datfin, DTFINMN, datexpir) - max(DTDEBN-1, datresil-1)
+      WHEN (datresil <= DTDEBN) AND (datfin >= DTFINMN)
+        THEN (DTFINMN - DTDEBN + 1)
+      ELSE 0
+    END
     """
-    from pyspark.sql.functions import to_date  # type: ignore
-    
-    dtdebn = dates['dtdebn']
-    dtfinmn = dates['dtfinmn']
+    dtdebn = _to_date_lit(dates['dtdebn'])
+    dtfinmn = _to_date_lit(dates['dtfinmn'])
 
-    # Convert string dates to date literals for use in least/greatest
-    dtdebn_date = to_date(lit(dtdebn))
-    dtfinmn_date = to_date(lit(dtfinmn))
-
-    # SAS Logic:
-    # CASE
-    #   WHEN (dtdebn <= datresil <= dtfinmn) OR (dtdebn <= datfin <= dtfinmn)
-    #     THEN min(datfin, dtfinmn, datexpir) - max(dtdebn-1, datresil-1)
-    #   WHEN (0 <= datresil <= dtdebn) AND (datfin >= dtfinmn)
-    #     THEN (dtfinmn - dtdebn + 1)
-    #   ELSE 0
-    # END
-
-    # Condition 1: Suspension within the period
     cond1 = (
-        (
-            (col("datresil") >= dtdebn_date) &
-            (col("datresil") <= dtfinmn_date)
-        ) |
-        (
-            (col("datfin") >= dtdebn_date) &
-            (col("datfin") <= dtfinmn_date)
-        )
+        ((col("datresil") >= dtdebn) & (col("datresil") <= dtfinmn)) |
+        ((col("datfin")   >= dtdebn) & (col("datfin")   <= dtfinmn))
     )
-
-    # Calculate days: min(datfin, dtfinmn, datexpir) - max(dtdebn-1, datresil-1)
     susp_days_1 = datediff(
-        least(col("datfin"), dtfinmn_date, col("datexpir")),
-        greatest(date_sub(dtdebn_date, 1), date_sub(col("datresil"), 1))
+        least(col("datfin"), dtfinmn, col("datexpir")),
+        greatest(date_sub(dtdebn, 1), date_sub(col("datresil"), 1))
     )
 
-    # Condition 2: Suspension started before period and extends through it
     cond2 = (
         col("datresil").isNotNull() &
-        (col("datresil") <= dtdebn_date) &
-        (col("datfin") >= dtfinmn_date)
+        (col("datresil") <= dtdebn) &
+        (col("datfin")   >= dtfinmn)
     )
+    susp_days_2 = datediff(dtfinmn, dtdebn) + 1
 
-    # Calculate days: (dtfinmn - dtdebn + 1)
-    susp_days_2 = datediff(dtfinmn_date, dtdebn_date) + 1
-
-    df = df.withColumn(
+    return df.withColumn(
         "nbj_susp_ytd",
-        when(cond1, susp_days_1)
-        .when(cond2, susp_days_2)
-        .otherwise(lit(0))
+        when(cond1, susp_days_1).when(cond2, susp_days_2).otherwise(lit(0))
     )
-
-    return df

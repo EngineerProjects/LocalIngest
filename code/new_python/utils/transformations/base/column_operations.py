@@ -1,236 +1,192 @@
 """
-Column transformation operations.
+Column-level transformation utilities.
 
-Handles column standardization, renaming, initialization, and computed expressions.
-All operations work with lowercase column names.
+This module handles:
+- Column passthrough selection (SAS-style projection)
+- Optional renaming
+- Simple computed columns (safe operations only)
+- Column initialization with types
+- Metadata injection (vision, year, month)
+
+Important:
+This file intentionally does NOT support complex expressions,
+date arithmetic, nested logic, or any operation that depends
+on SAS UPDATE ordering. Those MUST remain inside PySpark code,
+not configuration files.
+
+All output column names remain lowercase.
 """
 
-from pyspark.sql import DataFrame # type: ignore
-from pyspark.sql.functions import col, when, lit, coalesce # type: ignore
-from typing import Dict, Any
+from pyspark.sql import DataFrame
+from pyspark.sql.functions import col, lit, coalesce, to_date
+from pyspark.sql.types import DataType
 
+
+# =========================================================
+# Public API
+# =========================================================
 
 def lowercase_all_columns(df: DataFrame) -> DataFrame:
     """
-    Convert all DataFrame columns to lowercase.
+    Lowercase all DataFrame column names.
 
-    Args:
-        df: Input DataFrame
-
-    Returns:
-        DataFrame with all columns in lowercase
-
-    Example:
-        >>> df = spark.read.csv("data.csv", header=True)
-        >>> df = lowercase_all_columns(df)
+    Notes:
+        SAS is case-insensitive. Spark is not.
+        To ensure consistency across the pipeline,
+        all columns are normalized to lowercase.
     """
     return df.select([col(c).alias(c.lower()) for c in df.columns])
 
 
 def apply_column_config(
     df: DataFrame,
-    config: Dict[str, Any],
+    config: dict,
     vision: str = None,
     annee: int = None,
     mois: int = None
 ) -> DataFrame:
     """
-    Apply column configuration from config/variables.py.
+    Apply a structured column selection and initialization configuration.
 
-    Handles:
-      - Passthrough columns (no transformation)
-      - Renamed columns (old_name → new_name)
-      - Computed columns (expressions from config)
-      - Initialized columns (default values with types)
-      - Vision metadata columns
+    Supported actions:
+    - Passthrough: keep columns present in the DataFrame
+    - Renaming: simple old_name -> new_name mapping
+    - Computed columns: only very simple operations (coalesce, default)
+    - Init columns: create missing columns with default typed values
+    - Metadata: add VISION, EXEVUE, MOISVUE as SAS does
 
-    Args:
-        df: Input DataFrame (columns already lowercase)
-        config: Column configuration dict from variables.py
-        vision: Vision string (YYYYMM)
-        annee: Year as integer
-        mois: Month as integer
+    This function explicitly avoids:
+        - any eval()
+        - any complex condition parsing
+        - any unsafe expression evaluation
+        - any multi-column arithmetic logic
 
-    Returns:
-        DataFrame with configured columns (all lowercase)
+    Parameters
+    ----------
+    df : DataFrame
+        Input DataFrame with lowercase column names.
+    config : dict
+        Section from transformations JSON.
+    vision : str
+        YYYYMM string.
+    annee : int
+        Year extracted from vision.
+    mois : int
+        Month extracted from vision.
 
-    Example:
-        >>> from config.variables import AZ_COLUMN_CONFIG
-        >>> df = apply_column_config(df, AZ_COLUMN_CONFIG, '202509', 2025, 9)
+    Returns
+    -------
+    DataFrame
+        Transformed DataFrame with selected / initialized columns.
     """
+
     select_exprs = []
 
-    # Passthrough columns
-    for c in config.get('passthrough', []):
-        if c.lower() in df.columns:
-            select_exprs.append(col(c.lower()))
+    # ---------------------------
+    # 2. Renamed columns
+    # ---------------------------
+    rename_map = {old.lower(): new.lower() for old, new in config.get("rename", {}).items()}
 
-    # Renamed columns
-    for old_name, new_name in config.get('rename', {}).items():
-        if old_name.lower() in df.columns:
-            select_exprs.append(col(old_name.lower()).alias(new_name.lower()))
+    for orig_col in df.columns:
+        lc = orig_col.lower()
+        if lc in rename_map:
+            select_exprs.append(col(orig_col).alias(rename_map[lc]))
+        else:
+            select_exprs.append(col(orig_col))
 
-    # Computed columns
-    for col_name, comp_config in config.get('computed', {}).items():
-        expr = build_computed_expression(df, comp_config)
+    # ---------------------------
+    # 3. Computed columns (safe)
+    # ---------------------------
+    for col_name, comp_cfg in config.get("computed", {}).items():
+        expr = _safe_computed_expression(df, comp_cfg)
         select_exprs.append(expr.alias(col_name.lower()))
 
-    # Initialized columns
-    for col_name, (default_val, dtype) in config.get('init', {}).items():
-        select_exprs.append(lit(default_val).cast(dtype).alias(col_name.lower()))
+    # ---------------------------
+    # 4. Init columns
+    # ---------------------------
+    for col_name, (default_val, dtype) in config.get("init", {}).items():
+        cname = col_name.lower()
+        if isinstance(dtype, DataType):
+            select_exprs.append(lit(default_val).cast(dtype).alias(cname))
+        else:
+            select_exprs.append(lit(default_val).alias(cname))
 
-    # Vision metadata
-    if vision:
-        select_exprs.append(lit(vision).alias('vision'))
+    # ---------------------------
+    # 5. Metadata columns
+    # ---------------------------
+    if vision is not None:
+        select_exprs.append(lit(str(vision)).alias("vision"))
     if annee is not None:
-        select_exprs.append(lit(annee).alias('exevue'))
+        select_exprs.append(lit(int(annee)).alias("exevue"))
     if mois is not None:
-        select_exprs.append(lit(mois).alias('moisvue'))
+        select_exprs.append(lit(int(mois)).alias("moisvue"))
+
+    # ---------------------------
+    # 6. Drop columns
+    # ---------------------------
+    drop_set = set(d.lower() for d in config.get("drop", []))
+    for d in drop_set:
+        if d in df.columns:
+            df = df.drop(d)
 
     return df.select(*select_exprs)
 
 
-def build_computed_expression(df: DataFrame, comp_config: Dict[str, Any]):
+# =========================================================
+# Internal helpers
+# =========================================================
+
+def _safe_computed_expression(df: DataFrame, cfg: dict):
     """
-    Build PySpark expression from config dictionary.
+    Build a safe 'computed' column expression.
 
     Supported types:
-      - 'coalesce_default': coalesce(col, default)
-      - 'flag_equality': when(col == value, 1).otherwise(0)
-      - 'flag': when(condition_expr, 1).otherwise(0)
-      - 'arithmetic': evaluate arithmetic expression with col() replacements
-      - 'constant': lit(value)
+    - coalesce_default: coalesce(column, default)
+    - constant: literal constant
+    - flag_equality: column == value ? 1 : 0
 
-    Args:
-        df: DataFrame (for column existence checks)
-        comp_config: Computation configuration dict
+    Unsupported (on purpose):
+    - ANY expression requiring eval()
+    - ANY arithmetic between columns
+    - ANY logical multi-column expression
+    - ANY date computation
 
-    Returns:
-        PySpark Column expression
-
-    Example:
-        >>> config = {'type': 'coalesce_default', 'source_col': 'txcede', 'default': 0}
-        >>> expr = build_computed_expression(df, config)
+    SAS performs most of its computed logic inside code,
+    not configuration. This function intentionally remains minimal.
     """
-    comp_type = comp_config.get('type')
 
-    if comp_type == 'coalesce_default':
-        source_col = comp_config['source_col'].lower()
-        default = comp_config['default']
-        return coalesce(col(source_col), lit(default))
+    ctype = cfg.get("type", "").lower()
 
-    elif comp_type == 'flag_equality':
-        source_col = comp_config['source_col'].lower()
-        value = comp_config['value']
-        return when(col(source_col) == value, lit(1)).otherwise(lit(0))
+    # -----------------------------------
+    # coalesce_default
+    # -----------------------------------
+    if ctype == "coalesce_default":
+        src = cfg["source_col"].lower()
+        default = cfg.get("default")
+        if src not in df.columns:
+            return lit(default)
+        return coalesce(col(src), lit(default))
 
-    elif comp_type == 'flag':
-        # Parse condition expression
-        condition_str = comp_config['condition']
-        import re
-        
-        # Replace column names with col() calls
-        condition_work = condition_str.lower()
-        sorted_cols = sorted(df.columns, key=len, reverse=True)
-        for c in sorted_cols:
-            pattern = rf'\b{re.escape(c)}\b'
-            condition_work = re.sub(pattern, f'col("{c}")', condition_work)
-        
-        # Handle 'not in' BEFORE 'in' (order matters!)
-        # "duree not in ['00', '01']" → "~col("duree").isin(['00', '01'])"
-        condition_work = re.sub(
-            r'(col\(["\'][^"\']+["\']\))\s+not\s+in\s+(\[[^\]]+\])',
-            r'~\1.isin(\2)',
-            condition_work
-        )
-        
-        # Handle 'in' without 'not'
-        # "duree in ['00', '01']" → "col("duree").isin(['00', '01'])"
-        condition_work = re.sub(
-            r'(col\(["\'][^"\']+["\']\))\s+in\s+(\[[^\]]+\])',
-            r'\1.isin(\2)',
-            condition_work
-        )
-        
-        # Replace logical operators
-        condition_work = condition_work.replace(' and ', ' & ')
-        condition_work = condition_work.replace(' or ', ' | ')
-        condition_work = condition_work.replace(' not ', ' ~ ')
-        
-        # Evaluate condition
-        try:
-            condition_expr = eval(condition_work)
-            return when(condition_expr, lit(1)).otherwise(lit(0))
-        except Exception as e:
-            raise ValueError(f"Failed to parse flag condition '{condition_str}': {e}\nProcessed: {condition_work}")
+    # -----------------------------------
+    # constant
+    # -----------------------------------
+    if ctype == "constant":
+        return lit(cfg.get("value"))
 
-    elif comp_type == 'arithmetic':
-        # Parse arithmetic expression
-        expression_str = comp_config['expression']
-        # Replace column names with col() calls
-        import re
-        expr_work = expression_str
-        sorted_cols = sorted(df.columns, key=len, reverse=True)
-        for c in sorted_cols:
-            pattern = rf'\b{re.escape(c)}\b'
-            expr_work = re.sub(pattern, f'col("{c}")', expr_work)
-        
-        # Evaluate expression
-        return eval(expr_work)
+    # -----------------------------------
+    # flag equality
+    # -----------------------------------
+    if ctype == "flag_equality":
+        src = cfg["source_col"].lower()
+        val = cfg["value"]
+        if src not in df.columns:
+            return lit(0)
+        return (col(src) == val).cast("int")
 
-    elif comp_type == 'constant':
-        return lit(comp_config['value'])
-
-    else:
-        raise ValueError(f"Unknown computed type: {comp_type}")
-
-
-def rename_columns(df: DataFrame, rename_mapping: Dict[str, str]) -> DataFrame:
-    """
-    Rename multiple columns at once using a mapping dictionary.
-
-    More efficient than sequential .withColumnRenamed() calls.
-    All column names are converted to lowercase before and after renaming.
-
-    Args:
-        df: Input DataFrame
-        rename_mapping: Dictionary of {old_name: new_name} mappings
-                       Case-insensitive (automatically lowercased)
-
-    Returns:
-        DataFrame with renamed columns (all lowercase)
-
-    Example:
-        >>> rename_map = {
-        ...     'DTCREPOL': 'creation_date',
-        ...     'DTRESILP': 'termination_date',
-        ...     'NOPOL': 'policy_number'
-        ... }
-        >>> df = rename_columns(df, rename_map)
-
-    Note:
-        This function consolidates the pattern of sequential renames:
-        df.withColumnRenamed('old1', 'new1').withColumnRenamed('old2', 'new2')...
-
-        Into a single operation:
-        df = rename_columns(df, {'old1': 'new1', 'old2': 'new2'})
-    """
-    # Normalize all column names to lowercase
-    rename_mapping_lower = {
-        old_name.lower(): new_name.lower()
-        for old_name, new_name in rename_mapping.items()
-    }
-
-    # Build select expression with renamed columns
-    select_exprs = []
-    for col_name in df.columns:
-        col_name_lower = col_name.lower()
-        if col_name_lower in rename_mapping_lower:
-            # Rename this column
-            new_name = rename_mapping_lower[col_name_lower]
-            select_exprs.append(col(col_name_lower).alias(new_name))
-        else:
-            # Keep column as-is (lowercase)
-            select_exprs.append(col(col_name_lower))
-
-    return df.select(*select_exprs)
+    # -----------------------------------
+    # Unsupported → raise error
+    # -----------------------------------
+    raise ValueError(
+        f"Unsupported computed column type '{ctype}'. "
+        f"Complex computed expressions must be implemented in PySpark code."
+    )

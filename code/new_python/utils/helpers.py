@@ -158,7 +158,6 @@ def build_log_filename(vision: str) -> str:
 
     return f"pipeline_{vision}.log"
 
-
 def compute_date_ranges(vision: str) -> Dict[str, str]:
     """
     Compute all date ranges required for PTF_MVT processing.
@@ -180,15 +179,6 @@ def compute_date_ranges(vision: str) -> Dict[str, str]:
 
     Raises:
         ValueError: If vision format is invalid
-
-    Example:
-        >>> dates = compute_date_ranges("202509")
-        >>> print(dates['DTFIN'])
-        '2025-09-30'
-        >>> print(dates['DTDEB_AN'])
-        '2025-01-01'
-        >>> print(dates['dtfinmm1'])
-        '2025-08-31'
     """
     if not validate_vision(vision):
         raise ValueError(f"Invalid vision format: {vision}")
@@ -199,7 +189,6 @@ def compute_date_ranges(vision: str) -> Dict[str, str]:
     if month == 12:
         last_day_of_month = datetime(year, month, 31)
     else:
-        # Go to first day of next month, then subtract one day
         next_month = datetime(year, month + 1, 1) if month < 12 else datetime(year + 1, 1, 1)
         last_day_of_month = next_month - timedelta(days=1)
 
@@ -213,15 +202,15 @@ def compute_date_ranges(vision: str) -> Dict[str, str]:
     first_day_this_month = datetime(year, month, 1)
     last_day_prev_month = first_day_this_month - timedelta(days=1)
 
-    # Format all dates as strings (YYYY-MM-DD)
+    # Format all dates as strings (YYYY-MM-DD) — LOWERCASE KEYS ONLY
     dates = {
-        'DTFIN': last_day_of_month.strftime('%Y-%m-%d'),
-        'DTDEB_AN': first_day_of_year.strftime('%Y-%m-%d'),
-        'dtfinmm': last_day_of_month.strftime('%Y-%m-%d'),
-        'dtfinmm1': last_day_prev_month.strftime('%Y-%m-%d'),
-        'dtdebn': first_day_of_month.strftime('%Y-%m-%d'),
-        'dtfinmn': last_day_of_month.strftime('%Y-%m-%d'),
-        'finmois': last_day_of_month.strftime('%Y-%m-%d'),
+        'dtfin':     last_day_of_month.strftime('%Y-%m-%d'),
+        'dtdeb_an':  first_day_of_year.strftime('%Y-%m-%d'),
+        'dtfinmm':   last_day_of_month.strftime('%Y-%m-%d'),
+        'dtfinmm1':  last_day_prev_month.strftime('%Y-%m-%d'),
+        'dtdebn':    first_day_of_month.strftime('%Y-%m-%d'),
+        'dtfinmn':   last_day_of_month.strftime('%Y-%m-%d'),
+        'finmois':   last_day_of_month.strftime('%Y-%m-%d'),
     }
 
     return dates

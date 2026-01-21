@@ -61,13 +61,13 @@
                 {
                     "pattern": "*199*",
                     "columns": {
-                        "cdpole": "3"
+                        "cdpole": "1"
                     }
                 },
                 {
                     "pattern": "*399*",
                     "columns": {
-                        "cdpole": "1"
+                        "cdpole": "3"
                     }
                 }
             ],

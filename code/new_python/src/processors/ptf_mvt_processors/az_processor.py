@@ -7,24 +7,40 @@ applies business transformations, and outputs to silver layer.
 Uses dictionary-driven configuration for maximum reusability.
 """
 
-from pyspark.sql import DataFrame # type: ignore
-from pyspark.sql.functions import col, when, lit, coalesce, broadcast # type: ignore
-from pyspark.sql.types import DoubleType, StringType, DateType # type: ignore
 
-from src.processors.base_processor import BaseProcessor
-from utils.loaders import get_default_loader
-from config.constants import DIRCOM, POLE, LTA_TYPES
-from utils.helpers import extract_year_month_int, compute_date_ranges
-from utils.transformations import (
-    apply_business_filters,
-    extract_capitals,
-    calculate_movements,
-    calculate_exposures,
-    rename_columns,
+from pyspark.sql import DataFrame
+from pyspark.sql.functions import (
+    col, when, lit, coalesce, broadcast, to_date, expr, create_map, make_date
 )
-from utils.processor_helpers import (safe_reference_join, safe_multi_reference_join, 
-                                      add_null_columns, get_bronze_reader)
+from pyspark.sql.types import DoubleType, StringType, DateType
 
+# Base processor
+from src.processors.base_processor import BaseProcessor
+
+# Loader
+from utils.loaders import get_default_loader
+
+# Constants
+from config.constants import DIRCOM, POLE, LTA_TYPES
+
+# Helpers
+from utils.helpers import extract_year_month_int, compute_date_ranges
+
+# Business logic (corrected & final)
+from utils.transformations.base.column_operations import apply_column_config
+from utils.transformations.operations.business_logic import (
+    extract_capitals,
+    calculate_movements,   # alias AZ
+    calculate_exposures,
+)
+
+# Processor helpers
+from utils.processor_helpers import (
+    safe_reference_join,
+    safe_multi_reference_join,
+    add_null_columns,
+    get_bronze_reader
+)
 
 class AZProcessor(BaseProcessor):
     """
@@ -74,6 +90,11 @@ class AZProcessor(BaseProcessor):
         Returns:
             Transformed DataFrame ready for silver layer (all lowercase)
         """
+
+        from pyspark.sql.functions import (
+            col, when, lit, coalesce, to_date, expr, create_map
+        )
+
         year_int, month_int = extract_year_month_int(vision)
         dates = compute_date_ranges(vision)
 
@@ -81,30 +102,33 @@ class AZProcessor(BaseProcessor):
         az_config = loader.get_az_config()
 
         # ============================================================
-        # STEP 1 — Initialize all indicator columns (SAS L106–115)
+        # STEP 1 — Initialize indicator columns (SAS L106–115)
+        #   ⚠️ Ne PAS écraser les colonnes si elles existent déjà !
         # ============================================================
         self.logger.step(1, "Initializing indicator columns")
         init_columns = {
-            **{col: lit(0.0) for col in [
+            **{c: lit(0.0) for c in [
                 'primeto', 'primes_ptf', 'primes_afn', 'primes_res',
                 'primes_rpt', 'primes_rpc', 'expo_ytd', 'expo_gli',
                 'cotis_100', 'mtca_', 'perte_exp', 'risque_direct',
                 'value_insured', 'smp_100', 'lci_100'
             ]},
-            **{col: lit(0) for col in [
+            **{c: lit(0) for c in [
                 'nbptf', 'nbafn', 'nbres', 'nbrpt', 'nbrpc',
                 'top_temp', 'top_lta', 'top_aop',
                 'nbafn_anticipe', 'nbres_anticipe'
             ]},
             'dt_deb_expo': lit(None).cast(DateType()),
             'dt_fin_expo': lit(None).cast(DateType()),
-            'ctduree': lit(None).cast('double')
+            # 'ctduree' ne doit PAS être écrasée si déjà présente
+            'ctduree': lit(None).cast('double'),
         }
         for name, value in init_columns.items():
-            df = df.withColumn(name, value)
+            if name not in df.columns:
+                df = df.withColumn(name, value)
 
         # ============================================================
-        # STEP 2 — Metadata (vision, dircom, exevue, moisvue)
+        # STEP 2 — Metadata (vision, dircom, exevue, moisvue) + CDPOLE propre
         # ============================================================
         self.logger.step(2, "Adding metadata columns")
         metadata_cols = {
@@ -116,16 +140,18 @@ class AZProcessor(BaseProcessor):
         for name, value in metadata_cols.items():
             df = df.withColumn(name, value)
 
-        # Determine CDPOLE from source file (Agent vs Courtage)
+        # CDPOLE: produire des valeurs propres '1'/'3' (pas "  1")
         if '_source_file' in df.columns:
             df = df.withColumn(
                 'cdpole',
-                when(col('_source_file').contains('ipf16'), lit(POLE.AGENT))
-                .when(col('_source_file').contains('ipf36'), lit(POLE.COURTAGE))
-                .otherwise(lit(POLE.AGENT))
+                when(col('_source_file').contains('ipf16'), lit('1'))
+                .when(col('_source_file').contains('ipf36'), lit('3'))
+                .otherwise(lit('1'))
             ).drop('_source_file')
         else:
-            df = df.withColumn('cdpole', lit(POLE.AGENT))
+            df = df.withColumn('cdpole', lit('1'))
+
+        df = df.withColumn("cdpole", col("cdpole").cast("string"))
 
         # ============================================================
         # STEP 3 — Apply renames from JSON (SAS SELECT renames)
@@ -133,12 +159,62 @@ class AZProcessor(BaseProcessor):
         self.logger.step(3, "Applying renames")
         df = self._apply_renames(df, az_config)
 
+        # 3.b — CAST des colonnes de dates (tolérant à 2 formats)
+        date_cols = [
+            "dtcrepol", "dteffan", "dttraan", "dtresilp", "dttraar",
+            "dttypli1", "dttypli2", "dttypli3",
+            "dtouchan", "dtrcppr", "dtrectrx", "dtrcpre", "dtechann"
+        ]
+        for dc in date_cols:
+            if dc in df.columns:
+                # coalesce sur 2 formats communs ; ajuste si tu connais le format réel
+                df = df.withColumn(
+                    dc,
+                    coalesce(
+                        to_date(col(dc), "yyyy-MM-dd"),
+                        to_date(col(dc), "yyyyMMdd")
+                    )
+                )
+
         # ============================================================
-        # STEP 4 — SELECT-level computed fields (tx, top_coass)
+        # STEP 4a — COASS + PARTCIE (comme dans le SELECT SAS)
+        #   ✅ Standardiser sur cdcoass (double "s")
+        #   (si la colonne s'appelle cdcoas, on la renomme à la volée)
+        # ============================================================
+        if 'cdcoass' not in df.columns and 'cdcoas' in df.columns:
+            df = df.withColumnRenamed('cdcoas', 'cdcoass')
+
+        df = df.withColumn(
+            "coass",
+            when((col("cdpolqpl") == "1") & col("cdcoass").isin("3", "6"), lit("APERITION"))
+            .when((col("cdpolqpl") == "1") & col("cdcoass").isin("4", "5"), lit("COASS. ACCEPTEE"))
+            .when((col("cdpolqpl") == "1") & (col("cdcoass") == "8"), lit("ACCEPTATION INTERNATIONALE"))
+            .when((col("cdpolqpl") == "1"), lit("AUTRES"))
+            .otherwise(lit("SANS COASSURANCE"))
+        )
+
+        df = df.withColumn(
+            "partcie",
+            when(col("cdpolqpl") != "1", lit(1.0))      # sans coassurance
+            .otherwise(col("prcdcie") / 100.0)          # avec coassurance
+        )
+
+        # ============================================================
+        # STEP 4b — SELECT-level computed fields (tx, top_coass, etc.)
         # ============================================================
         self.logger.step(4, "Applying SELECT-level computed fields")
         select_computed = az_config.get("column_selection", {}).get("computed", {})
         df = self._apply_computed_generic(df, select_computed)
+
+        # CRITERE_REVISION depuis config
+        rev_cfg = az_config.get("revision_criteria", {})
+        src = rev_cfg.get("source_col", "cdgrev")
+        mapping = rev_cfg.get("mapping", {})
+        if mapping and src in df.columns:
+            kv = []
+            for k, v in mapping.items():
+                kv += [lit(k), lit(v)]
+            df = df.withColumn("critere_revision", create_map(kv)[col(src)])
 
         # ============================================================
         # STEP 5 — Join IPFM99 (special CA logic for product 01099)
@@ -160,8 +236,6 @@ class AZProcessor(BaseProcessor):
 
         # ============================================================
         # STEP 7 — UPDATE-level computed fields (primeto, top_lta, top_temp, top_revisable)
-        # SAS L238-243, L290
-        # NOTE: TOP_AOP now in STEP 11 to match SAS L339-341 strict order
         # ============================================================
         self.logger.step(7, "Applying UPDATE-level computed fields")
         update_computed = az_config.get("computed_fields", {})
@@ -176,7 +250,6 @@ class AZProcessor(BaseProcessor):
 
         # ============================================================
         # STEP 9 — Exposure calculations (expo_ytd, expo_gli)
-        # SAS L298-311
         # ============================================================
         self.logger.step(9, "Calculating exposures")
         exposure_cols = az_config['exposures']['column_mapping']
@@ -184,32 +257,32 @@ class AZProcessor(BaseProcessor):
 
         # ============================================================
         # STEP 10 — Cotisation 100% and MTCA_
-        # SAS L317-332
         # ============================================================
         self.logger.step(10, "Calculating cotis_100 and mtca_")
 
+        # ISO-SAS: PRCDCIE = 100 si NULL ou 0 (sur la COLONNE elle-même)
         df = df.withColumn(
-            'prcdcie_normalized',
+            'prcdcie',
             when((col('prcdcie').isNull()) | (col('prcdcie') == 0), lit(100))
             .otherwise(col('prcdcie'))
         )
 
+        # Cotisation technique à 100% (COASS ACCEPTEE => (mtprprto*100)/prcdcie)
         df = df.withColumn(
             'cotis_100',
             when(
-                (col('top_coass') == 1) & (col('cdcoas').isin(['4', '5'])),
-                (col('mtprprto') * 100) / col('prcdcie_normalized')
+                (col('top_coass') == 1) & (col('cdcoass').isin(['4', '5'])),
+                (col('mtprprto') * 100) / col('prcdcie')
             ).otherwise(col('mtprprto'))
         )
 
-        df = df.withColumn(
-            'mtca_',
-            coalesce(col('mtcaf'), lit(0)) + coalesce(col('mtca'), lit(0))
-        )
+        # ISO-SAS: MTCA / MTCAF à 0 si NULL puis MTCA_
+        df = df.withColumn("mtca", coalesce(col("mtca"), lit(0.0))) \
+            .withColumn("mtcaf", coalesce(col("mtcaf"), lit(0.0))) \
+            .withColumn("mtca_", col("mtcaf") + col("mtca"))
 
         # ============================================================
         # STEP 11 — TOP_AOP flag (STRICT ORDER MATCH)
-        # SAS L339-341 (after cotis_100, before AFN/RES anticipés)
         # ============================================================
         self.logger.step(11, "Applying TOP_AOP flag")
         df = df.withColumn(
@@ -219,15 +292,15 @@ class AZProcessor(BaseProcessor):
 
         # ============================================================
         # STEP 12 — Anticipated movements (AFN/RES anticipés)
-        # SAS L347-355
         # ============================================================
         self.logger.step(12, "Calculating anticipated movements")
-        finmois = dates['finmois']
+        finmois = dates['finmois']  # 'YYYY-MM-DD'
+        df = df.withColumn("finmois", lit(finmois).cast("date"))
 
         df = df.withColumn(
             "nbafn_anticipe",
             when(
-                ((col("dteffan") > lit(finmois)) | (col("dtcrepol") > lit(finmois))) &
+                ((col("dteffan") > col("finmois")) | (col("dtcrepol") > col("finmois"))) &
                 ~((col("cdtypli1") == "RE") | (col("cdtypli2") == "RE") | (col("cdtypli3") == "RE")),
                 lit(1)
             ).otherwise(lit(0))
@@ -236,7 +309,7 @@ class AZProcessor(BaseProcessor):
         df = df.withColumn(
             "nbres_anticipe",
             when(
-                (col("dtresilp") > lit(finmois)) &
+                (col("dtresilp") > col("finmois")) &
                 ~((col("cdtypli1") == "RP") | (col("cdtypli2") == "RP") | (col("cdtypli3") == "RP") |
                 (col("cdmotres") == "R") | (col("cdcasres") == "2R")),
                 lit(1)
@@ -245,24 +318,12 @@ class AZProcessor(BaseProcessor):
 
         # ============================================================
         # STEP 13 — Final cleanup (expo dates, nmclt)
-        # SAS L362-370 (BEFORE segmentation in SAS)
         # ============================================================
         self.logger.step(13, "Final data cleanup")
         df = self._finalize_data_cleanup(df)
 
         # ============================================================
         # STEP 14 — Segmentation & PT_GEST enrichment
-        #
-        # This step reproduces SAS L377–503:
-        #   - Load PRDPFA1 (Agent) and PRDPFA3 (Courtage)
-        #   - Filter construction market (CMARCH='6')
-        #   - Add RESEAU = '1' or '3'
-        #   - Union both segmentations
-        #   - Enrich with CPRODUIT (Type_Produit_2)
-        #   - Enrich with PRDCAP (product labels)
-        #   - Join on BOTH cdprod + cdpole (CRITICAL SAS rule)
-        #   - Enrich with TABLE_PT_GEST (upper_mid)
-        # SAS L377-503
         # ============================================================
         self.logger.step(14, "Enriching segmentation and management point")
         df = self._enrich_segment_and_product_type(df, vision)
@@ -276,6 +337,7 @@ class AZProcessor(BaseProcessor):
         self.logger.info("AZ transformations completed successfully")
         return df
 
+
     def write(self, df: DataFrame, vision: str) -> None:
         """
         Write transformed AZ data to silver layer.
@@ -286,7 +348,13 @@ class AZProcessor(BaseProcessor):
         """
         from utils.helpers import write_to_layer
         write_to_layer(
-            df, self.config, 'silver', f'mvt_const_ptf_{vision}', vision, self.logger
+            df=df,
+            config=self.config,
+            layer="silver",
+            filename=f'mvt_const_ptf_{vision}',
+            vision=vision,
+            logger=self.logger,
+            optimize=True,
         )
 
     def _apply_renames(self, df, az_config):
