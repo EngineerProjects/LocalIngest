@@ -207,50 +207,37 @@ def join_constrcu_sas(
         how="left"
     )
 
-    # SAS behavior: MERGE preserves ALL left columns + adds right columns
-    # We use coalesce to prefer left values when column exists in both sides
-    # First, collect all columns from left (preserve everything like SAS)
-    out = joined
-    
-    # Add/coalesce each target from right side
-    # SAS LOB columns: cdprod, cprod, cmarch, lmarch, cseg, lseg, cssseg, lssseg, lprod, segment
-    # Plus CONSTRCU columns: typmarc1, nat_cnt, activite
-    targets = [
+    # SAS pattern: SELECT t1.*, t2.col1, t2.col2, ...
+    # We preserve ALL left columns + add specific columns from right
+    # Columns to add from reference (matching SAS)
+    ref_cols_to_add = [
         "typmarc1", "nat_cnt", "activite",  # From CONSTRCU
         "cdprod", "cprod", "cmarch", "lmarch", "cseg", "lseg", "cssseg", "lssseg", "lprod", "segment"  # From LOB
     ]
-
-    # Build select list: all left columns + coalesced right columns
-    left_cols = [c for c in out.columns if c.startswith("l.")]
-    select_exprs = []
     
-    # First add all left columns EXCEPT those in targets (to avoid duplicates)
-    targets_lower = set(t.lower() for t in targets)
-    for c in left_cols:
-        base = c.split(".", 1)[1]
-        if base.lower() not in targets_lower:
-            select_exprs.append(col(c).alias(base))
+    # Build SELECT: l.* + r.specific_cols (with coalesce for conflicts)
+    select_list = ["l.*"]  # ALL left columns
     
-    # Then add/coalesce target columns from right
-    for tgt in targets:
-        r_col = f"r.{tgt}"
-        l_col = f"l.{tgt}"
+    for col_name in ref_cols_to_add:
+        r_col = f"r.{col_name}"
+        l_col = f"l.{col_name}"
         
-        # Check if column exists in left or right
-        if l_col in left_cols and r_col in out.columns:
-            # Both exist: coalesce (prefer left)
-            select_exprs.append(coalesce(col(l_col), col(r_col)).alias(tgt))
-        elif r_col in out.columns:
-            # Only right exists: take right
-            select_exprs.append(col(r_col).alias(tgt))
-        elif l_col in left_cols:
-            # Only left exists: take left
-            select_exprs.append(col(l_col).alias(tgt))
+        # If column exists in right, add it (coalesce with left if both exist)
+        if r_col in joined.columns:
+            if l_col in joined.columns:
+                # Both exist: coalesce (prefer left)
+                select_list.append(coalesce(col(l_col), col(r_col)).alias(col_name))
+            else:
+                # Only right exists: take right
+                select_list.append(col(r_col).alias(col_name))
+        elif l_col in joined.columns:
+            # Only left exists: already in l.*, skip (will be included via l.*)
+            pass
         else:
-            # Neither exists: create NULL
-            select_exprs.append(lit(None).cast(StringType()).alias(tgt))
+            # Neither exists: add NULL
+            select_list.append(lit(None).cast(StringType()).alias(col_name))
     
-    out = out.select(*select_exprs)
+    out = joined.select(*select_list)
 
     if logger:
         logger.info("✓ CONSTRCU reference joined (SAS-faithful, keys=(police, produit))")
