@@ -68,9 +68,9 @@ class PTFMVTOrchestrator(BaseOrchestrator):
         """Define PTF_MVT pipeline stages based on toggles."""
         stages = []
 
-        run_az = _get_bool_env("RUN_AZ", "0")        # default ON
+        run_az = _get_bool_env("RUN_AZ", "1")        # default ON
         run_azec = _get_bool_env("RUN_AZEC", "1")    # default OFF
-        run_conso = _get_bool_env("RUN_CONSO", "0")  # default OFF
+        run_conso = _get_bool_env("RUN_CONSO", "1")  # default OFF
 
         if run_az:
             stages.append(("AZ Processor (Bronze → Silver)", AZProcessor))

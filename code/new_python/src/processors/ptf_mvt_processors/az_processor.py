@@ -332,6 +332,7 @@ class AZProcessor(BaseProcessor):
         # STEP 15 — Deduplication (SAS L505–507)
         # ============================================================
         self.logger.step(15, "Deduplicating by nopol")
+        # orderBy required before dropDuplicates for deterministic behavior (SAS NODUPKEY)
         df = df.orderBy("nopol", "cdsitp").dropDuplicates(["nopol"])
 
         self.logger.info("AZ transformations completed successfully")
@@ -610,6 +611,11 @@ class AZProcessor(BaseProcessor):
         
         # STEP 6: Prepare segmentation for join (SAS L470-472: BY reseau CPROD)
         df_segment = df_segment.dropDuplicates(['reseau', 'cprod'])
+        
+        # Trim join keys (SAS does implicit trim, PySpark requires explicit)
+        from pyspark.sql.functions import trim
+        df = df.withColumn('cdpole', trim(col('cdpole'))) \
+               .withColumn('cdprod', trim(col('cdprod')))
         
         # STEP 7: Join with main DataFrame - CRITICAL FIX! (SAS L500)
         # SAS: left join segment b on a.cdprod = b.cprod and a.CDPOLE = b.reseau

@@ -181,11 +181,7 @@ class ConsolidationProcessor(BaseProcessor):
         self.logger.step(6.1, "Adding ISIC codes and HAZARD_GRADES")
         df_consolidated = self._add_isic_codes(df_consolidated, vision)
 
-        self.logger.step(6.2, "Applying ISIC code corrections")
-        from utils.transformations.enrichment import apply_isic_corrections
-        df_consolidated = apply_isic_corrections(df_consolidated)
-
-        self.logger.step(6.3, "Adding ISIC global code mapping")
+        self.logger.step(6.2, "Adding ISIC global code mapping")
         df_consolidated = self._add_isic_global_code(df_consolidated)
 
         # ---------------------------------------------------------
@@ -533,29 +529,22 @@ class ConsolidationProcessor(BaseProcessor):
         """
         Add ISIC codes and HAZARD_GRADES to consolidated data.
         
-        Uses isic_codification utility with fallback strategy.
+        Uses refactored isic_codification module (assign_isic_codes is now self-contained).
+        
+        Based on: CODIFICATION_ISIC_CONSTRUCTION.sas (full pipeline)
         
         Args:
             df: Consolidated DataFrame
             vision: Vision in YYYYMM format
         
         Returns:
-            DataFrame with ISIC columns added (may be NULL if data missing)
+            DataFrame with ISIC columns added (isic_code, hazard_grades, etc.)
         """
-        from utils.transformations import (
-            join_isic_reference_tables,
-            assign_isic_codes,
-            add_partenariat_berlitz_flags
-        )
-
-        # First, join all ISIC reference tables
-        df = join_isic_reference_tables(df, self.spark, self.config, vision, self.logger)
-
-        # Then assign ISIC codes using the joined reference data
-        df = assign_isic_codes(df, vision, self.logger)
+        from utils.transformations.base.isic_codification import assign_isic_codes
         
-        # Add partnership flags (simple logic, no data dependency)
-        df = add_partenariat_berlitz_flags(df)
+        # assign_isic_codes now handles all reference table loading internally
+        # New signature: (df, spark, config, vision, logger)
+        df = assign_isic_codes(df, self.spark, self.config, vision, self.logger)
         
         return df
 
@@ -659,7 +648,8 @@ class ConsolidationProcessor(BaseProcessor):
                             col("cdactprf01").alias("cdactconst"),
                             col("cdactprf02").alias("cdactconst2"),
                             lit("").cast(StringType()).alias("cdnaf"),
-                            lit(None).cast(DoubleType()).alias("mtca_ris")
+                            lit(None).cast(DoubleType()).alias("mtca_ris"),
+                            lit("ipfm0024_1").alias("_source")  # Track source for dedup
                         )
                         df_tabspec = df_spec_0024_p1 if df_tabspec is None else df_tabspec.unionByName(df_spec_0024_p1)
                     
@@ -673,7 +663,8 @@ class ConsolidationProcessor(BaseProcessor):
                             col("cdactprf01").alias("cdactconst"),
                             col("cdactprf02").alias("cdactconst2"),
                             lit("").cast(StringType()).alias("cdnaf"),
-                            lit(None).cast(DoubleType()).alias("mtca_ris")
+                            lit(None).cast(DoubleType()).alias("mtca_ris"),
+                            lit("ipfm0024_3").alias("_source")  # Track source for dedup
                         )
                         df_tabspec = df_spec_0024_p3 if df_tabspec is None else df_tabspec.unionByName(df_spec_0024_p3)
                     
@@ -700,7 +691,8 @@ class ConsolidationProcessor(BaseProcessor):
                             col("actprin").alias("cdactconst"),
                             col("actsec1").alias("cdactconst2"),
                             col("cdnaf"),
-                            col("mtca1").alias("mtca_ris")
+                            col("mtca1").alias("mtca_ris"),
+                            lit("ipfm63_1").alias("_source")  # Track source for dedup
                         )
                         df_tabspec = df_spec_63_p1 if df_tabspec is None else df_tabspec.unionByName(df_spec_63_p1)
                     
@@ -714,7 +706,8 @@ class ConsolidationProcessor(BaseProcessor):
                             col("actprin").alias("cdactconst"),
                             col("actsec1").alias("cdactconst2"),
                             col("cdnaf"),
-                            col("mtca1").alias("mtca_ris")
+                            col("mtca1").alias("mtca_ris"),
+                            lit("ipfm63_3").alias("_source")  # Track source for dedup
                         )
                         df_tabspec = df_spec_63_p3 if df_tabspec is None else df_tabspec.unionByName(df_spec_63_p3)
                     
@@ -741,7 +734,8 @@ class ConsolidationProcessor(BaseProcessor):
                             col("cdacpr1").substr(1, 4).alias("cdactconst"),  # First 4 chars (SAS L491)
                             col("cdacpr2").alias("cdactconst2"),
                             lit("").cast(StringType()).alias("cdnaf"),
-                            col("mtca").alias("mtca_ris")
+                            col("mtca").alias("mtca_ris"),
+                            lit("ipfm99_1").alias("_source")  # Track source for dedup
                         )
                         df_tabspec = df_spec_99_p1 if df_tabspec is None else df_tabspec.unionByName(df_spec_99_p1)
                     
@@ -755,7 +749,8 @@ class ConsolidationProcessor(BaseProcessor):
                             col("cdacpr1").substr(1, 4).alias("cdactconst"),  # First 4 chars (SAS L493)
                             col("cdacpr2").alias("cdactconst2"),
                             lit("").cast(StringType()).alias("cdnaf"),
-                            col("mtca").alias("mtca_ris")
+                            col("mtca").alias("mtca_ris"),
+                            lit("ipfm99_3").alias("_source")  # Track source for dedup
                         )
                         df_tabspec = df_spec_99_p3 if df_tabspec is None else df_tabspec.unionByName(df_spec_99_p3)
                     
@@ -768,9 +763,23 @@ class ConsolidationProcessor(BaseProcessor):
                 # Remove empty records (SAS L498-500)
                 df_tabspec = df_tabspec.filter(col("nopol").isNotNull() & (col("nopol") != ""))
                 
-                # CRITICAL: Dedup before join - SAS uses nodupkey implicitly via HASH tables
-                # Multiple poles (1+3) and multiple files (0024+63+99) can create duplicates
-                df_tabspec = df_tabspec.dropDuplicates(['nopol', 'cdprod'])
+                # SAS: Sequential union → last source wins for duplicates
+                # Python: Need explicit orderBy to make dropDuplicates deterministic
+                # Priority: IPFM99_3 (highest) > IPFM99_1 > IPFM63_3 > IPFM63_1 > IPFM0024_3 > IPFM0024_1 (lowest)
+                df_tabspec = (df_tabspec
+                    .withColumn(
+                        "_priority",
+                        when(col("_source") == "ipfm99_3", lit(5))  # Highest priority (last in SAS)
+                        .when(col("_source") == "ipfm99_1", lit(4))
+                        .when(col("_source") == "ipfm63_3", lit(3))
+                        .when(col("_source") == "ipfm63_1", lit(2))
+                        .when(col("_source") == "ipfm0024_3", lit(1))
+                        .otherwise(lit(0))  # ipfm0024_1
+                    )
+                    .orderBy(col("_priority").desc())  # Sort by priority BEFORE dedup
+                    .dropDuplicates(['nopol', 'cdprod'])
+                    .drop("_priority", "_source")  # Clean up tracking columns
+                )
                 
                 # Left join on nopol + cdprod (SAS L514-515)
                 df = df.alias("t1").join(
