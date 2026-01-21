@@ -139,5 +139,5 @@ logs/
 
 # Ignore uv.lock
 uv.lock
-sas
-prompts
+# sas
+# prompts

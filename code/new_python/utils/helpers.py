@@ -254,6 +254,7 @@ def write_to_layer(
     compression = config.get("output.compression", "snappy")
     mode = config.get("output.mode", "overwrite").lower()
     vacuum_hours = config.get("output.vacuum_hours", 168)
+    clean = config.get("output.clean", False)  # NEW: Delete before write
 
     # Build path
     year, month = extract_year_month_int(vision)
@@ -272,7 +273,25 @@ def write_to_layer(
 
     if logger:
         logger.info(f"Writing to {output_path}")
-        logger.info(f"Format={output_format}, Mode={mode}, Layer={layer}")
+        logger.info(f"Format={output_format}, Mode={mode}, Layer={layer}, Clean={clean}")
+
+    # ================================================================
+    # CLEAN: DELETE EXISTING FILES/DIRECTORY BEFORE WRITE
+    # ================================================================
+    if clean:
+        import shutil
+        from pathlib import Path
+        
+        path_obj = Path(output_path)
+        if path_obj.exists():
+            if path_obj.is_dir():
+                shutil.rmtree(output_path)
+                if logger:
+                    logger.info(f"🗑️  Cleaned directory: {output_path}")
+            else:
+                path_obj.unlink()
+                if logger:
+                    logger.info(f"🗑️  Cleaned file: {output_path}")
 
     # ================================================================
     # COALESCE OPTIMIZATION FOR GOLD LAYER

@@ -30,6 +30,7 @@ datalake:
 # Output configuration (silver and gold layers)
 output:
   # Format for all outputs (delta recommended for ACID guarantees)
+  clean: true
   format: "delta"
   compression: "snappy"
   mode: "overwrite"

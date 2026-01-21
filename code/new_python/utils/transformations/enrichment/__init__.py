@@ -2,29 +2,33 @@
 Enrichment transformations module.
 
 Contains utilities for data enrichment operations:
-- ISIC code enrichment
+- ISIC code enrichment (via base.isic_codification)
 - DESTINAT (construction site destination) enrichment
 - Client data enrichment
 - Segmentation enrichment
 """
 
-# from .risk_enrichment import enrich_with_risk_data  # Module not yet implemented
-from .isic_enrichment import (
-    join_isic_reference_tables,
+# ISIC codification is now in base module (isic_enrichment was removed as duplicate)
+from utils.transformations.base.isic_codification import (
     assign_isic_codes,
-    apply_isic_corrections,
-    add_partenariat_berlitz_flags
+    join_isic_sui,
+    map_naf_to_isic,
+    join_isic_const_act,
+    compute_destination_isic,
+    join_isic_const_cht,
+    finalize_isic_codes,
+    join_isic_hazard_grades,
+    drop_isic_temp_columns
 )
+
 from .destinat_enrichment import (
     calculate_destinat,
     apply_destinat_consolidation_logic
 )
 
 __all__ = [
-    'join_isic_reference_tables',
+    # ISIC (from base.isic_codification)
     'assign_isic_codes',
-    'apply_isic_corrections',
-    'add_partenariat_berlitz_flags',
     'calculate_destinat',
     'apply_destinat_consolidation_logic'
 ]

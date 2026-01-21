@@ -224,22 +224,29 @@ def join_constrcu_sas(
     left_cols = [c for c in out.columns if c.startswith("l.")]
     select_exprs = []
     
-    # First add all left columns (renamed without prefix)
+    # First add all left columns EXCEPT those in targets (to avoid duplicates)
+    targets_lower = set(t.lower() for t in targets)
     for c in left_cols:
         base = c.split(".", 1)[1]
-        select_exprs.append(col(c).alias(base))
+        if base.lower() not in targets_lower:
+            select_exprs.append(col(c).alias(base))
     
     # Then add/coalesce target columns from right
     for tgt in targets:
         r_col = f"r.{tgt}"
+        l_col = f"l.{tgt}"
+        
         # Check if column exists in left or right
-        if f"l.{tgt}" in left_cols and r_col in out.columns:
+        if l_col in left_cols and r_col in out.columns:
             # Both exist: coalesce (prefer left)
-            select_exprs.append(coalesce(col(f"l.{tgt}"), col(r_col)).alias(tgt))
+            select_exprs.append(coalesce(col(l_col), col(r_col)).alias(tgt))
         elif r_col in out.columns:
             # Only right exists: take right
             select_exprs.append(col(r_col).alias(tgt))
-        elif f"l.{tgt}" not in left_cols:
+        elif l_col in left_cols:
+            # Only left exists: take left
+            select_exprs.append(col(l_col).alias(tgt))
+        else:
             # Neither exists: create NULL
             select_exprs.append(lit(None).cast(StringType()).alias(tgt))
     
