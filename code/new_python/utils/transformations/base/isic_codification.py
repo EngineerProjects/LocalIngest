@@ -308,12 +308,12 @@ def map_naf_to_isic(
             )
         )
 
-    # Final SELECT to preserve only left columns + new ISIC columns
-    # SAS: SELECT t1.*, CASE ... END AS ISIC_CODE_TEMP, CASE ... END AS ORIGINE_ISIC_TEMP
+    # SAS pattern: SELECT t1.*, CASE...END AS ISIC_CODE_TEMP, CASE...END AS ORIGINE_ISIC_TEMP
+    # Use "l.*" to preserve ALL original columns from left DataFrame
     out = (
         left
         .select(
-            "l.*",  # Preserve ALL original columns
+            "l.*",  # ALL columns from original DataFrame
             isic_temp.alias("isic_code_temp"),
             origine_temp.alias("origine_isic_temp")
         )
@@ -651,6 +651,18 @@ def finalize_isic_codes(df: DataFrame) -> DataFrame:
     ]:
         if c not in cur.columns:
             cur = cur.withColumn(c, lit(None).cast("string"))
+    
+    # CRITICAL FIX: Initialize _temp columns from existing columns (SAS modifies in-place, we use temp versions)
+    # SAS directly modifies CDNAF, CDTRE, CDNAF2008, etc. We create _temp versions first
+    if "cdnaf" in cur.columns:
+        cur = cur.withColumn("cdnaf_temp", col("cdnaf"))
+    else:
+        cur = cur.withColumn("cdnaf_temp", lit(None).cast("string"))
+    
+    if "cdtre" in cur.columns:
+        cur = cur.withColumn("cdtre_temp", col("cdtre"))
+    else:
+        cur = cur.withColumn("cdtre_temp", lit(None).cast("string"))
 
     # ==============================
     # Activity contracts (CDNATP='R')
