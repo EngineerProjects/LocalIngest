@@ -205,10 +205,12 @@ class AZECProcessor(BaseProcessor):
         df = calculate_exposures_azec(df, dates)
 
         # ============================================================
-        # STEP 08: Segmentation (LOB)
+        # STEP 08: Segmentation (LOB) + Cache CONSTRCU reference
         # ============================================================
         from utils.transformations.enrichment.segmentation_enrichment import enrich_segmentation_sas
-        df = enrich_segmentation_sas(df, self.spark, self.config, vision, self.logger)
+        df, self._cached_constrcu_ref = enrich_segmentation_sas(
+            df, self.spark, self.config, vision, self.logger, return_reference=True
+        )
 
         # ============================================================
         # STEP 09: Premiums & Flags (SAS L210–265)
@@ -217,48 +219,39 @@ class AZECProcessor(BaseProcessor):
         df = self._calculate_premiums(df)
 
         # ============================================================
-        # STEP 10–12: ISIC — Full SAS codification
+        # NOTE: ISIC codification is NOT part of AZEC SAS baseline
+        # (only used in AZ/CONSOLIDATION pipelines)
+        # Previously caused data explosion with 6 superfluous LEFT JOINs
         # ============================================================
-        self.logger.step(10, "Applying full SAS ISIC codification pipeline")
-
-        from utils.transformations import assign_isic_codes
-
-        df = assign_isic_codes(
-            df=df,
-            spark=self.spark,
-            config=self.config,
-            vision=vision,
-            logger=self.logger
-        )
 
         # ============================================================
-        # STEP 13: NAF Codes (SAS L272–302)
+        # STEP 10: NAF Codes (SAS L272–302)
         # ============================================================
-        self.logger.step(13, "Enriching NAF codes (FULL OUTER JOIN)")
+        self.logger.step(10, "Enriching NAF codes (FULL OUTER JOIN)")
         df = self._enrich_naf_codes(df, vision)
 
         # ============================================================
-        # STEP 14: Formulas (SAS L309–332)
+        # STEP 11: Formulas (SAS L309–332)
         # ============================================================
-        self.logger.step(14, "Enriching formulas")
+        self.logger.step(11, "Enriching formulas")
         df = self._enrich_formulas(df, vision)
 
         # ============================================================
-        # STEP 15: Turnover (MULPROCU) (SAS L339–357)
+        # STEP 12: Turnover (MULPROCU) (SAS L339–357)
         # ============================================================
-        self.logger.step(15, "Enriching CA turnover")
+        self.logger.step(12, "Enriching CA turnover")
         df = self._enrich_ca(df, vision)
 
         # ============================================================
-        # STEP 16: PE/RD/VI Capitals (INCENDCU) (SAS L364–371)
+        # STEP 13: PE/RD/VI Capitals (INCENDCU) (SAS L364–371)
         # ============================================================
-        self.logger.step(16, "Enriching PE/RD/VI capitals")
+        self.logger.step(13, "Enriching PE/RD/VI capitals")
         df = self._enrich_pe_rd_vi(df, vision)
 
         # ============================================================
-        # STEP 17: Cleanup expo dates when expo_ytd=0 (SAS L374–380)
+        # STEP 14: Cleanup expo dates when expo_ytd=0 (SAS L374–380)
         # ============================================================
-        self.logger.step(17, "Cleaning exposure dates when expo_ytd = 0")
+        self.logger.step(14, "Cleaning exposure dates when expo_ytd = 0")
         df = df.withColumn(
             'dt_deb_expo',
             when(col('expo_ytd') == 0, lit(None).cast(DateType())).otherwise(col('dt_deb_expo'))
@@ -268,23 +261,22 @@ class AZECProcessor(BaseProcessor):
         )
 
         # ============================================================
-        # STEP 18: SMP/LCI Capitals (CAPITXCU) (SAS L387–420)
+        # STEP 15: SMP/LCI Capitals (CAPITXCU) (SAS L387–420)
         # ============================================================
-        self.logger.step(18, "Joining SMP/LCI capital data")
+        self.logger.step(15, "Joining SMP/LCI capital data")
         df = self._join_capitals(df, vision)
 
         # ============================================================
-        # STEP 19: Business Adjustments (SAS L449–466)
+        # STEP 16: Business Adjustments (SAS L449–466)
         # ============================================================
-        self.logger.step(19, "Applying business adjustments (NBRES/NBAFN/NBPTF)")
+        self.logger.step(16, "Applying business adjustments (NBRES/NBAFN/NBPTF)")
         df = self._adjust_nbres(df)
 
         # ============================================================
-        # STEP 20: Final Enrichment (REGION, SITE, UPPER_MID) + ORDER BY (SAS L476–487)
+        # STEP 17: Final Enrichment (CONSTRCU_AZEC + SITE + UPPER_MID) (SAS L484–487)
         # ============================================================
-        self.logger.step(20, "Final enrichment (REGION, SITE/UPPER_MID) and ordering")
-        df = self._enrich_region(df)
-        df = self._enrich_constrcu_site_data(df, vision)
+        self.logger.step(17, "Final enrichment (segment2/type_produit_2, site data, UPPER_MID)")
+        df = self._enrich_final_constrcu_data(df, vision)
 
         # ORDER BY police (SAS L487)
         df = df.orderBy('police')
@@ -461,6 +453,38 @@ class AZECProcessor(BaseProcessor):
         # Default migration flag if missing (only happens in isolated tests)
         if "nbptf_non_migres_azec" not in df.columns:
             df = df.withColumn("nbptf_non_migres_azec", lit(1))
+        
+        # ========== DIAGNOSTIC: WHY NBAFN/NBRES = 0? ==========
+        from pyspark.sql.functions import sum as _sum, count as _count, when
+        
+        self.logger.info("[AZEC DIAG] Pre-movements diagnostics:")
+        
+        # 1. Check ETATPOL distribution (AFN/RES need etatpol='R')
+        try:
+            r_count = df.filter(col("etatpol") == "R").count()
+            self.logger.info(f"[AZEC DIAG] Rows with etatpol='R': {r_count:,} / {df.count():,}")
+        except Exception as e:
+            self.logger.warning(f"[AZEC DIAG] etatpol check failed: {e}")
+        
+        # 2. Check nbptf_non_migres_azec flag
+        try:
+            mig1_count = df.filter(col("nbptf_non_migres_azec") == 1).count()
+            self.logger.info(f"[AZEC DIAG] nbptf_non_migres_azec=1: {mig1_count:,} / {df.count():,}")
+        except Exception as e:
+            self.logger.warning(f"[AZEC DIAG] migration flag check failed: {e}")
+        
+        # 3. Check date columns non-NULL ratio
+        try:
+            date_stats = df.select(
+                _count("*").alias("total"),
+                _sum(when(col("datafn").isNotNull(), 1).otherwise(0)).alias("datafn_non_null"),
+                _sum(when(col("effetpol").isNotNull(), 1).otherwise(0)).alias("effetpol_non_null")
+            ).collect()[0]
+            
+            self.logger.info(f"[AZEC DIAG] Date columns: datafn={date_stats['datafn_non_null']:,}/{date_stats['total']:,}, effetpol={date_stats['effetpol_non_null']:,}/{date_stats['total']:,}")
+        except Exception as e:
+            self.logger.warning(f"[AZEC DIAG] date check failed: {e}")
+        # ========== END DIAGNOSTIC ==========
 
         # SAS AFN/RES/PTF logic
         df = calculate_azec_movements(df, dates, year, month)
@@ -491,6 +515,9 @@ class AZECProcessor(BaseProcessor):
 
         CAPITXCU is REQUIRED - capitals are critical for AZEC analysis.
         Processing will fail if table is missing (matching SAS behavior).
+
+        Note: Numeric precision tolerance of 0.01€ is acceptable when comparing
+        PySpark results with SAS reference outputs due to floating-point arithmetic.
 
         Args:
             df: AZEC DataFrame
@@ -1128,106 +1155,128 @@ class AZECProcessor(BaseProcessor):
         self.logger.info("✓ PE/RD/VI capitals enriched")
         return df
 
-    def _enrich_constrcu_site_data(self, df: DataFrame, vision: str) -> DataFrame:
+    def _enrich_final_constrcu_data(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Enrich with construction site data from CONSTRCU (SAS L476-487).
+        SAS L484-486: Final enrichment with triple LEFT JOIN:
+          1. CONSTRCU_AZEC → segment2, type_produit_2
+          2. CONSTRCU.CONSTRCU raw → site data (datouvch, ldestloc, etc.)
+          3. PT_GEST → upper_mid
         
-        Adds: DATOUVCH, LDESTLOC, MNT_GLOB, DATRECEP, DEST_LOC, DATFINCH, LQUALITE, UPPER_MID.
+        Uses cached CONSTRCU reference from step 08 to avoid recomputation.
         
         Args:
-            df: AZEC DataFrame
+            df: Main AZEC DataFrame
             vision: Vision in YYYYMM format
-        
+            
         Returns:
-            DataFrame enriched with construction site details and UPPER_MID
+            DataFrame with segment2, type_produit_2, site data, and upper_mid
         """
-        reader = get_bronze_reader(self)
-
-        # =========================================================================
-        # 1) ENRICH WITH CONSTRCU SITE DATA (SAS L476–487)
-        # =========================================================================
-        try:
-            df_constrcu = reader.read_file_group("constrcu_azec", vision="ref")
-
-            if df_constrcu is not None:
-                # Normalize column names
-                df_constrcu = df_constrcu.toDF(*[c.lower() for c in df_constrcu.columns])
-
-                # Expected columns from SAS
-                site_cols = ["police", "produit"]
-                optional_cols = [
-                    "datouvch", "ldestloc", "mnt_glob", "datrecep",
-                    "dest_loc", "datfinch", "lqualite"
-                ]
-
-                for c in optional_cols:
-                    if c in df_constrcu.columns:
-                        site_cols.append(c)
-
-                df_site = df_constrcu.select(*site_cols).dropDuplicates(["police", "produit"])
-
-                df = (
-                    df.alias("a")
-                    .join(
-                        df_site.alias("c"),
-                        (col("a.police") == col("c.police")) &
-                        (col("a.produit") == col("c.produit")),
-                        "left"
-                    )
-                    .select(
-                        "a.*",
-                        *[col(f"c.{c}") for c in site_cols if c not in ["police", "produit"]]
-                    )
-                )
-
-                self.logger.info("CONSTRCU site data joined")
-
-        except Exception as e:
-            self.logger.warning(f"CONSTRCU not available: {e}")
-
-        # =========================================================================
-        # 2) ENRICH WITH TABLE_PT_GEST (UPPER_MID) — SAS L482, L486
-        # =========================================================================
-        try:
-            df_ptgest = reader.read_file_group("table_pt_gest", vision)
-
-            if df_ptgest is not None:
-                # Normalize column names
-                df_ptgest = df_ptgest.toDF(*[c.lower() for c in df_ptgest.columns])
-
-                # Required columns
-                if "ptgst" not in df_ptgest.columns:
-                    raise ValueError("Column 'ptgst' missing in table_pt_gest")
-
-                if "upper_mid" not in df_ptgest.columns:
-                    raise ValueError("Column 'upper_mid' missing in table_pt_gest")
-
-                df = (
-                    df.alias("a")
-                    .join(
-                        df_ptgest.alias("g"),
-                        col("a.poingest") == col("g.ptgst"),
-                        "left"
-                    )
-                    .select(
-                        "a.*",
-                        col("g.upper_mid").alias("upper_mid")
-                    )
-                )
-
-                self.logger.info("UPPER_MID enriched from TABLE_PT_GEST")
-
-            else:
-                self.logger.warning("TABLE_PT_GEST file not found")
-                df = df.withColumn("upper_mid", lit(None).cast(StringType()))
-
-        except Exception as e:
-            self.logger.warning(f"TABLE_PT_GEST not available: {e}")
-            if "upper_mid" not in df.columns:
-                df = df.withColumn("upper_mid", lit(None).cast(StringType()))
-
-        # =========================================================================
-        # 3) FINAL LOG
-        # =========================================================================
-        self.logger.info("✓ Final enrichment complete (site data, UPPER_MID)")
+        from utils.readers.bronze_reader import get_bronze_reader
+        from types import SimpleNamespace
+        from pyspark.sql.functions import col
+        
+        reader = get_bronze_reader(SimpleNamespace(
+            spark=self.spark,
+            config=self.config,
+            logger=self.logger
+        ))
+        
+        # ============================================================
+        # 1. CONSTRCU_AZEC join (segment2/type_produit_2)
+        # ============================================================
+        # Use cached reference from step 08 to avoid recomputation
+        if hasattr(self, '_cached_constrcu_ref') and self._cached_constrcu_ref is not None:
+            df_constrcu_azec = self._cached_constrcu_ref
+            self.logger.debug("[CONSTRCU] Using cached reference from step 08")
+        else:
+            self.logger.warning("[CONSTRCU] Cache not found, reloading reference (performance impact)")
+            from utils.transformations.enrichment.segmentation_enrichment import load_constrcu_reference
+            
+            lob_ref = (
+                reader.read_file_group("lob", "ref")
+                .filter(col("cmarch") == "6")
+            )
+            
+            df_constrcu_azec = load_constrcu_reference(
+                spark=self.spark,
+                config=self.config,
+                vision=vision,
+                lob_ref=lob_ref,
+                logger=self.logger
+            )
+        
+        # Select segment2/type_produit_2 for join
+        df_constrcu_azec_small = df_constrcu_azec.select(
+            col("police"),
+            col("produit").alias("cdprod"),  # SAS: b.cdprod
+            col("segment").alias("segment2"),
+            col("type_produit").alias("type_produit_2")
+        ).dropDuplicates(["police", "cdprod"])
+        
+        # ============================================================
+        # 2. CONSTRCU.CONSTRCU raw join (site data)
+        # ============================================================
+        df_const = reader.read_file_group("constrcu", vision)
+        
+        df_const = df_const.select(
+            col("police"),
+            col("produit"),
+            col("datouvch"),
+            col("ldestloc"),
+            col("mnt_glob"),
+            col("datrecep"),
+            col("dest_loc"),
+            col("datfinch"),
+            col("lqualite")
+        ).dropDuplicates(["police", "produit"])
+        
+        # ============================================================
+        # 3. PT_GEST join (UPPER_MID)
+        # ============================================================
+        df_ptgest = reader.read_file_group("ptgst", vision)
+        
+        df_ptgest = df_ptgest.select(
+            col("ptgst").alias("_ptgst_key"),
+            col("upper_mid")
+        ).dropDuplicates(["_ptgst_key"])
+        
+        # ============================================================
+        # 4. Triple LEFT JOIN (SAS L484-486)
+        # ============================================================
+        df = (
+            df.alias("a")
+            .join(
+                df_constrcu_azec_small.alias("b"),
+                (col("a.police") == col("b.police")) & (col("a.produit") == col("b.cdprod")),
+                "left"
+            )
+            .join(
+                df_const.alias("c"),
+                (col("a.police") == col("c.police")) & (col("a.produit") == col("c.produit")),
+                "left"
+            )
+            .join(
+                df_ptgest.alias("d"),
+                col("a.poingest") == col("d._ptgst_key"),
+                "left"
+            )
+        )
+        
+        # Select all 'a' columns + new enrichment columns
+        df = df.select(
+            "a.*",
+            col("b.segment2"),
+            col("b.type_produit_2"),
+            col("c.datouvch"),
+            col("c.ldestloc"),
+            col("c.mnt_glob"),
+            col("c.datrecep"),
+            col("c.dest_loc"),
+            col("c.datfinch"),
+            col("c.lqualite"),
+            col("d.upper_mid")
+        )
+        
+        self.logger.info("✓ Final CONSTRCU_AZEC + site data + UPPER_MID enrichment completed")
+        
         return df

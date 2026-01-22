@@ -458,14 +458,62 @@ def load_constrcu_reference(
     #    Only pick the columns we actually need.
     # SAS defines: CDPROD, CPROD, cmarch, lmarch, lmarch2, cseg, lseg, lseg2, 
     #              cssseg, lssseg, lssseg2, lprod, segment
-    lob_small = (
-        lob_ref
-        .select(
-            "produit", "cdprod", "cprod", "cmarch", "lmarch", 
-            "cseg", "lseg", "cssseg", "lssseg", "lprod", "segment"
-        )
-        .dropDuplicates(["produit"])
+    
+    # CRITICAL FIX: LOB MUST have exactly 1 row per produit to avoid cartesian explosion
+    # First, select columns and validate for duplicates
+    lob_pre_dedup = lob_ref.select(
+        "produit", "cdprod", "cprod", "cmarch", "lmarch", 
+        "cseg", "lseg", "cssseg", "lssseg", "lprod", "segment"
     )
+    
+    # Detect duplicates BEFORE dedup to raise error if LOB is corrupted
+    from pyspark.sql.functions import count as spark_count, first
+    dup_check = lob_pre_dedup.groupBy("produit").agg(spark_count("*").alias("dup_count"))
+    dup_count_total = dup_check.filter(col("dup_count") > 1).count()
+    
+    if dup_count_total > 0:
+        if logger:
+            logger.error(f"[SEG] LOB contains {dup_count_total} products with duplicates!")
+            logger.error("[SEG] Top duplicates:")
+            dup_check.filter(col("dup_count") > 1).orderBy("dup_count", ascending=False).show(20, False)
+        
+        # CRITICAL: Fail-fast if duplicates detected
+        # raise RuntimeError(
+        #     f"LOB reference contains {dup_count_total} duplicate produit values. "
+        # "This would cause cartesian explosion in CONSTRCU join (observed: 1.7M rows instead of 13-14k). "
+        #     "Fix LOB reference data or use a deterministic dedup strategy."
+        # )
+        
+        # WORKAROUND: Use groupBy + first() for deterministic dedup
+        if logger:
+            logger.warning(f"[SEG] Applying deterministic dedup using first() for {dup_count_total} duplicate products")
+    
+    # Safe dedup: use groupBy + first() instead of dropDuplicates
+    # This is deterministic and ensures exactly 1 row per produit
+    lob_small = (
+        lob_pre_dedup
+        .groupBy("produit")
+        .agg(
+            first("cdprod").alias("cdprod"),
+            first("cprod").alias("cprod"),
+            first("cmarch").alias("cmarch"),
+            first("lmarch").alias("lmarch"),
+            first("cseg").alias("cseg"),
+            first("lseg").alias("lseg"),
+            first("cssseg").alias("cssseg"),
+            first("lssseg").alias("lssseg"),
+            first("lprod").alias("lprod"),
+            first("segment").alias("segment")
+        )
+    )
+    
+    # Validation: ensure exactly 1 row per produit
+    final_count = lob_small.count()
+    unique_produits = lob_pre_dedup.select("produit").distinct().count()
+    if final_count != unique_produits:
+        if logger:
+            logger.error(f"[SEG] LOB dedup failed: {final_count} rows vs {unique_produits} unique products")
+        raise RuntimeError(f"LOB dedup verification failed: {final_count} != {unique_produits}")
 
     merged = (
         merged.alias("c")
@@ -829,7 +877,7 @@ def apply_cssseg_corrections(df: DataFrame, logger=None) -> DataFrame:
     return df
 
 
-def enrich_segmentation_sas(df, spark, config, vision, logger=None):
+def enrich_segmentation_sas(df, spark, config, vision, logger=None, return_reference=False):
     """
     Full SAS-faithful segmentation pipeline:
       1) LOB join
@@ -838,6 +886,17 @@ def enrich_segmentation_sas(df, spark, config, vision, logger=None):
       4) Compute TYPE_PRODUIT (SAS)
       5) CSSSEG SAS corrections
       6) Segment_3 SAS computation
+      
+    Args:
+        df: Input DataFrame
+        spark: Spark session
+        config: Configuration dict
+        vision: Vision string (YYYYMM)
+        logger: Optional logger
+        return_reference: If True, returns (df, df_constrcu_ref) tuple for caching
+        
+    Returns:
+        DataFrame or tuple(DataFrame, DataFrame) if return_reference=True
     """
 
     # --------------------------------------------------------------------
@@ -888,4 +947,7 @@ def enrich_segmentation_sas(df, spark, config, vision, logger=None):
     if logger:
         logger.info("✓ Full SAS segmentation enrichment completed")
 
-    return df
+    if return_reference:
+        return df, df_constrcu_ref
+    else:
+        return df

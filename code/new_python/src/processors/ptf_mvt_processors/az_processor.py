@@ -245,6 +245,48 @@ class AZProcessor(BaseProcessor):
         # STEP 8 — Movement indicators (AFN, RES, RPC, RPT, NBPTF)
         # ============================================================
         self.logger.step(8, "Calculating movement indicators")
+        
+        # DIAGNOSTIC: Log preconditions for movement calculations
+        try:
+            total = df.count()
+            self.logger.info("[AZ DIAG] Pre-movements diagnostics:")
+            self.logger.info(f"[AZ DIAG] Total rows: {total:,}")
+            
+            # CSSSEG distribution (critical for NBPTF)
+            cssseg_5 = df.filter(col('cssseg') == '5').count()
+            cssseg_null = df.filter(col('cssseg').isNull()).count()
+            self.logger.info(f"[AZ DIAG] CSSSEG='5': {cssseg_5:,} ({100*cssseg_5/total:.1%})")
+            self.logger.info(f"[AZ DIAG] CSSSEG NULL: {cssseg_null:,} ({100*cssseg_null/total:.1%})")
+            
+            # CDSITP distribution (critical for NBPTF/NBRES)
+            cdsitp_1 = df.filter(col('cdsitp') == '1').count()
+            cdsitp_3 = df.filter(col('cdsitp') == '3').count()
+            cdsitp_null = df.filter(col('cdsitp').isNull()).count()
+            self.logger.info(f"[AZ DIAG] CDSITP='1': {cdsitp_1:,} ({100*cdsitp_1/total:.1%})")
+            self.logger.info(f"[AZ DIAG] CDSITP='3': {cdsitp_3:,} ({100*cdsitp_3/total:.1%})")
+            self.logger.info(f"[AZ DIAG] CDSITP NULL: {cdsitp_null:,} ({100*cdsitp_null/total:.1%})")
+            
+            # CDNATP distribution (critical for NBPTF/NBRES)
+            cdnatp_ro = df.filter(col('cdnatp').isin('R', 'O')).count()
+            cdnatp_c = df.filter(col('cdnatp') == 'C').count()
+            cdnatp_null = df.filter(col('cdnatp').isNull()).count()
+            self.logger.info(f"[AZ DIAG] CDNATP in(R,O): {cdnatp_ro:,} ({100*cdnatp_ro/total:.1%})")
+            self.logger.info(f"[AZ DIAG] CDNATP='C': {cdnatp_c:,} ({100*cdnatp_c/total:.1%})")
+            self.logger.info(f"[AZ DIAG] CDNATP NULL: {cdnatp_null:,} ({100*cdnatp_null/total:.1%})")
+            
+            # Date columns NULL ratios (critical for AFN/RES conditions)
+            dtcrepol_null = df.filter(col('dtcrepol').isNull()).count()
+            dteffan_null = df.filter(col('dteffan').isNull()).count()
+            dttraan_null = df.filter(col('dttraan').isNull()).count()
+            dtresilp_null = df.filter(col('dtresilp').isNull()).count()
+            self.logger.info(f"[AZ DIAG] Date columns NULL ratios:")
+            self.logger.info(f"[AZ DIAG]   dtcrepol: {total-dtcrepol_null:,}/{total:,} ({100*(total-dtcrepol_null)/total:.1%} non-NULL)")
+            self.logger.info(f"[AZ DIAG]   dteffan: {total-dteffan_null:,}/{total:,} ({100*(total-dteffan_null)/total:.1%} non-NULL)")
+            self.logger.info(f"[AZ DIAG]   dttraan: {total-dttraan_null:,}/{total:,} ({100*(total-dttraan_null)/total:.1%} non-NULL)")
+            self.logger.info(f"[AZ DIAG]   dtresilp: {total-dtresilp_null:,}/{total:,} ({100*(total-dtresilp_null)/total:.1%} non-NULL)")
+        except Exception as e:
+            self.logger.warning(f"[AZ DIAG] Failed to compute diagnostics: {e}")
+        
         movement_cols = az_config['movements']['column_mapping']
         df = calculate_movements(df, dates, year_int, movement_cols)
 

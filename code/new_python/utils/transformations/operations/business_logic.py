@@ -186,7 +186,7 @@ def calculate_az_movements(
 
     # --- NBPTF ---
     nbptf_cond = (
-        (col('cssseg') != '5') &
+        ~col('cssseg').isin(['5']) &  # Explicit NULL-safe (excludes NULLs)
         (col('cdnatp').isin('R', 'O')) &
         (
             ((col('cdsitp') == '1') & (col(creation_date) <= dtfin)) |
@@ -220,7 +220,7 @@ def calculate_az_movements(
 
     # --- RES (exclude chantiers) ---
     res_cond = (
-        (col("cdnatp") != "C") &
+        ~col("cdnatp").isin(['C']) &  # Explicit NULL-safe (excludes NULLs)
         (col("cdsitp") == "3") &
         (
             ((col(termination_date).isNotNull()) &
