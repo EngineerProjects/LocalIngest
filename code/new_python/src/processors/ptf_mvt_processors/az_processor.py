@@ -379,11 +379,44 @@ class AZProcessor(BaseProcessor):
         - column_selection.computed (SELECT SAS)
         - computed_fields (UPDATE SAS)
         """
+
         from pyspark.sql.functions import col, lit, when, expr
 
         if not computed_config:
             return df
 
+        # --- helper: normalize any JSON literal to a Spark Column ---
+        def _normalize(value):
+            # NULL explicit
+            if value is None:
+                return lit(None).cast("string")
+
+            # string-based
+            if isinstance(value, str):
+                cleaned = value.strip()
+
+                # SAS missing markers → NULL
+                if cleaned in ["", ".", "NULL", "NA"]:
+                    return lit(None).cast("string")
+
+                # numeric strings
+                if cleaned.replace(".", "", 1).isdigit():
+                    if "." in cleaned:
+                        return lit(float(cleaned))
+                    else:
+                        return lit(int(cleaned))
+
+                # otherwise: treat as a literal string (SAFE)
+                return lit(cleaned)
+
+            # numeric Python literal
+            if isinstance(value, (int, float)):
+                return lit(value)
+
+            # fallback
+            return lit(str(value))
+
+        # --- main processing ---
         for field_name, field_def in computed_config.items():
             if field_name == "description":
                 continue
@@ -396,7 +429,7 @@ class AZProcessor(BaseProcessor):
                 default = field_def["default"]
                 df = df.withColumn(
                     field_name,
-                    when(col(source).isNull(), lit(default)).otherwise(col(source))
+                    when(col(source).isNull(), _normalize(default)).otherwise(col(source))
                 )
 
             # 2. flag_equality
@@ -416,23 +449,15 @@ class AZProcessor(BaseProcessor):
             # 4. conditional
             elif field_type == "conditional":
                 conditions = field_def["conditions"]
-                default = field_def["default"]
+                default_v = field_def["default"]
 
-                # default value
-                if isinstance(default, str) and default not in ["0", "1"]:
-                    result_expr = expr(default)
-                else:
-                    result_expr = lit(float(default) if "." in str(default) else int(default))
+                # start from normalized default
+                result_expr = _normalize(default_v)
 
-                # apply conditions in reverse order
+                # apply conditions in reverse order (last wins)
                 for cond in reversed(conditions):
-                    check_expr = expr(cond["check"])
-                    result_val = cond["result"]
-
-                    if isinstance(result_val, str) and result_val not in ["0", "1"]:
-                        result_val = expr(result_val)
-                    else:
-                        result_val = lit(int(result_val))
+                    check_expr = expr(cond["check"])  # condition always SQL
+                    result_val = _normalize(cond["result"])
 
                     result_expr = when(check_expr, result_val).otherwise(result_expr)
 
@@ -442,7 +467,6 @@ class AZProcessor(BaseProcessor):
                 self.logger.warning(f"Unknown computed field type: {field_type}")
 
         return df
-
                 
     def _join_ipfm99(self, df: DataFrame, vision: str) -> DataFrame:
         """

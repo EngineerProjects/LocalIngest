@@ -153,10 +153,26 @@ def join_isic_sui(df: DataFrame, df_sui: DataFrame) -> DataFrame:
     left = df.alias("l")
     right = df_sui.alias("r")
 
+    # Detect correct key mapping
+    if "nopol" in df.columns:
+        key_left_pol = col("l.nopol")
+    elif "police" in df.columns:
+        key_left_pol = col("l.police")
+    else:
+        raise Exception("join_isic_sui: aucune colonne nopol/police trouvée")
+
+    if "cdprod" in df.columns:
+        key_left_prod = col("l.cdprod")
+    elif "produit" in df.columns:
+        key_left_prod = col("l.produit")
+    else:
+        raise Exception("join_isic_sui: aucune colonne cdprod/produit trouvée")
+
     # Base join condition
     join_cond = (
-        (col("l.police") == col("r.nopol")) &
-        (col("l.produit") == col("r.cdprod"))
+        key_left_pol == col("r.nopol")
+    ) & (
+        key_left_prod == col("r.cdprod")
     )
 
     # Join and immediately SELECT to avoid column duplication (SAS: SELECT t1.*, t2.col)
@@ -450,7 +466,7 @@ def compute_destination_isic(df: DataFrame) -> DataFrame:
         .when(dst.rlike("(ECOL)"),        lit("BUREAU"))
         .when(dst.rlike("(ENSEI)"),       lit("BUREAU"))
         .when(dst.rlike("(CHIR)"),        lit("HOPITAL"))
-        .when(dst.rlike("(BAT)"),         lit("MAISON"))
+        .when(dst.rlike("(BAT)"),         lit("RESIDENTIEL"))
         .when(dst.rlike("(INDIV)"),       lit("MAISON"))
         .when(dst.rlike("(VRD)"),         lit("VOIRIE"))
         .when(dst.rlike("(NON SOUMIS)"),  lit("AUTRES_GC"))
@@ -908,6 +924,16 @@ def load_sui_table(spark, config, vision: str, logger=None):
     from pyspark.sql.functions import col
 
     reader = get_bronze_reader(SimpleNamespace(spark=spark, config=config, logger=logger))
+
+    try:
+        vis_int = int(vision)
+    except Exception:
+        vis_int = 0
+
+    if vis_int < 202103:
+        if logger:
+            logger.info(f"[ISIC] SUI disabled for vision {vision} (< 202103) — SAS parity")
+        return None
 
     try:
         df_sui = reader.read_file_group("ird_suivi_engagements", vision)

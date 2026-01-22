@@ -166,7 +166,7 @@
       "91": "91_PROV_FIXE_AUTOMAT",
       "92": "92_PROV_VAR_AUTOMAT "
     },
-    "default": ""
+    "default": null
   },
   "movements": {
     "description": "Movement calculations (AFN, RES, RPT, RPC, NBPTF) - SAS L249-292",

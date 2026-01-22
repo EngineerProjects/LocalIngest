@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from typing import List, Tuple, Dict, Optional
 from pathlib import Path
+from pyspark.sql import SparkSession
 
 
 def validate_vision(vision: str) -> bool:
@@ -215,6 +216,40 @@ def compute_date_ranges(vision: str) -> Dict[str, str]:
 
     return dates
 
+def delete_path_with_spark_fs(spark: SparkSession, path: str, logger=None) -> bool:
+    """
+    Supprime récursivement un chemin (fichier ou dossier) sur ADLS/ABFS/HDFS/S3 via Hadoop FS.
+
+    Args:
+        spark: SparkSession
+        path: Chemin complet (ex: abfss://container@account.dfs.core.windows.net/construction/gold/ptf_mvt_202509)
+        logger: logger optionnel
+
+    Returns:
+        True si suppression réalisée, False si le chemin n'existait pas ou en cas d'erreur.
+    """
+    try:
+        jvm = spark._jvm
+        conf = spark._jsc.hadoopConfiguration()
+        fs = jvm.org.apache.hadoop.fs.FileSystem.get(conf)
+        jpath = jvm.org.apache.hadoop.fs.Path(path)
+
+        if fs.exists(jpath):
+            # True = suppression récursive (dossier et contenu)
+            fs.delete(jpath, True)
+            if logger:
+                logger.info(f"🗑️  Cleaned existing path: {path}")
+            return True
+        else:
+            if logger:
+                logger.debug(f"No existing path to clean: {path}")
+            return False
+    except Exception as e:
+        if logger:
+            logger.error(f"Failed to clean path {path}: {e}")
+        return False
+
+
 def write_to_layer(
     df,
     config,
@@ -275,41 +310,33 @@ def write_to_layer(
         logger.info(f"Writing to {output_path}")
         logger.info(f"Format={output_format}, Mode={mode}, Layer={layer}, Clean={clean}")
 
-    # ================================================================
-    # CLEAN: DELETE EXISTING FILES/DIRECTORY BEFORE WRITE
-    # ================================================================
-    if clean:
-        import shutil
-        from pathlib import Path
-        
-        path_obj = Path(output_path)
-        if path_obj.exists():
-            if path_obj.is_dir():
-                shutil.rmtree(output_path)
-                if logger:
-                    logger.info(f"🗑️  Cleaned directory: {output_path}")
-            else:
-                path_obj.unlink()
-                if logger:
-                    logger.info(f"🗑️  Cleaned file: {output_path}")
 
     # ================================================================
-    # COALESCE OPTIMIZATION FOR GOLD LAYER
+    # CLEAN: DELETE EXISTING FILES/DIRECTORY BEFORE WRITE (Azure-safe)
     # ================================================================
-    if layer == "gold":
-        try:
-            row_count = df.count()
-            if row_count < 1_000_000:
-                df = df.coalesce(1)
+    if clean:
+        # Récupère la SparkSession depuis le DataFrame si tu n'as pas spark en paramètre
+        spark = df.sparkSession
+        delete_path_with_spark_fs(spark, output_path, logger)
+
+
+        # ================================================================
+        # COALESCE OPTIMIZATION FOR GOLD LAYER
+        # ================================================================
+        if layer == "gold":
+            try:
+                row_count = df.count()
+                if row_count < 1_000_000:
+                    df = df.coalesce(1)
+                    if logger:
+                        logger.debug(f"Coalesced to 1 partition ({row_count:,} rows)")
+                elif row_count < 10_000_000:
+                    df = df.coalesce(4)
+                    if logger:
+                        logger.debug(f"Coalesced to 4 partitions ({row_count:,} rows)")
+            except Exception as e:
                 if logger:
-                    logger.debug(f"Coalesced to 1 partition ({row_count:,} rows)")
-            elif row_count < 10_000_000:
-                df = df.coalesce(4)
-                if logger:
-                    logger.debug(f"Coalesced to 4 partitions ({row_count:,} rows)")
-        except Exception as e:
-            if logger:
-                logger.warning(f"Coalesce skipped: {e}")
+                    logger.warning(f"Coalesce skipped: {e}")
 
     # ================================================================
     # WRITE LOGIC BY FORMAT

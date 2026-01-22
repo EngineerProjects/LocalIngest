@@ -1,11 +1,14 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "description": "Consolidation schema harmonization mappings - AZ and AZEC to common schema - SAS PTF_MVTS_CONSOLIDATION_MACRO.sas",
+  "description": "Consolidation schema harmonization mappings - AZ and AZEC to common schema - aligned with SAS macros (PTF_MVTS_CONSOLIDATION_MACRO.sas & CODIFICATION_ISIC_CONSTRUCTION.sas)",
+
   "az_harmonization": {
-    "description": "AZ data is already in target schema - minimal mapping needed - SAS L46-68",
+    "description": "AZ data is already in target schema - minimal mapping needed (SAS OUTER UNION CORR section)",
     "rename": {
       "nopol": "nopol",
       "noint": "noint",
+      "cdprod": "cdprod",
+      "cmarch": "cmarch",
       "cseg": "cseg",
       "cssseg": "cssseg",
       "cdcoas": "cdcoass",
@@ -15,8 +18,9 @@
     },
     "computed": {}
   },
+
   "azec_harmonization": {
-    "description": "Map AZEC columns to match AZ schema for consolidation - SAS L73-105",
+    "description": "Map AZEC columns to match AZ schema for consolidation (SAS OUTER UNION CORR block)",
     "rename": {
       "police": "nopol",
       "produit": "cdprod",
@@ -38,176 +42,169 @@
       "lidirisq": "lidirisq"
     },
     "computed": {
-      "nopol11b": {
+      "nopolli1": {
         "type": "alias",
         "source": "police",
-        "description": "AZEC uses same field for both nopol and nopol11b"
+        "description": "AZEC uses same field for both NOPOL and NOPOLLI1 (SAS OUTER UNION CORR)"
       },
       "mois_echeance": {
         "type": "month_extract",
         "source": "dtechann",
-        "description": "Extract month from anniversary date - SAS L76"
+        "description": "Extract month from anniversary date (SAS SELECT on AZ/AZEC)"
       },
       "jour_echeance": {
         "type": "day_extract",
         "source": "dtechann",
-        "description": "Extract day from anniversary date - SAS L76"
+        "description": "Extract day from anniversary date (SAS SELECT on AZ/AZEC)"
       },
+
       "cdsitp": {
         "type": "constant",
-        "value": "",
-        "description": "Empty for AZEC - SAS L77"
+        "value": null,
+        "description": "Empty for AZEC (SAS: CDSITP='')"
       },
       "cdreg": {
         "type": "constant",
-        "value": "",
-        "description": "Empty for AZEC - SAS L78"
+        "value": null,
+        "description": "Empty for AZEC (SAS: CDREG='')"
       },
       "cdgecent": {
         "type": "constant",
         "value": null,
-        "description": "Null for AZEC - SAS L78"
+        "description": "Numeric missing for AZEC (SAS: .)"
       },
       "cdpolrvi": {
         "type": "constant",
-        "value": "",
-        "description": "Empty for AZEC - SAS L94"
+        "value": null,
+        "description": "Empty for AZEC (SAS OUTER UNION CORR)"
       },
       "noclt": {
         "type": "constant",
-        "value": "",
-        "description": "Empty for AZEC - SAS L94"
+        "value": null,
+        "description": "Empty for AZEC in consolidation"
       },
       "cdfract": {
         "type": "constant",
-        "value": "",
-        "description": "Empty for AZEC - SAS L96"
+        "value": null,
+        "description": "Empty risk address/contract fields for AZEC"
       },
       "quarisq": {
         "type": "constant",
-        "value": "",
-        "description": "Empty risk address fields for AZEC - SAS L96"
+        "value": null,
+        "description": "Empty in AZEC"
       },
       "nmrisq": {
         "type": "constant",
-        "value": "",
-        "description": "Empty for AZEC - SAS L96"
+        "value": null,
+        "description": "Empty in AZEC"
       },
       "nmsrisq": {
         "type": "constant",
-        "value": "",
-        "description": "Empty for AZEC - SAS L96"
+        "value": null,
+        "description": "Empty in AZEC"
       },
       "resrisq": {
         "type": "constant",
-        "value": "",
-        "description": "Empty for AZEC - SAS L96"
+        "value": null,
+        "description": "Empty in AZEC"
       },
       "ruerisq": {
         "type": "constant",
-        "value": "",
-        "description": "Empty for AZEC - SAS L97"
+        "value": null,
+        "description": "Empty in AZEC"
       },
       "posrisq": {
         "type": "constant",
-        "value": "",
-        "description": "Empty for AZEC - SAS L97"
+        "value": null,
+        "description": "Empty in AZEC"
       },
       "vilrisq": {
         "type": "constant",
-        "value": "",
-        "description": "Empty for AZEC - SAS L98"
+        "value": null,
+        "description": "Empty in AZEC"
       },
+
       "dteffan": {
         "type": "alias",
         "source": "effetpol",
-        "description": "AZEC uses effetpol for DTEFFAN - SAS L97"
+        "description": "AZEC uses EFFETPOL for DTEFFAN (SAS)"
       },
       "dttraan": {
         "type": "alias",
         "source": "effetpol",
-        "description": "AZEC uses effetpol for DTTRAAN - SAS L97"
+        "description": "AZEC uses EFFETPOL for DTTRAAN (SAS)"
       },
+
       "actprin": {
         "type": "constant",
-        "value": "",
-        "description": "AZ-specific field, empty for AZEC - SAS L102"
+        "value": null,
+        "description": "AZ-only; AZEC default empty (SAS OUTER UNION CORR)"
       },
       "ctprvtrv": {
         "type": "constant",
         "value": null,
-        "description": "AZ-specific field, null for AZEC - SAS L102"
+        "description": "Numeric missing (SAS: .)"
       },
       "mtsmpr": {
         "type": "constant",
         "value": null,
-        "description": "AZ-specific field, null for AZEC - SAS L102"
+        "description": "Numeric missing (SAS: .)"
       },
       "lbnattrv": {
         "type": "constant",
-        "value": "",
-        "description": "AZ-specific field, empty for AZEC - SAS L102"
+        "value": null,
+        "description": "AZ-only; AZEC default empty"
       },
+
       "nbrpt": {
         "type": "constant",
         "value": 0,
-        "description": "AZEC doesn't have RPT (replacement) logic - SAS L103"
+        "description": "No RPT logic in AZEC (SAS sets 0)"
       },
       "nbrpc": {
         "type": "constant",
         "value": 0,
-        "description": "AZEC doesn't have RPC (replacement) logic - SAS L103"
+        "description": "No RPC logic in AZEC (SAS sets 0)"
       },
       "primes_rpc": {
         "type": "constant",
         "value": 0,
-        "description": "AZEC doesn't have RPC primes - SAS L103"
+        "description": "No RPC primes in AZEC"
       },
       "primes_rpt": {
         "type": "constant",
         "value": 0,
-        "description": "AZEC doesn't have RPT primes - SAS L103"
+        "description": "No RPT primes in AZEC"
       },
+
       "mtcaenp": {
         "type": "constant",
         "value": 0,
-        "description": "Capital field not in AZEC - SAS L104"
+        "description": "Capital field not in AZEC (SAS sets 0)"
       },
       "mtcasst": {
         "type": "constant",
         "value": 0,
-        "description": "Capital field not in AZEC - SAS L104"
+        "description": "Capital field not in AZEC (SAS sets 0)"
       },
       "mtcavnt": {
         "type": "constant",
         "value": 0,
-        "description": "Capital field not in AZEC - SAS L104"
+        "description": "Capital field not in AZEC (SAS sets 0)"
       },
-      "prcdcie": {
-        "type": "alias",
-        "source": "partbrut",
-        "description": "Company share % - AZEC uses PARTBRUT field"
-      },
-      "segment3": {
-        "type": "constant",
-        "value": "",
-        "description": "Segment3 not available in AZEC"
-      },
+
       "cdnaf2008": {
         "type": "alias",
         "source": "code_naf",
-        "description": "NAF 2008 code - must be kept in final output as CDNAF2008"
+        "description": "Temporary NAF2008 from AZEC (finalization handled by ISIC pipeline)"
       },
-      "top_suspension": {
-        "type": "constant",
-        "value": 0,
-        "description": "Suspension flag - always 0 for AZEC"
-      },
+
       "top_temp": {
         "type": "constant",
         "value": 0,
-        "description": "Temporary flag - always 0 for AZEC - SAS L85"
+        "description": "Temporary flag - always 0 for AZEC (SAS)"
       },
+
       "cdmotres": {
         "type": "mapping",
         "source": "origres",
@@ -215,17 +212,18 @@
           "CL": "A",
           "AP": "C",
           "CI": "Z",
-          "": ""
+          "": null
         },
         "default": "X",
-        "description": "AZEC motif résiliation mapping - SAS L87-93"
+        "description": "AZEC motif résiliation mapping (SAS CASE)"
       }
     }
   },
+
   "common_transformations": {
-    "description": "Transformations applied to both AZ and AZEC after harmonization - SAS PTF_MVTS_CONSOLIDATION_MACRO.sas",
+    "description": "Transformations applied to both AZ and AZEC after harmonization (SAS parity)",
     "cdtre_cleanup": {
-      "description": "Remove '*' prefix from CDTRE if present - SAS L52, L79",
+      "description": "Remove '*' prefix from CDTRE if present (SAS: substr(CDTRE,2,3))",
       "column": "cdtre",
       "type": "regex_replace",
       "pattern": "^\\*(.{3})",
@@ -233,37 +231,36 @@
       "comment": "SAS: CASE substr(CDTRE, 1, 1) when '*' THEN substr(CDTRE, 2, 3) ELSE CDTRE"
     },
     "partnership_flags": {
-      "description": "Partnership and special program flags - SAS L598-599",
+      "description": "Partnership and special program flags (SAS L598-599)",
       "transformations": [
         {
           "column": "top_partenariat",
           "type": "flag",
           "condition": "noint.isin(['4A6160', '4A6947', '4A6956'])",
-          "comment": "SAS L599: if NOINT in (4A6160,4A6947,4A6956) then TOP_PARTENARIAT=1"
+          "comment": "SAS: if NOINT in (4A6160,4A6947,4A6956) then TOP_PARTENARIAT=1"
         },
         {
           "column": "top_berlioz",
           "type": "flag",
           "condition": "noint == '4A5766'",
-          "comment": "SAS L598: if NOINT=4A5766 then TOP_BERLIOZ=1"
+          "comment": "SAS: if NOINT=4A5766 then TOP_BERLIOZ=1"
         }
       ]
     }
   },
+
   "fallback_logic": {
-    "description": "Fallback coalescing for missing columns - SAS L376-379",
+    "description": "Fallback coalescing for missing columns (SAS: DTRCPPR from DTREFFIN)",
     "dtrcppr_fallback": {
       "column": "dtrcppr",
       "type": "coalesce",
-      "sources": [
-        "dtrcppr",
-        "dtreffin"
-      ],
-      "comment": "SAS L376-378: if missing(DTRCPPR) and not missing(DTREFFIN) then DTRCPPR=DTREFFIN"
+      "sources": ["dtrcppr", "dtreffin"],
+      "comment": "SAS: if missing(DTRCPPR) and not missing(DTREFFIN) then DTRCPPR=DTREFFIN"
     }
   },
+
   "movement_column_mapping": {
-    "description": "Column mapping for movement calculations (AFN, RES, RPT, RPC)",
+    "description": "Column mapping for movement calculations (AFN, RES, RPT, RPC) — parity with SAS inputs",
     "az": {
       "creation_date": "dtcrepol",
       "effective_date": "dteffan",
@@ -291,8 +288,9 @@
       "type_date3": null
     }
   },
+
   "exposure_column_mapping": {
-    "description": "Column mapping for exposure calculations (expo_ytd, expo_gli)",
+    "description": "Column mapping for exposure calculations (expo_ytd, expo_gli) — parity with SAS inputs",
     "az": {
       "creation_date": "dtcrepol",
       "termination_date": "dtresilp"

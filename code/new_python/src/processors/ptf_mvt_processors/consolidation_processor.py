@@ -10,10 +10,10 @@ Uses dictionary-driven configuration and SilverReader.
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
     col, when, lit, coalesce, upper, broadcast,
-    month, dayofmonth, to_date
+    month, dayofmonth, row_number, trim
 )
 from pyspark.sql.types import StringType, DateType, DoubleType
-
+from pyspark.sql.window import Window
 from src.processors.base_processor import BaseProcessor
 from src.reader import SilverReader, BronzeReader
 from utils.loaders import get_default_loader
@@ -138,10 +138,6 @@ class ConsolidationProcessor(BaseProcessor):
         from utils.transformations.enrichment import apply_destinat_consolidation_logic
         df_consolidated = apply_destinat_consolidation_logic(df_consolidated)
 
-        self.logger.step(5, "Calculating DESTINAT for construction sites")
-        from utils.transformations.enrichment import calculate_destinat
-        df_consolidated = calculate_destinat(df_consolidated, self.logger)
-
         # -----------------------------------------
         # Step I — IRD Risk Q46/Q45/QAN enrichment
         # -----------------------------------------
@@ -183,6 +179,9 @@ class ConsolidationProcessor(BaseProcessor):
 
         self.logger.step(6.2, "Adding ISIC global code mapping")
         df_consolidated = self._add_isic_global_code(df_consolidated)
+
+        self.logger.step(6.3, "Applying manual ISIC global corrections (SAS parity)")
+        df_consolidated = self._apply_isic_gbl_corrections(df_consolidated)
 
         # ---------------------------------------------------------
         # Step O — Business flags (Berlioz / Partenariat)
@@ -293,10 +292,27 @@ class ConsolidationProcessor(BaseProcessor):
         from utils.helpers import compute_date_ranges
 
         # Apply renames
+        # ---------- SAFE RENAME ----------
         rename_mapping = harmonization_config.get('rename', {})
         for old_name, new_name in rename_mapping.items():
-            if old_name.lower() in df.columns:
-                df = df.withColumnRenamed(old_name.lower(), new_name.lower())
+            old_l = old_name.lower()
+            new_l = new_name.lower()
+
+            # Si la cible existe déjà ET la source existe encore :
+            # -> on supprime la cible et on renomme proprement
+            if old_l in df.columns and new_l in df.columns:
+                # Log utile pour le debug
+                if self.logger:
+                    self.logger.debug(
+                        f"[HARMONIZE] Target '{new_l}' already exists; dropping source '{new_l}' before renaming."
+                    )
+                df = df.drop(new_l)
+                df = df.withColumnRenamed(old_l, new_l)
+                continue
+
+            # Si seule la source existe, on renomme vers la cible
+            if old_l in df.columns and new_l not in df.columns:
+                df = df.withColumnRenamed(old_l, new_l)
 
         # Apply computed columns
         computed_mapping = harmonization_config.get('computed', {})
@@ -450,7 +466,7 @@ class ConsolidationProcessor(BaseProcessor):
         if 'cdtre' in df.columns:
             df = df.withColumn(
                 'cdtre',
-                when(col('cdtre').startswith('*'), col('cdtre').substr(2, 4))
+                when(col('cdtre').startswith('*'), col('cdtre').substr(2, 3))
                 .otherwise(col('cdtre'))
             )
 
@@ -548,6 +564,35 @@ class ConsolidationProcessor(BaseProcessor):
         
         return df
 
+    def _apply_isic_gbl_corrections(self, df: DataFrame) -> DataFrame:
+        """
+        Corrections manuelles ISIC Global (parité SAS Step 11).
+        Remplace ISIC_CODE_GBL selon la valeur de ISIC_CODE (après trim).
+        """
+        if "isic_code" not in df.columns:
+            return df
+        if "isic_code_gbl" not in df.columns:
+            df = df.withColumn("isic_code_gbl", lit(None).cast(StringType()))
+
+        corrections = {
+            "22000":  "022000",
+            "24021":  "024000",
+            "242025": "242005",
+            "329020": "329000",
+            "731024": "731000",
+            "81020":  "081000",
+            "81023":  "081000",
+            "981020": "981000"
+        }
+
+        ic = trim(col("isic_code"))
+        expr = col("isic_code_gbl")
+        for src, tgt in corrections.items():
+            expr = when(ic == src, lit(tgt)).otherwise(expr)
+
+        return df.withColumn("isic_code_gbl", expr)
+
+
     def _enrich_euler_risk_note(self, df: DataFrame, vision: str) -> DataFrame:
         """
         Enrich with Euler credit risk notes from BINSEE.histo_note_risque.
@@ -582,7 +627,7 @@ class ConsolidationProcessor(BaseProcessor):
                 ).select(
                     col("cdsiren"),
                     # Map "00" to empty string (SAS L404)
-                    when(col("cdnote") == "00", lit("")).otherwise(col("cdnote")).alias("note_euler")
+                    when(col("cdnote") == "00", lit(None)).otherwise(col("cdnote")).alias("note_euler")
                 ).dropDuplicates(["cdsiren"])
                 
                 # Left join on cdsiren
@@ -608,220 +653,232 @@ class ConsolidationProcessor(BaseProcessor):
     def _enrich_special_product_activity(self, df: DataFrame, vision: str) -> DataFrame:
         """
         Enrich with special product activity codes from IPFM0024, IPFM63, IPFM99.
-        
-        Implements SAS logic from PTF_MVTS_CONSOLIDATION_MACRO.sas L446-525:
-        - Extracts activity codes from special product files (IPFSPE1/3)
-        - Unions data from Pole 1 and Pole 3
-        - Coalesces with existing ACTPRIN and CDNAF
-        - Creates TypeAct: "Multi" if secondary activity exists, else "Mono"
-        
+
+        Parité SAS (PTF_MVTS_CONSOLIDATION_MACRO.sas L446-525):
+        - Construction de TABSPEC par OUTER UNION CORR (ordre déterminant la priorité)
+        - Join sur (NOPOL, CDPROD) puis:
+            ACTPRIN2  = coalesce(CDACTCONST, ACTPRIN)
+            CDNAF2    = t3.CDNAF si non-NULL sinon ACTPRIN
+            TypeAct   = "Multi" si CDACTCONST2 non-NULL, sinon "Mono"
+        - Remplace ACTPRIN et CDNAF par *_2
+        - Stratégie all‑NULL : aucune chaîne vide injectée, tests via isNull()
+
         Args:
             df: Consolidated DataFrame
             vision: Vision in YYYYMM format
-        
+
         Returns:
-            DataFrame with ACTPRIN2, CDNAF2, CDACTCONST2, TypeAct columns
-            (NULL/Mono if special product files unavailable)
+            DataFrame with ACTPRIN (enrichi), CDNAF (enrichi), CDACTCONST2, TypeAct
         """
         reader = get_bronze_reader(self)
-        
+
         try:
-            # Initialize empty special products table with schema
             df_tabspec = None
-            
-            # Try to read IPFM0024 (professional activity codes)
-            # SAS L462-470: Union IPFSPE1.IPFM0024 (Pole 1) + IPFSPE3.IPFM0024 (Pole 3)
+
+            # -------------------------------
+            # IPFM0024 (Pole 1 et Pole 3)
+            # -------------------------------
             try:
-                # Read Pole 1 (Agents)
                 df_ipfm0024_1 = reader.read_file_group('ipfm0024_1', vision)
-                # Read Pole 3 (Brokers)
+            except Exception as e:
+                df_ipfm0024_1 = None
+                self.logger.debug(f"IPFM0024_1 not available: {e}")
+
+            try:
                 df_ipfm0024_3 = reader.read_file_group('ipfm0024_3', vision)
-                
-                if df_ipfm0024_1 is not None or df_ipfm0024_3 is not None:
-                    # Pole 1 processing
-                    if df_ipfm0024_1 is not None:
-                        df_spec_0024_p1 = df_ipfm0024_1.select(
-                            col("nopol"),
-                            col("noint"),
-                            col("cdprod"),
-                            lit("1").alias("cdpole"),  # Pole 1 = Agents
-                            col("cdactprf01").alias("cdactconst"),
-                            col("cdactprf02").alias("cdactconst2"),
-                            lit("").cast(StringType()).alias("cdnaf"),
-                            lit(None).cast(DoubleType()).alias("mtca_ris"),
-                            lit("ipfm0024_1").alias("_source")  # Track source for dedup
-                        )
-                        df_tabspec = df_spec_0024_p1 if df_tabspec is None else df_tabspec.unionByName(df_spec_0024_p1)
-                    
-                    # Pole 3 processing
-                    if df_ipfm0024_3 is not None:
-                        df_spec_0024_p3 = df_ipfm0024_3.select(
-                            col("nopol"),
-                            col("noint"),
-                            col("cdprod"),
-                            lit("3").alias("cdpole"),  # Pole 3 = Brokers
-                            col("cdactprf01").alias("cdactconst"),
-                            col("cdactprf02").alias("cdactconst2"),
-                            lit("").cast(StringType()).alias("cdnaf"),
-                            lit(None).cast(DoubleType()).alias("mtca_ris"),
-                            lit("ipfm0024_3").alias("_source")  # Track source for dedup
-                        )
-                        df_tabspec = df_spec_0024_p3 if df_tabspec is None else df_tabspec.unionByName(df_spec_0024_p3)
-                    
-                    self.logger.info("IPFM0024 special products loaded (Pole 1 + Pole 3)")
             except Exception as e:
-                self.logger.debug(f"IPFM0024 not available: {e}")
-            
-            # Try to read IPFM63 (activity + NAF + CA)
-            # SAS L474-482: Union IPFSPE1.IPFM63 (Pole 1) + IPFSPE3.IPFM63 (Pole 3)
+                df_ipfm0024_3 = None
+                self.logger.debug(f"IPFM0024_3 not available: {e}")
+
+            if df_ipfm0024_1 is not None:
+                df_spec_0024_p1 = df_ipfm0024_1.select(
+                    col("nopol"),
+                    col("noint"),
+                    col("cdprod"),
+                    lit("1").alias("cdpole"),
+                    col("cdactprf01").alias("cdactconst"),
+                    col("cdactprf02").alias("cdactconst2"),
+                    lit(None).cast(StringType()).alias("cdnaf"),          # all‑NULL
+                    lit(None).cast(DoubleType()).alias("mtca_ris"),
+                    lit("ipfm0024_1").alias("_source")
+                )
+                df_tabspec = df_spec_0024_p1 if df_tabspec is None else df_tabspec.unionByName(df_spec_0024_p1)
+
+            if df_ipfm0024_3 is not None:
+                df_spec_0024_p3 = df_ipfm0024_3.select(
+                    col("nopol"),
+                    col("noint"),
+                    col("cdprod"),
+                    lit("3").alias("cdpole"),
+                    col("cdactprf01").alias("cdactconst"),
+                    col("cdactprf02").alias("cdactconst2"),
+                    lit(None).cast(StringType()).alias("cdnaf"),          # all‑NULL
+                    lit(None).cast(DoubleType()).alias("mtca_ris"),
+                    lit("ipfm0024_3").alias("_source")
+                )
+                df_tabspec = df_spec_0024_p3 if df_tabspec is None else df_tabspec.unionByName(df_spec_0024_p3)
+
+            # -------------------------------
+            # IPFM63 (Pole 1 et Pole 3)
+            # -------------------------------
             try:
-                # Read Pole 1 (Agents)
                 df_ipfm63_1 = reader.read_file_group('ipfm63_1', vision)
-                # Read Pole 3 (Brokers)
-                df_ipfm63_3 = reader.read_file_group('ipfm63_3', vision)
-                
-                if df_ipfm63_1 is not None or df_ipfm63_3 is not None:
-                    # Pole 1 processing
-                    if df_ipfm63_1 is not None:
-                        df_spec_63_p1 = df_ipfm63_1.select(
-                            col("nopol"),
-                            col("noint"),
-                            col("cdprod"),
-                            lit("1").alias("cdpole"),  # Pole 1 = Agents
-                            col("actprin").alias("cdactconst"),
-                            col("actsec1").alias("cdactconst2"),
-                            col("cdnaf"),
-                            col("mtca1").alias("mtca_ris"),
-                            lit("ipfm63_1").alias("_source")  # Track source for dedup
-                        )
-                        df_tabspec = df_spec_63_p1 if df_tabspec is None else df_tabspec.unionByName(df_spec_63_p1)
-                    
-                    # Pole 3 processing
-                    if df_ipfm63_3 is not None:
-                        df_spec_63_p3 = df_ipfm63_3.select(
-                            col("nopol"),
-                            col("noint"),
-                            col("cdprod"),
-                            lit("3").alias("cdpole"),  # Pole 3 = Brokers
-                            col("actprin").alias("cdactconst"),
-                            col("actsec1").alias("cdactconst2"),
-                            col("cdnaf"),
-                            col("mtca1").alias("mtca_ris"),
-                            lit("ipfm63_3").alias("_source")  # Track source for dedup
-                        )
-                        df_tabspec = df_spec_63_p3 if df_tabspec is None else df_tabspec.unionByName(df_spec_63_p3)
-                    
-                    self.logger.info("IPFM63 special products loaded (Pole 1 + Pole 3)")
             except Exception as e:
-                self.logger.debug(f"IPFM63 not available: {e}")
-            
-            # Try to read IPFM99 (already partially used in AZ processor)
-            # SAS L486-494: Union IPFSPE1.IPFM99 (Pole 1) + IPFSPE3.IPFM99 (Pole 3)
+                df_ipfm63_1 = None
+                self.logger.debug(f"IPFM63_1 not available: {e}")
+
             try:
-                # Read Pole 1 (Agents)
-                df_ipfm99_1 = reader.read_file_group('ipfm99_1', vision)
-                # Read Pole 3 (Brokers)
-                df_ipfm99_3 = reader.read_file_group('ipfm99_3', vision)
-                
-                if df_ipfm99_1 is not None or df_ipfm99_3 is not None:
-                    # Pole 1 processing
-                    if df_ipfm99_1 is not None:
-                        df_spec_99_p1 = df_ipfm99_1.select(
-                            col("nopol"),
-                            col("noint"),
-                            col("cdprod"),
-                            lit("1").alias("cdpole"),  # Pole 1 = Agents
-                            col("cdacpr1").substr(1, 4).alias("cdactconst"),  # First 4 chars (SAS L491)
-                            col("cdacpr2").alias("cdactconst2"),
-                            lit("").cast(StringType()).alias("cdnaf"),
-                            col("mtca").alias("mtca_ris"),
-                            lit("ipfm99_1").alias("_source")  # Track source for dedup
-                        )
-                        df_tabspec = df_spec_99_p1 if df_tabspec is None else df_tabspec.unionByName(df_spec_99_p1)
-                    
-                    # Pole 3 processing
-                    if df_ipfm99_3 is not None:
-                        df_spec_99_p3 = df_ipfm99_3.select(
-                            col("nopol"),
-                            col("noint"),
-                            col("cdprod"),
-                            lit("3").alias("cdpole"),  # Pole 3 = Brokers
-                            col("cdacpr1").substr(1, 4).alias("cdactconst"),  # First 4 chars (SAS L493)
-                            col("cdacpr2").alias("cdactconst2"),
-                            lit("").cast(StringType()).alias("cdnaf"),
-                            col("mtca").alias("mtca_ris"),
-                            lit("ipfm99_3").alias("_source")  # Track source for dedup
-                        )
-                        df_tabspec = df_spec_99_p3 if df_tabspec is None else df_tabspec.unionByName(df_spec_99_p3)
-                    
-                    self.logger.info("IPFM99 special products loaded (Pole 1 + Pole 3)")
+                df_ipfm63_3 = reader.read_file_group('ipfm63_3', vision)
             except Exception as e:
-                self.logger.debug(f"IPFM99 not available: {e}")
-            
-            # If any special product data found, join to main DataFrame
+                df_ipfm63_3 = None
+                self.logger.debug(f"IPFM63_3 not available: {e}")
+
+            if df_ipfm63_1 is not None:
+                df_spec_63_p1 = df_ipfm63_1.select(
+                    col("nopol"),
+                    col("noint"),
+                    col("cdprod"),
+                    lit("1").alias("cdpole"),
+                    col("actprin").alias("cdactconst"),
+                    col("actsec1").alias("cdactconst2"),
+                    col("cdnaf"),
+                    col("mtca1").alias("mtca_ris"),
+                    lit("ipfm63_1").alias("_source")
+                )
+                df_tabspec = df_spec_63_p1 if df_tabspec is None else df_tabspec.unionByName(df_spec_63_p1)
+
+            if df_ipfm63_3 is not None:
+                df_spec_63_p3 = df_ipfm63_3.select(
+                    col("nopol"),
+                    col("noint"),
+                    col("cdprod"),
+                    lit("3").alias("cdpole"),
+                    col("actprin").alias("cdactconst"),
+                    col("actsec1").alias("cdactconst2"),
+                    col("cdnaf"),
+                    col("mtca1").alias("mtca_ris"),
+                    lit("ipfm63_3").alias("_source")
+                )
+                df_tabspec = df_spec_63_p3 if df_tabspec is None else df_tabspec.unionByName(df_spec_63_p3)
+
+            # -------------------------------
+            # IPFM99 (Pole 1 et Pole 3)
+            # -------------------------------
+            try:
+                df_ipfm99_1 = reader.read_file_group('ipfm99_1', vision)
+            except Exception as e:
+                df_ipfm99_1 = None
+                self.logger.debug(f"IPFM99_1 not available: {e}")
+
+            try:
+                df_ipfm99_3 = reader.read_file_group('ipfm99_3', vision)
+            except Exception as e:
+                df_ipfm99_3 = None
+                self.logger.debug(f"IPFM99_3 not available: {e}")
+
+            if df_ipfm99_1 is not None:
+                df_spec_99_p1 = df_ipfm99_1.select(
+                    col("nopol"),
+                    col("noint"),
+                    col("cdprod"),
+                    lit("1").alias("cdpole"),
+                    col("cdacpr1").substr(1, 4).alias("cdactconst"),
+                    col("cdacpr2").alias("cdactconst2"),
+                    lit(None).cast(StringType()).alias("cdnaf"),          # all‑NULL
+                    col("mtca").alias("mtca_ris"),
+                    lit("ipfm99_1").alias("_source")
+                )
+                df_tabspec = df_spec_99_p1 if df_tabspec is None else df_tabspec.unionByName(df_spec_99_p1)
+
+            if df_ipfm99_3 is not None:
+                df_spec_99_p3 = df_ipfm99_3.select(
+                    col("nopol"),
+                    col("noint"),
+                    col("cdprod"),
+                    lit("3").alias("cdpole"),
+                    col("cdacpr1").substr(1, 4).alias("cdactconst"),
+                    col("cdacpr2").alias("cdactconst2"),
+                    lit(None).cast(StringType()).alias("cdnaf"),          # all‑NULL
+                    col("mtca").alias("mtca_ris"),
+                    lit("ipfm99_3").alias("_source")
+                )
+                df_tabspec = df_spec_99_p3 if df_tabspec is None else df_tabspec.unionByName(df_spec_99_p3)
+
+            # -------------------------------
+            # Consolidation / Priorité "last wins"
+            # -------------------------------
             if df_tabspec is not None:
-                # Remove empty records (SAS L498-500)
-                df_tabspec = df_tabspec.filter(col("nopol").isNotNull() & (col("nopol") != ""))
-                
-                # SAS: Sequential union → last source wins for duplicates
-                # Python: Need explicit orderBy to make dropDuplicates deterministic
-                # Priority: IPFM99_3 (highest) > IPFM99_1 > IPFM63_3 > IPFM63_1 > IPFM0024_3 > IPFM0024_1 (lowest)
-                df_tabspec = (df_tabspec
+                # remove empty keys (all‑NULL style)
+                df_tabspec = df_tabspec.filter(col("nopol").isNotNull())
+
+                # priorité (reproduit l'ordre de l'OUTER UNION CORR SAS)
+                df_tabspec = (
+                    df_tabspec
                     .withColumn(
                         "_priority",
-                        when(col("_source") == "ipfm99_3", lit(5))  # Highest priority (last in SAS)
+                        when(col("_source") == "ipfm99_3", lit(5))
                         .when(col("_source") == "ipfm99_1", lit(4))
                         .when(col("_source") == "ipfm63_3", lit(3))
                         .when(col("_source") == "ipfm63_1", lit(2))
                         .when(col("_source") == "ipfm0024_3", lit(1))
                         .otherwise(lit(0))  # ipfm0024_1
                     )
-                    .orderBy(col("_priority").desc())  # Sort by priority BEFORE dedup
-                    .dropDuplicates(['nopol', 'cdprod'])
-                    .drop("_priority", "_source")  # Clean up tracking columns
                 )
-                
-                # Left join on nopol + cdprod (SAS L514-515)
-                df = df.alias("t1").join(
-                    df_tabspec.alias("t3"),
-                    (col("t1.nopol") == col("t3.nopol")) & (col("t1.cdprod") == col("t3.cdprod")),
-                    how="left"
-                ).select(
-                    "t1.*",
-                    # Coalesce with existing ACTPRIN (SAS L511)
-                    coalesce(col("t3.cdactconst"), col("t1.actprin")).alias("actprin2"),
-                    # Use special CDNAF if not empty, else existing (SAS L512)
-                    when((col("t3.cdnaf").isNotNull()) & (col("t3.cdnaf") != ""), 
-                         col("t3.cdnaf")).otherwise(col("t1.cdnaf")).alias("cdnaf2"),
-                    col("t3.cdactconst2")
+
+                # déduplication déterministe: dernier (priorité max) gagne
+                w = Window.partitionBy("nopol", "cdprod").orderBy(col("_priority").desc())
+                df_tabspec = (
+                    df_tabspec
+                    .withColumn("_rn", row_number().over(w))
+                    .filter(col("_rn") == 1)
+                    .drop("_rn", "_priority", "_source")
                 )
-                
-                # Derive TypeAct (SAS L523-524)
-                df = df.withColumn(
-                    "typeact",
-                    when(col("cdactconst2").isNotNull() & (col("cdactconst2") != ""), 
-                         lit("Multi")).otherwise(lit("Mono"))
-                )
-                
-                # Replace ACTPRIN and CDNAF with enriched values (SAS L521-522)
-                df = df.withColumn("actprin", col("actprin2")) \
-                       .withColumn("cdnaf", col("cdnaf2")) \
-                       .drop("actprin2", "cdnaf2")
-                
-                self.logger.info("Special product activity codes enriched successfully")
+
+                # validation clés avant join
+                if "nopol" in df.columns and "cdprod" in df.columns:
+                    df = df.alias("t1").join(
+                        df_tabspec.alias("t3"),
+                        (col("t1.nopol") == col("t3.nopol")) & (col("t1.cdprod") == col("t3.cdprod")),
+                        how="left"
+                    ).select(
+                        "t1.*",
+                        # ACTPRIN2 : spécial gagne sinon existant
+                        coalesce(col("t3.cdactconst"), col("t1.actprin")).alias("actprin2"),
+                        # CDNAF2 : spécial si non-NULL sinon existant
+                        when(col("t3.cdnaf").isNotNull(), col("t3.cdnaf")).otherwise(col("t1.cdnaf")).alias("cdnaf2"),
+                        # activité secondaire provenant du spécial
+                        col("t3.cdactconst2")
+                    )
+
+                    # TypeAct: "Multi" si activité secondaire non-NULL sinon "Mono"
+                    df = df.withColumn(
+                        "typeact",
+                        when(col("cdactconst2").isNotNull(), lit("Multi")).otherwise(lit("Mono"))
+                    )
+
+                    # Remplacer ACTPRIN/CDNAF par versions enrichies
+                    df = (
+                        df.withColumn("actprin", col("actprin2"))
+                        .withColumn("cdnaf", col("cdnaf2"))
+                        .drop("actprin2", "cdnaf2")
+                    )
+
+                    self.logger.info("Special product activity codes enriched successfully")
+                else:
+                    self.logger.warning("Special product enrichment skipped: missing 'nopol' or 'cdprod' in consolidated DF")
             else:
-                # No special product data available - use defaults
+                # Aucun fichier spécial disponible
                 self.logger.warning("No special product files (IPFM0024/63/99) available")
                 from utils.processor_helpers import add_null_columns
                 df = add_null_columns(df, {'cdactconst2': StringType})
-                df = df.withColumn("typeact", lit("Mono"))  # Default to Mono
+                df = df.withColumn("typeact", lit("Mono"))
 
         except Exception as e:
             self.logger.warning(f"Special product enrichment failed: {e}")
             from utils.processor_helpers import add_null_columns
             df = add_null_columns(df, {'cdactconst2': StringType})
             df = df.withColumn("typeact", lit("Mono"))
-        
+
         return df
 
     def _enrich_w6_naf_and_client_cdnaf(self, df: DataFrame) -> DataFrame:
@@ -993,7 +1050,7 @@ class ConsolidationProcessor(BaseProcessor):
         SAS L416-421 uses DEST.DO_DEST202110 (fixed October 2021 reference).
         However, if your data has monthly DO_DEST files, use vision parameter.
         
-        CRITICAL: DO_DEST may contain date columns that need normalization.
+        DO_DEST may contain date columns that need normalization.
         
         Args:
             df: Consolidated DataFrame
@@ -1002,89 +1059,58 @@ class ConsolidationProcessor(BaseProcessor):
         Returns:
             DataFrame with destinat column enriched from DO_DEST reference
         """
-        from pyspark.sql.functions import to_date, coalesce
+        from pyspark.sql.functions import to_date, lit, coalesce
         from pyspark.sql.types import DateType, StringType
-        
+
         try:
             reader = get_bronze_reader(self)
-            
-            # CRITICAL: SAS uses DO_DEST202110 (fixed ref), but if you have monthly files, use vision
-            # For SAS parity, you might want to use a fixed vision like "202110"
-            # For now, using current vision as per user's data structure
             do_dest_df = reader.read_file_group("do_dest", vision)
-            
+
             if do_dest_df is None:
-                self.logger.warning(f"DO_DEST not available for vision {vision} - skipping destinat enrichment")
-                # Ensure destinat column exists (NULL)
-                if 'destinat' not in df.columns:
-                    df = df.withColumn('destinat', lit(None).cast(StringType()))
+                # Ensure DESTINAT exists (NULL)
+                if "destinat" not in df.columns:
+                    df = df.withColumn("destinat", lit(None).cast(StringType()))
                 return df
-            
-            # Verify required columns exist
-            if 'nopol' not in do_dest_df.columns or 'destinat' not in do_dest_df.columns:
-                self.logger.warning("DO_DEST missing required columns (nopol/destinat) - cannot join")
-                if 'destinat' not in df.columns:
-                    df = df.withColumn('destinat', lit(None).cast(StringType()))
+
+            # Required columns
+            if "nopol" not in do_dest_df.columns or "destinat" not in do_dest_df.columns:
+                if "destinat" not in df.columns:
+                    df = df.withColumn("destinat", lit(None).cast(StringType()))
                 return df
-            
-            # CRITICAL: Normalize date columns if present (prevents date format errors)
-            # DO_DEST may contain: dtouvch, dtfinch, dtrecep
-            date_cols_to_normalize = ['dtouvch', 'dtfinch', 'dtrecep']
-            for col_name in date_cols_to_normalize:
-                if col_name in do_dest_df.columns:
+
+            # Normalize DO_DEST date columns
+            for c in ["dtouvch", "dtfinch", "dtrecep"]:
+                if c in do_dest_df.columns:
                     do_dest_df = do_dest_df.withColumn(
-                        col_name,
+                        c,
                         coalesce(
-                            to_date(col(col_name), 'yyyyMMdd'),     # Format 1: 20240115
-                            to_date(col(col_name), 'yyyy-MM-dd'),   # Format 2: 2024-01-15
-                            to_date(col(col_name), 'dd/MM/yyyy')    # Format 3: 15/01/2024
+                            to_date(col(c), "yyyyMMdd"),
+                            to_date(col(c), "yyyy-MM-dd"),
+                            to_date(col(c), "dd/MM/yyyy")
                         ).cast(DateType())
                     )
-                    self.logger.debug(f"Normalized date column: {col_name}")
-            
-            # Prepare reference data (select only needed columns + dedup)
-            do_dest_select = do_dest_df.select(
-                col("nopol").alias("nopol_ref"),
-                col("destinat").cast(StringType()).alias("destinat_ref")
-            ).dropDuplicates(["nopol_ref"])
-            
-            # Check if main DF has nopol
-            if 'nopol' not in df.columns:
-                self.logger.warning("Main DataFrame missing 'nopol' column - cannot join DO_DEST")
-                if 'destinat' not in df.columns:
-                    df = df.withColumn('destinat', lit(None).cast(StringType()))
-                return df
-            
-            # Left join on nopol
-            df_joined = df.join(
-                do_dest_select,
-                col("nopol") == col("nopol_ref"),
-                "left"
+
+            do_dest_ref = (
+                do_dest_df
+                .select(col("nopol").alias("nopol_ref"),
+                        col("destinat").cast(StringType()).alias("destinat_ref"))
+                .dropDuplicates(["nopol_ref"])
             )
-            
-            # CRITICAL: SAS logic (L418): "select t1.*, t2.DESTINAT"
-            # This ADDS destinat column (or OVERWRITES if exists)
-            # Python equivalent: Create destinat if missing, else fill NULLs only
-            if 'destinat' in df.columns:
-                # Destinat exists: fill NULLs with reference value
-                df_result = df_joined.withColumn(
-                    "destinat",
-                    when(col("destinat").isNull(), col("destinat_ref"))
-                    .otherwise(col("destinat"))
-                )
-            else:
-                # Destinat doesn't exist: create from reference
-                df_result = df_joined.withColumn("destinat", col("destinat_ref"))
-            
-            # Drop temporary join columns
-            df_result = df_result.drop("nopol_ref", "destinat_ref")
-            
-            self.logger.info(f"✓ DO_DEST reference joined for vision {vision}")
-            return df_result
-            
+
+            if "nopol" not in df.columns:
+                if "destinat" not in df.columns:
+                    df = df.withColumn("destinat", lit(None).cast(StringType()))
+                return df
+
+            df_join = df.join(do_dest_ref, df.nopol == col("nopol_ref"), "left")
+
+            # SAS: DESTINAT = t2.DESTINAT   ALWAYS (t1 value never reused)
+            df_final = df_join.withColumn("destinat", col("destinat_ref"))
+
+            return df_final.drop("nopol_ref", "destinat_ref")
+
         except Exception as e:
             self.logger.warning(f"DO_DEST enrichment failed: {e}")
-            # Ensure destinat exists even on error
-            if 'destinat' not in df.columns:
-                df = df.withColumn('destinat', lit(None).cast(StringType()))
+            if "destinat" not in df.columns:
+                df = df.withColumn("destinat", lit(None).cast(StringType()))
             return df
