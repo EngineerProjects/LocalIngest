@@ -15,7 +15,7 @@
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9",
-                "dateFormat": "yyyy-MM-dd"
+                "dateFormat": "dd/MM/yyyy"
             },
             "filters": [],
             "location_type": "monthly"
@@ -46,7 +46,7 @@
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9",
-                "dateFormat": "yyyy-MM-dd"
+                "dateFormat": "dd/MM/yyyy"
             },
             "filters": [],
             "location_type": "monthly"
@@ -92,7 +92,7 @@
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9",
-                "dateFormat": "yyyy-MM-dd"
+                "dateFormat": "dd/MM/yyyy"
             },
             "filters": [],
             "location_type": "monthly"
@@ -108,7 +108,7 @@
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9",
-                "dateFormat": "yyyy-MM-dd"
+                "dateFormat": "dd/MM/yyyy"
             },
             "filters": [],
             "location_type": "monthly"
@@ -124,7 +124,7 @@
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9",
-                "dateFormat": "yyyy-MM-dd"
+                "dateFormat": "dd/MM/yyyy"
             },
             "filters": [],
             "location_type": "monthly"
@@ -155,7 +155,7 @@
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9",
-                "dateFormat": "yyyy-MM-dd"
+                "dateFormat": "dd/MM/yyyy"
             },
             "filters": [],
             "location_type": "reference"
@@ -306,7 +306,7 @@
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9",
-                "dateFormat": "yyyy-MM-dd"
+                "dateFormat": "dd/MM/yyyy"
             },
             "filters": [],
             "location_type": "reference"
@@ -427,7 +427,7 @@
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9",
-                "dateFormat": "yyyy-MM-dd"
+                "dateFormat": "dd/MM/yyyy"
             },
             "filters": [],
             "location_type": "reference"
