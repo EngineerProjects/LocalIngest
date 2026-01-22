@@ -159,7 +159,7 @@ class AZProcessor(BaseProcessor):
         self.logger.step(3, "Applying renames")
         df = self._apply_renames(df, az_config)
 
-        # 3.b — CAST des colonnes de dates (tolérant à 2 formats)
+        # 3.b — CAST des colonnes de dates (support European format dd/MM/yyyy)
         date_cols = [
             "dtcrepol", "dteffan", "dttraan", "dtresilp", "dttraar",
             "dttypli1", "dttypli2", "dttypli3",
@@ -167,12 +167,14 @@ class AZProcessor(BaseProcessor):
         ]
         for dc in date_cols:
             if dc in df.columns:
-                # coalesce sur 2 formats communs ; ajuste si tu connais le format réel
+                # Try European format first (dd/MM/yyyy), then ISO formats
+                # Source data uses dd/MM/yyyy (French/European format)
                 df = df.withColumn(
                     dc,
                     coalesce(
-                        to_date(col(dc), "yyyy-MM-dd"),
-                        to_date(col(dc), "yyyyMMdd")
+                        to_date(col(dc), "dd/MM/yyyy"),   # European format (source)
+                        to_date(col(dc), "yyyy-MM-dd"),   # ISO format
+                        to_date(col(dc), "yyyyMMdd")      # Compact format
                     )
                 )
 
