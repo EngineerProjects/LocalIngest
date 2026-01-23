@@ -61,18 +61,8 @@ class AZECProcessor(BaseProcessor):
                 make_date(lit(year_int), col("echeanmm"), col("echeanjj"))
             ).otherwise(lit(None).cast(DateType()))
         )
-        # Defensive: cast common AZEC date fields (some exports vary in format)
-        date_cols = ["effetpol", "datafn", "datfin", "datresil", "datterme", "datexpir", "finpol"]
-        for dc in date_cols:
-            if dc in df.columns:
-                df = df.withColumn(
-                    dc,
-                    coalesce(
-                        to_date(col(dc), "yyyy-MM-dd"),
-                        to_date(col(dc), "yyyyMMdd"),
-                        to_date(col(dc), "ddMMyyyy")   # certains historiques AZEC sont ainsi
-                    )
-                )
+        # Dates are already cast by BronzeReader._safe_cast() using dateFormat from reading_config.json
+        # No need to re-cast here
 
         return df
 

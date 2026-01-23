@@ -159,24 +159,8 @@ class AZProcessor(BaseProcessor):
         self.logger.step(3, "Applying renames")
         df = self._apply_renames(df, az_config)
 
-        # 3.b — CAST des colonnes de dates (support European format dd/MM/yyyy)
-        date_cols = [
-            "dtcrepol", "dteffan", "dttraan", "dtresilp", "dttraar",
-            "dttypli1", "dttypli2", "dttypli3",
-            "dtouchan", "dtrcppr", "dtrectrx", "dtrcpre", "dtechann"
-        ]
-        for dc in date_cols:
-            if dc in df.columns:
-                # Try European format first (dd/MM/yyyy), then ISO formats
-                # Source data uses dd/MM/yyyy (French/European format)
-                df = df.withColumn(
-                    dc,
-                    coalesce(
-                        to_date(col(dc), "dd/MM/yyyy"),   # European format (source)
-                        to_date(col(dc), "yyyy-MM-dd"),   # ISO format
-                        to_date(col(dc), "yyyyMMdd")      # Compact format
-                    )
-                )
+        # Dates are already cast by BronzeReader._safe_cast() using dateFormat from reading_config.json
+        # No need to re-cast here
 
         # ============================================================
         # STEP 4a — COASS + PARTCIE (comme dans le SELECT SAS)

@@ -182,7 +182,9 @@ class BronzeReader:
                 df_part = self._clean_sas_nulls(df_part)
 
                 if schema:
-                    df_part = self._safe_cast(df_part, schema)
+                    # Extract dateFormat from read_options, default to European format
+                    date_format = read_options.get('dateFormat', 'dd/MM/yyyy')
+                    df_part = self._safe_cast(df_part, schema, date_format)
 
                 if filters:
                     df_part = self._apply_read_filters(df_part, filters)
@@ -395,13 +397,11 @@ class BronzeReader:
         return df.select(*select_exprs)
 
 
-    def _safe_cast(self, df: DataFrame, schema) -> DataFrame:
+    def _safe_cast(self, df: DataFrame, schema, date_format: str = "dd/MM/yyyy"):
         """
         Cast columns to target types defined in 'schema' in a single pass.
 
-        - DateType: attempts a single default format ('yyyy-MM-dd').
-          (If your sources have multiple date formats, extend this method
-           to coalesce several to_date() calls.)
+        - Date Type: uses the provided date_format (from read_options)
         - Other types: cast() as given by the schema.
 
         Parameters
@@ -410,6 +410,9 @@ class BronzeReader:
             Cleaned DataFrame.
         schema : StructType
             Target schema (names & types).
+        date_format : str
+            Date format string for parsing DateType columns (default: 'dd/MM/yyyy' European).
+            Should come from read_options['dateFormat'] in reading_config.json.
 
         Returns
         -------
@@ -425,7 +428,8 @@ class BronzeReader:
             if dtype is None:
                 select_exprs.append(col(c))
             elif isinstance(dtype, DateType):
-                select_exprs.append(to_date(col(c), "yyyy-MM-dd").alias(c))
+                # Use the dateFormat from read_options (e.g., dd/MM/yyyy for European dates)
+                select_exprs.append(to_date(col(c), date_format).alias(c))
             else:
                 select_exprs.append(col(c).cast(dtype).alias(c))
 
