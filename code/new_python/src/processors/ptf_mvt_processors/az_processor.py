@@ -79,6 +79,25 @@ class AZProcessor(BaseProcessor):
         self.logger.info(f"Reading ipf_az files (PTF16 + PTF36) with {len(custom_filters)} filters applied BEFORE union")
         return reader.read_file_group('ipf_az', vision, custom_filters=custom_filters)
 
+    def _log_nopol_count(self, df: DataFrame, step_name: str) -> DataFrame:
+        """
+        Helper to log total rows and distinct nopol counts at each step.
+        
+        Args:
+            df: Current DataFrame
+            step_name: Name of the step for logging
+            
+        Returns:
+            DataFrame unchanged (pass-through)
+        """
+        try:
+            total = df.count()
+            distinct_nopol = df.select("nopol").distinct().count()
+            self.logger.info(f"[{step_name:20s}] Total: {total:6,} | Distinct nopol: {distinct_nopol:6,} | Duplicates: {total - distinct_nopol:4,}")
+        except Exception as e:
+            self.logger.warning(f"[{step_name}] Count tracking failed: {e}")
+        return df
+
     def transform(self, df: DataFrame, vision: str) -> DataFrame:
         """
         Apply AZ business transformations following SAS logic.
@@ -97,6 +116,14 @@ class AZProcessor(BaseProcessor):
 
         year_int, month_int = extract_year_month_int(vision)
         dates = compute_date_ranges(vision)
+        
+        # ==================================================================
+        # DIAGNOSTIC: Start nopol count tracking
+        # ==================================================================
+        self.logger.info("="*80)
+        self.logger.info("DIAGNOSTIC: NOPOL COUNT TRACKING (Step-by-step comparison with SAS)")
+        self.logger.info("="*80)
+        df = self._log_nopol_count(df, "0_AFTER_READ")
 
         loader = get_default_loader()
         az_config = loader.get_az_config()
@@ -207,6 +234,7 @@ class AZProcessor(BaseProcessor):
         # ============================================================
         self.logger.step(5, "Joining IPFM99")
         df = self._join_ipfm99(df, vision)
+        df = self._log_nopol_count(df, "5_AFTER_IPFM99")
 
         # ============================================================
         # STEP 6 — Capital extraction (SMP, LCI, PERTE_EXP, RISQUE_DIRECT)
@@ -219,6 +247,7 @@ class AZProcessor(BaseProcessor):
             'perte_exp': capital_cfg['perte_exp'],
             'risque_direct': capital_cfg['risque_direct']
         })
+        df = self._log_nopol_count(df, "6_AFTER_CAPITALS")
 
         # ============================================================
         # STEP 7 — UPDATE-level computed fields (primeto, top_lta, top_temp, top_revisable)
@@ -230,6 +259,7 @@ class AZProcessor(BaseProcessor):
         # ============================================================
         # STEP 8 — Movement indicators (AFN, RES, RPC, RPT, NBPTF)
         # ============================================================
+        df = self._log_nopol_count(df, "7_BEFORE_MOVEMENTS")
         self.logger.step(8, "Calculating movement indicators")
         
         # DIAGNOSTIC: Log preconditions for movement calculations
@@ -275,6 +305,7 @@ class AZProcessor(BaseProcessor):
         
         movement_cols = az_config['movements']['column_mapping']
         df = calculate_movements(df, dates, year_int, movement_cols)
+        df = self._log_nopol_count(df, "8_AFTER_MOVEMENTS")
 
         # ============================================================
         # STEP 9 — Exposure calculations (expo_ytd, expo_gli)
@@ -353,16 +384,27 @@ class AZProcessor(BaseProcessor):
         # ============================================================
         # STEP 14 — Segmentation & PT_GEST enrichment
         # ============================================================
+        df = self._log_nopol_count(df, "13_BEFORE_SEGMENT")
         self.logger.step(14, "Enriching segmentation and management point")
         df = self._enrich_segment_and_product_type(df, vision)
+        df = self._log_nopol_count(df, "14_AFTER_SEGMENT")
 
         # ============================================================
         # STEP 15 — Deduplication (SAS L505–507)
         # ============================================================
+        df = self._log_nopol_count(df, "14_BEFORE_DEDUP")
         self.logger.step(15, "Deduplicating by nopol")
         # orderBy required before dropDuplicates for deterministic behavior (SAS NODUPKEY)
         df = df.orderBy("nopol", "cdsitp").dropDuplicates(["nopol"])
+        df = self._log_nopol_count(df, "15_AFTER_DEDUP")
 
+        # ==================================================================
+        # DIAGNOSTIC: End nopol count tracking
+        # ==================================================================
+        self.logger.info("="*80)
+        self.logger.info("END DIAGNOSTIC: Compare counts above with SAS at each step")
+        self.logger.info("="*80)
+        
         self.logger.info("AZ transformations completed successfully")
         return df
 
@@ -625,13 +667,12 @@ class AZProcessor(BaseProcessor):
         
         if df_cproduit is not None:
             # Merge Segment with Cproduit for Type_Produit_2 and segment (SAS L431-435)
-            # CRITICAL FIX: SAS deduplicates Cproduit BEFORE join (L417-419)
             df_cproduit_enrichment = df_cproduit.select(
                 col('cprod'),
                 col('Type_Produit_2').alias('type_produit_2'),
                 col('segment').alias('segment_from_cproduit'),
                 col('Segment_3').alias('segment_3')
-            ).dropDuplicates(['cprod'])  # ← FIX: SAS L417-419 PROC SORT NODUPKEY BY CPROD
+            ).dropDuplicates(['cprod'])  
             
             df_segment = df_segment.join(
                 df_cproduit_enrichment,
