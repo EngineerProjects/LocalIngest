@@ -140,10 +140,18 @@ class AZECProcessor(BaseProcessor):
         # STEP 02: Business Filters (SAS WHERE)
         # ============================================================
         self.logger.step(2, "Applying business filters")
+        
+        initial_count = df.count()
+        self.logger.info(f"[ROW COUNT] Before filters: {initial_count:,} rows")
 
         # Ces deux venaient du JSON
         df = df.filter(~col("intermed").isin("24050", "40490"))
+        count_1 = df.count()
+        self.logger.info(f"[ROW COUNT] After intermed filter: {count_1:,} rows (removed {initial_count - count_1:,})")
+        
         df = df.filter(~col("police").isin("012684940"))
+        count_2 = df.count()
+        self.logger.info(f"[ROW COUNT] After police filter: {count_2:,} rows")
 
         # Filtre temporaires (Version SAS)
         df = df.filter(
@@ -152,33 +160,49 @@ class AZECProcessor(BaseProcessor):
                 (~col("produit").isin("DO0", "TRC", "CTR", "CNR"))
             )
         )
+        count_3 = df.count()
+        self.logger.info(f"[ROW COUNT] After duree filter: {count_3:,} rows")
 
         # Filtre effet (datfin != effetpol)
         df = df.filter(col("datfin") != col("effetpol"))
+        count_4 = df.count()
+        self.logger.info(f"[ROW COUNT] After datfin filter: {count_4:,} rows")
 
         # Filtre MIGRAZ SAS
         df = df.filter(
             (col("gestsit") != "MIGRAZ") |
             ((col("gestsit") == "MIGRAZ") & (col("etatpol") == "R"))
         )
+        count_5 = df.count()
+        self.logger.info(f"[ROW COUNT] After gestsit filter: {count_5:,} rows")
+        
+        if count_5 == 0:
+            self.logger.error("[ZERO ROWS] All data lost after GESTSIT filter!")
+
 
         # ============================================================
         # STEP 03: Migration Handling (SAS L94–106)
         # ============================================================
         self.logger.step(3, "Handling AZEC migration")
         df = self._handle_migration(df, vision, azec_config)
+        count_after_migration = df.count()
+        self.logger.info(f"[ROW COUNT] After migration join: {count_after_migration:,} rows")
 
         # ============================================================
         # STEP 04: Data Quality Updates (SAS L113–137)
         # ============================================================
         self.logger.step(4, "Updating dates and policy states")
         df = self._update_dates_and_states(df, dates, year_int, month_int)
+        count_after_dates = df.count()
+        self.logger.info(f"[ROW COUNT] After date updates: {count_after_dates:,} rows")
 
         # ============================================================
         # STEP 05: Movement Indicators (SAS L144–182)
         # ============================================================
         self.logger.step(5, "Calculating movement indicators (NBPTF/NBAFN/NBRES)")
         df = self._calculate_movements(df, dates, year_int, month_int)
+        count_after_movements = df.count()
+        self.logger.info(f"[ROW COUNT] After movements: {count_after_movements:,} rows")
 
         # ============================================================
         # STEP 06: Suspension Days (SAS L189–194)
@@ -1208,7 +1232,7 @@ class AZECProcessor(BaseProcessor):
         # ============================================================
         # 2. CONSTRCU.CONSTRCU raw join (site data)
         # ============================================================
-        df_const = reader.read_file_group("constrcu", vision)
+        df_const = reader.read_file_group("constrcu_azec", vision)
         
         df_const = df_const.select(
             col("police"),
@@ -1225,7 +1249,8 @@ class AZECProcessor(BaseProcessor):
         # ============================================================
         # 3. PT_GEST join (UPPER_MID)
         # ============================================================
-        df_ptgest = reader.read_file_group("ptgst", vision)
+        # SAS L486: TABLE_PT_GEST (versioned table with Upper_Mid)
+        df_ptgest = reader.read_file_group("table_pt_gest", vision)
         
         df_ptgest = df_ptgest.select(
             col("ptgst").alias("_ptgst_key"),
