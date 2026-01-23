@@ -545,6 +545,14 @@ def load_constrcu_reference(
 
     # 7) ACTIVITE — exact SAS logic, but expressed once as a single CASE
     merged = _compute_activite_sas(merged)
+    
+    # 8) TYPE_PRODUIT — required for CONSTRCU_AZEC (SAS L324-334, L341-344)
+    # SAS creates CONSTRCU_AZEC with TYPE_PRODUIT from Typrd_2 mapping
+    merged_with_lmarch2 = merged.withColumn(
+        "lmarch2",
+        when(col("cmarch") == "6", lit("6_CONSTRUCTION")).otherwise(lit(None))
+    )
+    merged = compute_type_produit_sas(merged_with_lmarch2, spark, config, logger)
 
     # Final dedup (default by police+produit; set drop_dups_by=("police",) if you want strict SAS)
     return merged.dropDuplicates(list(drop_dups_by))

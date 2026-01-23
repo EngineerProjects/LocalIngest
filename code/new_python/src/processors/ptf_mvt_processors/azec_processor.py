@@ -1162,7 +1162,7 @@ class AZECProcessor(BaseProcessor):
         Returns:
             DataFrame with segment2, type_produit_2, site data, and upper_mid
         """
-        from utils.readers.bronze_reader import get_bronze_reader
+        from utils.processor_helpers import get_bronze_reader
         from types import SimpleNamespace
         from pyspark.sql.functions import col
         
@@ -1197,9 +1197,10 @@ class AZECProcessor(BaseProcessor):
             )
         
         # Select segment2/type_produit_2 for join
+        # Now type_produit exists - it's created by compute_type_produit_sas() inside load_constrcu_reference()
         df_constrcu_azec_small = df_constrcu_azec.select(
             col("police"),
-            col("produit").alias("cdprod"),  # SAS: b.cdprod
+            col("produit").alias("cdprod"),
             col("segment").alias("segment2"),
             col("type_produit").alias("type_produit_2")
         ).dropDuplicates(["police", "cdprod"])
@@ -1267,6 +1268,27 @@ class AZECProcessor(BaseProcessor):
             col("c.lqualite"),
             col("d.upper_mid")
         )
+        
+        # ============================================================
+        # 5. Cleanup: Drop LOB columns not in AZEC schema
+        # ============================================================
+        # SAS consolidation (L75): PRODUIT AS CDPROD (AZEC keeps 'produit')
+        # SAS AZEC SELECT (L55-79): Uses CMARCH, CSEG, CSSSEG but NOT other LOB fields
+        # Drop LOB enrichment columns added by enrich_segmentation_sas that are NOT in AZEC schema
+        lob_cols_to_drop = [
+            "cdprod",    # AZEC uses 'produit', not 'cdprod'
+            "cprod",     # Internal LOB code, not in AZEC
+            "lmarch",    # Label, not needed
+            "lmarch2",   # Derived label, not needed
+            "lseg",      # Segment label, not in AZEC (only cseg)
+            "lssseg",    # Sub-segment label, not in AZEC (only cssseg)  
+            "lprod",     # Product label, not in AZEC
+            "activite"   # Only used for type_produit mapping, not in final AZEC
+        ]
+        cols_to_drop = [c for c in lob_cols_to_drop if c in df.columns]
+        if cols_to_drop:
+            df = df.drop(*cols_to_drop)
+            self.logger.debug(f"Dropped LOB columns not in AZEC schema: {cols_to_drop}")
         
         self.logger.info("✓ Final CONSTRCU_AZEC + site data + UPPER_MID enrichment completed")
         
