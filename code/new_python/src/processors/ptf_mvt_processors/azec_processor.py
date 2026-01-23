@@ -241,7 +241,6 @@ class AZECProcessor(BaseProcessor):
         df_seg = df_seg.dropDuplicates(["produit"])
         
         # LEFT JOIN on PRODUIT (SAS: LEFT JOIN t2 ON t1.PRODUIT = t2.PRODUIT)
-        from pyspark.sql.functions import broadcast, col
         df = df.alias("a").join(
             broadcast(df_seg.alias("s")),
             col("a.produit") == col("s.produit"),
@@ -1266,11 +1265,10 @@ class AZECProcessor(BaseProcessor):
         
         # If CONSTRCU_AZEC loaded, join on (police, produit)
         if df_constrcu_azec is not None:
-            # Select segment2/type_produit_2 for join
-            # Now type_produit exists - it's created by compute_type_produit_sas() inside load_constrcu_reference()
+            # SAS L343: CONSTRCU_AZEC contains POLICE CDPROD SEGMENT TYPE_PRODUIT (uppercase)
             df_constrcu_azec_small = df_constrcu_azec.select(
                 col("police"),
-                col("produit").alias("cdprod"),
+                col("cdprod"),  # SAS uses CDPROD, not produit
                 col("segment").alias("segment2"),
                 col("type_produit").alias("type_produit_2")
             ).dropDuplicates(["police", "cdprod"])
