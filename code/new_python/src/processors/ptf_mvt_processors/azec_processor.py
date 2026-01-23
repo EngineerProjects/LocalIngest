@@ -163,7 +163,12 @@ class AZECProcessor(BaseProcessor):
         count_3 = df.count()
         self.logger.info(f"[ROW COUNT] After duree filter: {count_3:,} rows")
 
-        df = df.filter(~col("datfin").eqNullSafe(col("effetpol")))
+        # SAS L84: datfin ne effetpol (excludes when both equal)
+        df = df.filter(
+            col("datfin").isNull() |
+            col("effetpol").isNull() |
+            (col("datfin") != col("effetpol"))
+        )
         count_4 = df.count()
         self.logger.info(f"[ROW COUNT] After datfin filter: {count_4:,} rows")
 
@@ -217,12 +222,49 @@ class AZECProcessor(BaseProcessor):
         df = calculate_exposures_azec(df, dates)
 
         # ============================================================
-        # STEP 08: Segmentation (LOB) + Cache CONSTRCU reference
+        # STEP 08: Segmentation - Simplified (use pre-built TABLE_SEGMENTATION_AZEC_MML)
+        # SAS: LEFT JOIN REF.TABLE_SEGMENTATION_AZEC_MML t2 ON (t1.PRODUIT = t2.PRODUIT)
         # ============================================================
-        from utils.transformations.enrichment.segmentation_enrichment import enrich_segmentation_sas
-        df, self._cached_constrcu_ref = enrich_segmentation_sas(
-            df, self.spark, self.config, vision, self.logger, return_reference=True
+        self.logger.step(8, "Enriching LOB segmentation (AZEC)")
+        
+        # Read pre-built segmentation reference (like SAS REF.TABLE_SEGMENTATION_AZEC_MML)
+        reader = get_bronze_reader(self)
+        df_seg = reader.read_file_group('table_segmentation_azec_mml', 'ref')
+        
+        if df_seg is None or df_seg.count() == 0:
+            raise RuntimeError(
+                "TABLE_SEGMENTATION_AZEC_MML is required for AZEC segmentation. "
+                "Ensure table_segmentation_azec_mml.csv exists in bronze/ref/"
+            )
+        
+        # Dedup by PRODUIT (defensive, should already be unique)
+        df_seg = df_seg.dropDuplicates(["produit"])
+        
+        # LEFT JOIN on PRODUIT (SAS: LEFT JOIN t2 ON t1.PRODUIT = t2.PRODUIT)
+        from pyspark.sql.functions import broadcast, col
+        df = df.alias("a").join(
+            broadcast(df_seg.alias("s")),
+            col("a.produit") == col("s.produit"),
+            how="left"
+        ).select(
+            "a.*",
+            col("s.segment"),
+            col("s.cmarch"),
+            col("s.cseg"),
+            col("s.cssseg"),
+            col("s.lmarch"),
+            col("s.lseg"),
+            col("s.lssseg")
         )
+        
+        # SAS WHERE: t2.CMARCH in ("6")
+        initial_count = df.count()
+        df = df.filter(col("cmarch") == "6")
+        filtered_count = df.count()
+        self.logger.info(f"Segmentation: {initial_count:,} → {filtered_count:,} rows (CMARCH='6')")
+        
+        # No CONSTRCU cache needed (simplified flow)
+        self._cached_constrcu_ref = None
 
         # ============================================================
         # STEP 09: Premiums & Flags (SAS L210–265)
@@ -1197,35 +1239,52 @@ class AZECProcessor(BaseProcessor):
         # ============================================================
         # 1. CONSTRCU_AZEC join (segment2/type_produit_2)
         # ============================================================
-        # Use cached reference from step 08 to avoid recomputation
-        if hasattr(self, '_cached_constrcu_ref') and self._cached_constrcu_ref is not None:
-            df_constrcu_azec = self._cached_constrcu_ref
-            self.logger.debug("[CONSTRCU] Using cached reference from step 08")
-        else:
-            self.logger.warning("[CONSTRCU] Cache not found, reloading reference (performance impact)")
-            from utils.transformations.enrichment.segmentation_enrichment import load_constrcu_reference
+        # Load CONSTRCU_AZEC directly (cache not used after STEP 08 simplification)
+        try:
+            df_constrcu_azec = reader.read_file_group('constrcu_azec', 'ref')
             
-            lob_ref = (
-                reader.read_file_group("lob", "ref")
-                .filter(col("cmarch") == "6")
-            )
-            
-            df_constrcu_azec = load_constrcu_reference(
-                spark=self.spark,
-                config=self.config,
-                vision=vision,
-                lob_ref=lob_ref,
-                logger=self.logger
-            )
+            if df_constrcu_azec is None:
+                self.logger.warning("[CONSTRCU_AZEC] Reference file not found, skipping segment2/type_produit_2")
+                from utils.processor_helpers import add_null_columns
+                from pyspark.sql.types import StringType
+                df = add_null_columns(df, {
+                    'segment2': StringType,
+                    'type_produit_2': StringType
+                })
+                df_constrcu_azec = None
+            else:
+                self.logger.debug(f"[CONSTRCU_AZEC] Loaded reference: {df_constrcu_azec.count():,} rows")
+        except Exception as e:
+            self.logger.warning(f"[CONSTRCU_AZEC] Error loading reference: {e}")
+            from utils.processor_helpers import add_null_columns
+            from pyspark.sql.types import StringType
+            df = add_null_columns(df, {
+                'segment2': StringType,
+                'type_produit_2': StringType
+            })
+            df_constrcu_azec = None
         
-        # Select segment2/type_produit_2 for join
-        # Now type_produit exists - it's created by compute_type_produit_sas() inside load_constrcu_reference()
-        df_constrcu_azec_small = df_constrcu_azec.select(
-            col("police"),
-            col("produit").alias("cdprod"),
-            col("segment").alias("segment2"),
-            col("type_produit").alias("type_produit_2")
-        ).dropDuplicates(["police", "cdprod"])
+        # If CONSTRCU_AZEC loaded, join on (police, produit)
+        if df_constrcu_azec is not None:
+            # Select segment2/type_produit_2 for join
+            # Now type_produit exists - it's created by compute_type_produit_sas() inside load_constrcu_reference()
+            df_constrcu_azec_small = df_constrcu_azec.select(
+                col("police"),
+                col("produit").alias("cdprod"),
+                col("segment").alias("segment2"),
+                col("type_produit").alias("type_produit_2")
+            ).dropDuplicates(["police", "cdprod"])
+        else:
+            # Create empty DataFrame with correct schema if CONSTRCU_AZEC not available
+            from pyspark.sql.types import StructType, StructField, StringType
+            schema = StructType([
+                StructField("police", StringType(), True),
+                StructField("cdprod", StringType(), True),
+                StructField("segment2", StringType(), True),
+                StructField("type_produit_2", StringType(), True)
+            ])
+            df_constrcu_azec_small = self.spark.createDataFrame([], schema)
+            self.logger.debug("[CONSTRCU_AZEC] Using empty DataFrame (reference unavailable)")
         
         # ============================================================
         # 2. CONSTRCU.CONSTRCU raw join (site data)
