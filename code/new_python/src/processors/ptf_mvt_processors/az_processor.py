@@ -625,12 +625,13 @@ class AZProcessor(BaseProcessor):
         
         if df_cproduit is not None:
             # Merge Segment with Cproduit for Type_Produit_2 and segment (SAS L431-435)
+            # CRITICAL FIX: SAS deduplicates Cproduit BEFORE join (L417-419)
             df_cproduit_enrichment = df_cproduit.select(
                 col('cprod'),
                 col('Type_Produit_2').alias('type_produit_2'),
                 col('segment').alias('segment_from_cproduit'),
                 col('Segment_3').alias('segment_3')
-            )
+            ).dropDuplicates(['cprod'])  # ← FIX: SAS L417-419 PROC SORT NODUPKEY BY CPROD
             
             df_segment = df_segment.join(
                 df_cproduit_enrichment,
