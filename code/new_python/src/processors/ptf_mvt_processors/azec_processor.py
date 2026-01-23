@@ -163,14 +163,12 @@ class AZECProcessor(BaseProcessor):
         count_3 = df.count()
         self.logger.info(f"[ROW COUNT] After duree filter: {count_3:,} rows")
 
-        # Filtre effet (datfin != effetpol)
-        df = df.filter(col("datfin") != col("effetpol"))
+        df = df.filter(~col("datfin").eqNullSafe(col("effetpol")))
         count_4 = df.count()
         self.logger.info(f"[ROW COUNT] After datfin filter: {count_4:,} rows")
 
-        # Filtre MIGRAZ SAS
         df = df.filter(
-            (col("gestsit") != "MIGRAZ") |
+            (~col("gestsit").isin("MIGRAZ")) |
             ((col("gestsit") == "MIGRAZ") & (col("etatpol") == "R"))
         )
         count_5 = df.count()
