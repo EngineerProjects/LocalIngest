@@ -628,33 +628,38 @@ class AZECProcessor(BaseProcessor):
         """
         Apply AZEC-specific NBRES and NBAFN adjustments (SAS L448-466).
         
+        SAS L452-456: Sets NBPTF=0 and NBRES=0 for excluded products (DO0/TRC/CTR/CNR)
+        SAS L459: Exclude replacements from RES (RMPLCANT not empty AND MOTIFRES='RP')
+        SAS L462: Exclude specific termination reasons from RES (MOTIFRES in 'SE','SA')
+        SAS L465: Exclude CSSSEG='5' from AFN
+        
         Args:
             df: AZEC DataFrame
         
         Returns:
-            DataFrame with adjusted NBRES and NBAFN
+            DataFrame with adjusted NBRES, NBAFN, and NBPTF
         """
         excluded_products = col("produit").isin(['DO0', 'TRC', 'CTR', 'CNR'])
 
-        # Adjust NBRES
+        # Adjust NBRES (SAS L452-456, L459, L462)
         nbres_adjusted = (
-            when(excluded_products, lit(0))
+            when(excluded_products, lit(0))  # SAS L452-456: Excluded products
             .when(
                 (col("nbres") == 1) &
                 (col("rmplcant").isNotNull()) &
                 (col("rmplcant") != "") &
                 col("motifres").isin(['RP']),
-                lit(0)
+                lit(0)  # SAS L459: Replacements
             )
             .when(
                 (col("nbres") == 1) &
                 col("motifres").isin(['SE', 'SA']),
-                lit(0)
+                lit(0)  # SAS L462: Specific termination reasons
             )
             .otherwise(col("nbres"))
         )
 
-        # Adjust NBAFN
+        # Adjust NBAFN (SAS L465)
         if "cssseg" in df.columns:
             nbafn_adjusted = when(
                 (col("nbafn") == 1) & (col("cssseg") == "5"),
@@ -663,17 +668,13 @@ class AZECProcessor(BaseProcessor):
         else:
             nbafn_adjusted = col("nbafn")
 
-        # Adjust NBPTF
-        nbptf_final = when(
-            excluded_products, lit(0)
-        ).when(
-            (nbafn_adjusted == 0) & (nbres_adjusted == 0),
-            lit(1)
-        ).otherwise(lit(0))
+        # Adjust NBPTF (SAS L452-456 ONLY - no recalculation)
+        # SAS simply sets NBPTF=0 for excluded products, nothing else
+        nbptf_adjusted = when(excluded_products, lit(0)).otherwise(col("nbptf"))
 
         df = df.withColumn("nbres", nbres_adjusted)
         df = df.withColumn("nbafn", nbafn_adjusted)
-        df = df.withColumn("nbptf", nbptf_final)
+        df = df.withColumn("nbptf", nbptf_adjusted)
 
         return df
 
