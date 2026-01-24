@@ -1,7 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "description": "Consolidation schema harmonization mappings - AZ and AZEC to common schema - aligned with SAS macros (PTF_MVTS_CONSOLIDATION_MACRO.sas & CODIFICATION_ISIC_CONSTRUCTION.sas)",
-
   "az_harmonization": {
     "description": "AZ data is already in target schema - minimal mapping needed (SAS OUTER UNION CORR section)",
     "rename": {
@@ -18,7 +17,6 @@
     },
     "computed": {}
   },
-
   "azec_harmonization": {
     "description": "Map AZEC columns to match AZ schema for consolidation (SAS OUTER UNION CORR block)",
     "rename": {
@@ -36,7 +34,6 @@
       "mtca": "mtca",
       "code_naf": "cdnaf",
       "code_tre": "cdtre",
-      "cmarch": "cmarch",
       "motifres": "cdcasres",
       "nomcli": "nmclt",
       "lidirisq": "lidirisq"
@@ -57,7 +54,6 @@
         "source": "dtechann",
         "description": "Extract day from anniversary date (SAS SELECT on AZ/AZEC)"
       },
-
       "cdsitp": {
         "type": "constant",
         "value": null,
@@ -123,7 +119,6 @@
         "value": null,
         "description": "Empty in AZEC"
       },
-
       "dteffan": {
         "type": "alias",
         "source": "effetpol",
@@ -134,7 +129,6 @@
         "source": "effetpol",
         "description": "AZEC uses EFFETPOL for DTTRAAN (SAS)"
       },
-
       "actprin": {
         "type": "constant",
         "value": null,
@@ -155,7 +149,6 @@
         "value": null,
         "description": "AZ-only; AZEC default empty"
       },
-
       "nbrpt": {
         "type": "constant",
         "value": 0,
@@ -176,7 +169,6 @@
         "value": 0,
         "description": "No RPT primes in AZEC"
       },
-
       "mtcaenp": {
         "type": "constant",
         "value": 0,
@@ -192,19 +184,16 @@
         "value": 0,
         "description": "Capital field not in AZEC (SAS sets 0)"
       },
-
       "cdnaf2008": {
         "type": "alias",
         "source": "code_naf",
         "description": "Temporary NAF2008 from AZEC (finalization handled by ISIC pipeline)"
       },
-
       "top_temp": {
         "type": "constant",
         "value": 0,
         "description": "Temporary flag - always 0 for AZEC (SAS)"
       },
-
       "cdmotres": {
         "type": "mapping",
         "source": "origres",
@@ -219,7 +208,6 @@
       }
     }
   },
-
   "common_transformations": {
     "description": "Transformations applied to both AZ and AZEC after harmonization (SAS parity)",
     "cdtre_cleanup": {
@@ -248,17 +236,18 @@
       ]
     }
   },
-
   "fallback_logic": {
     "description": "Fallback coalescing for missing columns (SAS: DTRCPPR from DTREFFIN)",
     "dtrcppr_fallback": {
       "column": "dtrcppr",
       "type": "coalesce",
-      "sources": ["dtrcppr", "dtreffin"],
+      "sources": [
+        "dtrcppr",
+        "dtreffin"
+      ],
       "comment": "SAS: if missing(DTRCPPR) and not missing(DTREFFIN) then DTRCPPR=DTREFFIN"
     }
   },
-
   "movement_column_mapping": {
     "description": "Column mapping for movement calculations (AFN, RES, RPT, RPC) — parity with SAS inputs",
     "az": {
@@ -288,7 +277,6 @@
       "type_date3": null
     }
   },
-
   "exposure_column_mapping": {
     "description": "Column mapping for exposure calculations (expo_ytd, expo_gli) — parity with SAS inputs",
     "az": {

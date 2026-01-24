@@ -539,6 +539,16 @@ class AZECProcessor(BaseProcessor):
             self.logger.warning(f"[AZEC DIAG] date check failed: {e}")
         # ========== END DIAGNOSTIC ==========
 
+        # ========== DEEP DIAGNOSTIC - MOVEMENT LOGIC ==========
+        try:
+            from test_azec_movements_diagnostic import diagnose_azec_movements
+            self.logger.info("[DEEP DIAG] Running comprehensive movement diagnostics...")
+            stats = diagnose_azec_movements(df, year, month, dates['dtdeb_an'], dates['dtfinmn'])
+            self.logger.info(f"[DEEP DIAG] Expected NBAFN=1: {stats['expected_nbafn']:,} rows")
+        except Exception as e:
+            self.logger.warning(f"[DEEP DIAG] Diagnostic failed: {e}")
+        # ========== END DEEP DIAGNOSTIC ==========
+
         # SAS AFN/RES/PTF logic
         df = calculate_azec_movements(df, dates, year, month)
 
