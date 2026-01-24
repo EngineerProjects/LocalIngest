@@ -266,6 +266,13 @@ class AZECProcessor(BaseProcessor):
         filtered_count = df.count()
         self.logger.info(f"Segmentation: {initial_count:,} → {filtered_count:,} rows (CMARCH='6' AND GESTSIT!='MIGRAZ')")
         
+        # Sample display with cmarch (now available after segmentation)
+        try:
+            self.logger.info("[AZEC SAMPLE] First 10 rows after segmentation (with cmarch):")
+            df.select("police", "produit", "cmarch", "etatpol", "nbafn", "nbres", "nbptf").show(10, truncate=False)
+        except Exception as e:
+            self.logger.warning(f"[AZEC SAMPLE] Sample display failed: {e}")
+        
         # No CONSTRCU cache needed (simplified flow)
         self._cached_constrcu_ref = None
 
@@ -542,15 +549,6 @@ class AZECProcessor(BaseProcessor):
         except Exception as e:
             self.logger.warning(f"[AZEC DIAG] date check failed: {e}")
         # ========== END DIAGNOSTIC ==========
-
-        # ========== DEEP DIAGNOSTIC - MOVEMENT LOGIC ==========
-        # Removed heavy diagnostics - keep only essential sample
-        try:
-            self.logger.info("[AZEC SAMPLE] First 10 rows after movements (with cmarch):")
-            df.select("police", "produit", "cmarch", "etatpol", "nbafn", "nbres", "nbptf").show(10, truncate=False)
-        except Exception as e:
-            self.logger.warning(f"[AZEC SAMPLE] Sample display failed: {e}")
-        # ========== END DEEP DIAGNOSTIC ==========
 
         # SAS AFN/RES/PTF logic
         df = calculate_azec_movements(df, dates, year, month)
