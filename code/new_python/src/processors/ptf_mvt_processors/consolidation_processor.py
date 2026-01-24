@@ -225,6 +225,16 @@ class ConsolidationProcessor(BaseProcessor):
             when(col('noint').isin(['4A6160', '4A6947', '4A6956']), lit(1)).otherwise(lit(0))
         )
         
+        # ================================================================
+        # Final diagnostic: Display unique products in output
+        # ================================================================
+        try:
+            unique_products = df.select("cdprod").distinct().orderBy("cdprod").collect()
+            product_list = [row.cdprod for row in unique_products]
+            self.logger.info(f"[CONSOLIDATION] Unique CDPROD values ({len(product_list)}): {product_list}")
+        except Exception as e:
+            self.logger.warning(f"[CONSOLIDATION] Could not display unique CDPROD: {e}")
+        
         return df
 
 
@@ -241,6 +251,17 @@ class ConsolidationProcessor(BaseProcessor):
         if "desti_isic" in df.columns:
             self.logger.info("✓ Renaming 'desti_isic' → 'destinat_isic'")
             df = df.withColumnRenamed("desti_isic", "destinat_isic")
+
+        # Add missing hazard_grades columns as placeholders (SAS parity)
+        # ISIC codification doesn't create these per-guarantee variants
+        missing_hazard_cols = [
+            'hazard_grades_bi', 'hazard_grades_do', 'hazard_grades_fire',
+            'hazard_grades_rca', 'hazard_grades_rcd', 'hazard_grades_rce',
+            'hazard_grades_trc'
+        ]
+        for col_name in missing_hazard_cols:
+            if col_name not in df.columns:
+                df = df.withColumn(col_name, lit(None).cast("string"))
 
         # Colonnes finales
         existing_gold_cols = [c for c in GOLD_COLUMNS_PTF_MVT if c in df.columns]

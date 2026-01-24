@@ -544,13 +544,12 @@ class AZECProcessor(BaseProcessor):
         # ========== END DIAGNOSTIC ==========
 
         # ========== DEEP DIAGNOSTIC - MOVEMENT LOGIC ==========
+        # Removed heavy diagnostics - keep only essential sample
         try:
-            from test_azec_movements_diagnostic import diagnose_azec_movements
-            self.logger.info("[DEEP DIAG] Running comprehensive movement diagnostics...")
-            stats = diagnose_azec_movements(df, year, month, dates['dtdeb_an'], dates['dtfinmn'])
-            self.logger.info(f"[DEEP DIAG] Expected NBAFN=1: {stats['expected_nbafn']:,} rows")
+            self.logger.info("[AZEC SAMPLE] First 10 rows after movements (with cmarch):")
+            df.select("police", "produit", "cmarch", "etatpol", "nbafn", "nbres", "nbptf").show(10, truncate=False)
         except Exception as e:
-            self.logger.warning(f"[DEEP DIAG] Diagnostic failed: {e}")
+            self.logger.warning(f"[AZEC SAMPLE] Sample display failed: {e}")
         # ========== END DEEP DIAGNOSTIC ==========
 
         # SAS AFN/RES/PTF logic
@@ -563,13 +562,14 @@ class AZECProcessor(BaseProcessor):
             else:
                 df = df.withColumn(flag, lit(0).cast("int"))
 
-        # Optional stats
+        # Final movement stats (concise)
         try:
             total = df.count()
+            nbptf_count = df.filter(col('nbptf')==1).count()
+            nbafn_count = df.filter(col('nbafn')==1).count()
+            nbres_count = df.filter(col('nbres')==1).count()
             self.logger.info(
-                f"AZEC movements: NBPTF={df.filter(col('nbptf')==1).count():,} "
-                f"NBAFN={df.filter(col('nbafn')==1).count():,} "
-                f"NBRES={df.filter(col('nbres')==1).count():,} (total={total:,})"
+                f"AZEC movements: NBPTF={nbptf_count:,} NBAFN={nbafn_count:,} NBRES={nbres_count:,} (total={total:,})"
             )
         except Exception:
             pass
