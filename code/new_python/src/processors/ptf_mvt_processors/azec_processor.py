@@ -256,11 +256,15 @@ class AZECProcessor(BaseProcessor):
             col("s.lssseg")
         )
         
-        # SAS WHERE: t2.CMARCH in ("6")
+        # SAS WHERE: t2.CMARCH in ("6") and t1.GESTSIT <> 'MIGRAZ'
+        # Deux conditions combinées (SAS L260)
         initial_count = df.count()
-        df = df.filter(col("cmarch") == "6")
+        df = df.filter(
+            (col("cmarch") == "6") &
+            (col("gestsit") != "MIGRAZ")
+        )
         filtered_count = df.count()
-        self.logger.info(f"Segmentation: {initial_count:,} → {filtered_count:,} rows (CMARCH='6')")
+        self.logger.info(f"Segmentation: {initial_count:,} → {filtered_count:,} rows (CMARCH='6' AND GESTSIT!='MIGRAZ')")
         
         # No CONSTRCU cache needed (simplified flow)
         self._cached_constrcu_ref = None
