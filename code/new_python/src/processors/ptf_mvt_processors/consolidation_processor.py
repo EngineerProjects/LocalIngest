@@ -98,6 +98,15 @@ class ConsolidationProcessor(BaseProcessor):
             # -----------------------------
             self.logger.step(4, "Union AZ + AZEC (OUTER UNION CORR parity)")
             df_consolidated = df_az.unionByName(df_azec, allowMissingColumns=True)
+            
+            # Diagnostic: Verify union before dedup
+            try:
+                union_count = df_consolidated.count()
+                az_count = df_consolidated.filter(col("dircom")=="AZ").count()
+                azec_count = df_consolidated.filter(col("dircom")=="AZEC").count()
+                self.logger.info(f"[UNION] Total={union_count:,} | AZ={az_count:,} | AZEC={azec_count:,}")
+            except Exception as e:
+                self.logger.warning(f"[UNION] Diagnostic failed: {e}")
 
             # Deduplicate with AZ priority
             priority = when(col("dircom").isin("AZ", "AZ "), lit(1)).otherwise(lit(0))
@@ -108,6 +117,15 @@ class ConsolidationProcessor(BaseProcessor):
                 .dropDuplicates(["nopol"])
                 .drop("_priority_dircom")
             )
+            
+            # Diagnostic: Verify after dedup
+            try:
+                dedup_count = df_consolidated.count()
+                az_count_post = df_consolidated.filter(col("dircom")=="AZ").count()
+                azec_count_post = df_consolidated.filter(col("dircom")=="AZEC").count()
+                self.logger.info(f"[DEDUP] Total={dedup_count:,} | AZ={az_count_post:,} | AZEC={azec_count_post:,}")
+            except Exception as e:
+                self.logger.warning(f"[DEDUP] Diagnostic failed: {e}")
         else:
             df_consolidated = df_az
 
@@ -319,21 +337,30 @@ class ConsolidationProcessor(BaseProcessor):
             old_l = old_name.lower()
             new_l = new_name.lower()
 
-            # Si la cible existe déjà ET la source existe encore :
-            # -> on supprime la cible et on renomme proprement
+            # CRITICAL: Skip identity renames (cdprod → cdprod)
+            # SAS doesn't do identity renames - columns keep their names
+            if old_l == new_l:
+                continue  # Skip - no rename needed
+
+            # Case 1: Both source AND target exist (collision)
+            # This means we have BOTH old and new columns
+            # Keep the target (new_l), drop the source (old_l)
             if old_l in df.columns and new_l in df.columns:
-                # Log utile pour le debug
                 if self.logger:
                     self.logger.debug(
-                        f"[HARMONIZE] Target '{new_l}' already exists; dropping source '{new_l}' before renaming."
+                        f"[HARMONIZE] Collision: '{old_l}' and '{new_l}' both exist. "
+                        f"Keeping '{new_l}', dropping '{old_l}'."
                     )
-                df = df.drop(new_l)
-                df = df.withColumnRenamed(old_l, new_l)
+                df = df.drop(old_l)  # Drop SOURCE, keep TARGET
                 continue
 
-            # Si seule la source existe, on renomme vers la cible
+            # Case 2: Only source exists - rename it
             if old_l in df.columns and new_l not in df.columns:
                 df = df.withColumnRenamed(old_l, new_l)
+                if self.logger:
+                    self.logger.debug(f"[HARMONIZE] Renamed '{old_l}' → '{new_l}'")
+            
+            # Case 3: Neither exists or only target exists - do nothing
 
         # Apply computed columns
         computed_mapping = harmonization_config.get('computed', {})

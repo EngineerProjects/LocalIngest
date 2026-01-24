@@ -4,11 +4,6 @@
   "az_harmonization": {
     "description": "AZ data is already in target schema - minimal mapping needed (SAS OUTER UNION CORR section)",
     "rename": {
-      "nopol": "nopol",
-      "noint": "noint",
-      "cdprod": "cdprod",
-      "cseg": "cseg",
-      "cssseg": "cssseg",
       "cdcoas": "cdcoass",
       "partcie": "part_cie",
       "primeto": "primes_ptf_intemp",
