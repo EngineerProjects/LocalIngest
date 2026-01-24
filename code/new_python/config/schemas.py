@@ -22,6 +22,7 @@ from pyspark.sql.types import (
     StructType,
     StructField,
     StringType,
+    IntegerType,
     DoubleType,
     DateType
 )
@@ -277,7 +278,7 @@ INCENDCU_SCHEMA = StructType([
 # NOTE: We read RAW constrcu.csv and enrich it on-the-fly in the pipeline
 # This matches SAS but done automatically (no separate preprocessing needed)
 # =============================================================================
-CONSTRCU_AZEC_SCHEMA = StructType([
+CONSTRCU_SCHEMA = StructType([
     StructField("DATFINCH", DateType(), True),
     StructField("DATOUVCH", DateType(), True),
     StructField("DATRECEP", DateType(), True),
@@ -378,8 +379,8 @@ POLIC_CU_SCHEMA = StructType([
     StructField("DATRESIL", DateType(), True),
     StructField("DATTERME", DateType(), True),
     StructField("DUREE", StringType(), True),
-    StructField("ECHEANJJ", StringType(), True),
-    StructField("ECHEANMM", StringType(), True),
+    StructField("ECHEANJJ", IntegerType(), True),  # Day of anniversary (1-31) - used for DTECHANM calculation
+    StructField("ECHEANMM", IntegerType(), True),  # Month of anniversary (1-12) - used for DTECHANM calculation
     StructField("EFFETPOL", DateType(), True),
     StructField("ETATPOL", StringType(), True),
     StructField("FINPOL", DateType(), True),
@@ -707,7 +708,7 @@ SCHEMA_REGISTRY = {
     "polic_cu_azec": POLIC_CU_SCHEMA,  # FIXED: Now using POLIC_CU_SCHEMA which includes DATEXPIR
     "capitxcu_azec": CAPITXCU_SCHEMA,
     "incendcu_azec": INCENDCU_SCHEMA,
-    "constrcu_azec": CONSTRCU_AZEC_SCHEMA,
+    "constrcu": CONSTRCU_SCHEMA,
     "rcentcu_azec": AZEC_FORMULE_SCHEMA,  # Consolidated
     "risteccu_azec": AZEC_FORMULE_SCHEMA,  # Consolidated
     "mulprocu_azec": MULPROCU_SCHEMA,

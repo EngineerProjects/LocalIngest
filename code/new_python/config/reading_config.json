@@ -144,12 +144,12 @@
             "filters": [],
             "location_type": "reference"
         },
-        "constrcu_azec": {
-            "description": "AZEC CONSTRCU - Product formulas and construction site details",
+        "constrcu": {
+            "description": "CONSTRCU - Raw construction data (product formulas and site details)",
             "file_patterns": [
                 "constrcu.csv"
             ],
-            "schema": "constrcu_azec",
+            "schema": "constrcu",
             "read_options": {
                 "format": "csv",
                 "sep": "|",
@@ -306,7 +306,7 @@
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9",
-                "dateFormat": "dd/MM/yyyy"
+                "dateFormat": "yyyy-MM-dd"
             },
             "filters": [],
             "location_type": "reference"

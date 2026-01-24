@@ -1238,23 +1238,29 @@ class AZECProcessor(BaseProcessor):
         # ============================================================
         # 1. CONSTRCU_AZEC join (segment2/type_produit_2)
         # ============================================================
-        # Load CONSTRCU_AZEC directly (cache not used after STEP 08 simplification)
+        # Build CONSTRCU_AZEC (SAS REF_segmentation_azec.sas L341-344)
+        # SAS creates CONSTRCU_AZEC with: KEEP POLICE CDPROD SEGMENT TYPE_PRODUIT
+        # We use load_constrcu_reference() to compute SEGMENT/TYPE_PRODUIT
         try:
-            df_constrcu_azec = reader.read_file_group('constrcu_azec', 'ref')
+            from utils.transformations.enrichment.segmentation_enrichment import load_constrcu_reference
             
-            if df_constrcu_azec is None:
-                self.logger.warning("[CONSTRCU_AZEC] Reference file not found, skipping segment2/type_produit_2")
-                from utils.processor_helpers import add_null_columns
-                from pyspark.sql.types import StringType
-                df = add_null_columns(df, {
-                    'segment2': StringType,
-                    'type_produit_2': StringType
-                })
-                df_constrcu_azec = None
+            lob_ref = reader.read_file_group("lob", "ref").filter(col("cmarch") == "6")
+            
+            df_constrcu_azec = load_constrcu_reference(
+                spark=self.spark,
+                config=self.config,
+                vision=vision,
+                lob_ref=lob_ref,
+                logger=self.logger
+            )
+            
+            if df_constrcu_azec is not None:
+                self.logger.debug(f"[CONSTRCU_AZEC] Built reference: {df_constrcu_azec.count():,} rows")
             else:
-                self.logger.debug(f"[CONSTRCU_AZEC] Loaded reference: {df_constrcu_azec.count():,} rows")
+                raise RuntimeError("load_constrcu_reference returned None")
+                
         except Exception as e:
-            self.logger.warning(f"[CONSTRCU_AZEC] Error loading reference: {e}")
+            self.logger.warning(f"[CONSTRCU_AZEC] Failed to build reference: {e}")
             from utils.processor_helpers import add_null_columns
             from pyspark.sql.types import StringType
             df = add_null_columns(df, {
@@ -1265,13 +1271,28 @@ class AZECProcessor(BaseProcessor):
         
         # If CONSTRCU_AZEC loaded, join on (police, produit)
         if df_constrcu_azec is not None:
-            # SAS L343: CONSTRCU_AZEC contains POLICE CDPROD SEGMENT TYPE_PRODUIT (uppercase)
-            df_constrcu_azec_small = df_constrcu_azec.select(
-                col("police"),
-                col("cdprod"),  # SAS uses CDPROD, not produit
-                col("segment").alias("segment2"),
-                col("type_produit").alias("type_produit_2")
-            ).dropDuplicates(["police", "cdprod"])
+            # CSV contains 'produit' (renamed from SAS CDPROD), need to alias to cdprod for join
+            available_cols = df_constrcu_azec.columns
+            
+            # Check if segment/type_produit exist (may be missing if file is raw CONSTRCU, not CONSTRCU_AZEC)
+            if "segment" in available_cols and "type_produit" in available_cols:
+                df_constrcu_azec_small = df_constrcu_azec.select(
+                    col("police"),
+                    col("produit").alias("cdprod"),
+                    col("segment").alias("segment2"),
+                    col("type_produit").alias("type_produit_2")
+                ).dropDuplicates(["police", "cdprod"])
+            else:
+                self.logger.warning(f"[CONSTRCU_AZEC] Missing segment/type_produit columns. Available: {available_cols}")
+                # Create empty DataFrame if columns missing
+                from pyspark.sql.types import StructType, StructField, StringType
+                schema = StructType([
+                    StructField("police", StringType(), True),
+                    StructField("cdprod", StringType(), True),
+                    StructField("segment2", StringType(), True),
+                    StructField("type_produit_2", StringType(), True)
+                ])
+                df_constrcu_azec_small = self.spark.createDataFrame([], schema)
         else:
             # Create empty DataFrame with correct schema if CONSTRCU_AZEC not available
             from pyspark.sql.types import StructType, StructField, StringType
@@ -1287,7 +1308,8 @@ class AZECProcessor(BaseProcessor):
         # ============================================================
         # 2. CONSTRCU.CONSTRCU raw join (site data)
         # ============================================================
-        df_const = reader.read_file_group("constrcu_azec", vision)
+        # SAS L485: CONSTRCU.CONSTRCU (permanent library, static reference)
+        df_const = reader.read_file_group("constrcu", "ref")
         
         df_const = df_const.select(
             col("police"),

@@ -421,7 +421,7 @@ def load_constrcu_reference(
 
     # 1) Read raw sources (lowercase ensured by BronzeReader)
     try:
-        df_constrcu = reader.read_file_group("constrcu_azec", "ref")
+        df_constrcu = reader.read_file_group("constrcu", "ref")
     except Exception as e:
         if logger: logger.debug(f"[SEG] CONSTRCU missing: {e}")
         df_constrcu = None
