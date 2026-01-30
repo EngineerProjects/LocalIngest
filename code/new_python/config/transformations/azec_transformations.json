@@ -10,12 +10,10 @@
       "add_year_month": true
     }
   },
-
   "migration_handling": {
     "description": "AZEC migration handling: logic implemented in code (_handle_migration); JSON only keeps the threshold.",
     "vision_threshold": 202009
   },
-
   "capital_mapping": {
     "description": "AZEC capital extraction from CAPITXCU - SAS L387-408",
     "mappings": [
@@ -77,13 +75,56 @@
       }
     ]
   },
-
   "product_list": {
     "description": "AZEC-specific product codes for movement calculations - SAS L43 (kept for code-side usage)",
     "products": [
-      "A00","A01","AA1","AB1","AG1","AG8","AR1","ING","PG1","AA6","AG6","AR2","AU1","AA4","A03","AA3","AG3",
-      "AM3","MAI","MA0","MA1","MA2","MA3","MA4","MA5","MT0","MR0","AAC","GAV","GMC","MB1","MB2","MB3","MED",
-      "MH0","MP0","MP1","MP2","MP3","MP4","MPG","MPP","MI0","MI1","MI2","MI3","PI2"
+      "A00",
+      "A01",
+      "AA1",
+      "AB1",
+      "AG1",
+      "AG8",
+      "AR1",
+      "ING",
+      "PG1",
+      "AA6",
+      "AG6",
+      "AR2",
+      "AU1",
+      "AA4",
+      "A03",
+      "AA3",
+      "AG3",
+      "AM3",
+      "MAI",
+      "MA0",
+      "MA1",
+      "MA2",
+      "MA3",
+      "MA4",
+      "MA5",
+      "MT0",
+      "MR0",
+      "AAC",
+      "GAV",
+      "GMC",
+      "MB1",
+      "MB2",
+      "MB3",
+      "MED",
+      "MH0",
+      "MP0",
+      "MP1",
+      "MP2",
+      "MP3",
+      "MP4",
+      "MPG",
+      "MPP",
+      "MI0",
+      "MI1",
+      "MI2",
+      "MI3",
+      "PI2"
     ]
   }
 }

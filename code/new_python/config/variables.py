@@ -158,14 +158,6 @@ try:
         required=False
     )
 
-    # NOTE: Many repos don't have 'date_state_updates' anymore → keep optional empty list
-    AZEC_DATE_STATE_UPDATES = _safe_get(
-        _azec_cfg, ["date_state_updates", "updates"],
-        default=[],
-        cfg_name="azec_transformations.json",
-        required=False
-    )
-
     # ----------------------------
     # CONSOLIDATION configuration (optional, per-key safe)
     # ----------------------------
@@ -185,20 +177,6 @@ try:
         required=False
     )
 
-    MOVEMENT_COLUMN_MAPPING = _safe_get(
-        _cons_cfg, ["movement_column_mapping"],
-        default={'az': {}, 'azec': {}},
-        cfg_name="consolidation_mappings.json",
-        required=False
-    )
-
-    EXPOSURE_COLUMN_MAPPING = _safe_get(
-        _cons_cfg, ["exposure_column_mapping"],
-        default={'az': {}, 'azec': {}},
-        cfg_name="consolidation_mappings.json",
-        required=False
-    )
-
 except Exception as e:
     # Loader completely unavailable (e.g., unit tests without JSON files):
     warnings.warn(f"[CONFIG] Could not initialize loader or load configs: {e}. Using fallback defaults.")
@@ -214,10 +192,7 @@ except Exception as e:
     AZEC_CAPITAL_MAPPING = []   # Intentionally empty; processors should fail-fast if they rely on it.
     AZEC_PRODUIT_LIST = []
     AZEC_MIGRATION_CONFIG = {'vision_threshold': 202009}
-    AZEC_DATE_STATE_UPDATES = []
 
     # ---- Consolidation fallbacks ----
     CONSOLIDATION_AZ_HARMONIZATION = {'rename': {}, 'computed': {}}
     CONSOLIDATION_AZEC_HARMONIZATION = {'rename': {}, 'computed': {}}
-    MOVEMENT_COLUMN_MAPPING = {'az': {}, 'azec': {}}
-    EXPOSURE_COLUMN_MAPPING = {'az': {}, 'azec': {}}
