@@ -214,15 +214,17 @@ class AZProcessor(BaseProcessor):
 
 
         # ============================================================
-        # STEP 6 — Capital extraction (SMP, LCI, PERTE_EXP, RISQUE_DIRECT)
+        # STEP 6 — Capital extraction (LCI, SMP, RISQUE_DIRECT, PERTE_EXP)
         # ============================================================
         self.logger.step(6, "Extracting capital fields")
         capital_cfg = az_config['capital_extraction']
+        # CRITICAL: Dictionary order = execution order ("last write wins")
+        # Must match SAS UPDATE sequence exactly: LCI → SMP → RISQUE_DIRECT → PERTE_EXP
         df = extract_capitals(df, {
-            'smp_100': capital_cfg['smp_100'],
-            'lci_100': capital_cfg['lci_100'],
-            'perte_exp': capital_cfg['perte_exp'],
-            'risque_direct': capital_cfg['risque_direct']
+            'lci_100': capital_cfg['lci_100'],              # 1st - SAS L199-204
+            'smp_100': capital_cfg['smp_100'],              # 2nd - SAS L207-211
+            'risque_direct': capital_cfg['risque_direct'],  # 3rd - SAS L214-218
+            'perte_exp': capital_cfg['perte_exp']           # 4th - SAS L221-230 (last wins)
         })
 
 
@@ -265,7 +267,7 @@ class AZProcessor(BaseProcessor):
             when(
                 (col('top_coass') == 1) & (col('cdcoass').isin(['4', '5'])),
                 (col('mtprprto') * 100) / col('prcdcie')
-            ).otherwise(col('mtprprto'))
+            ).otherwise(lit(0.0))
         )
 
         # ISO-SAS: MTCA / MTCAF à 0 si NULL puis MTCA_
