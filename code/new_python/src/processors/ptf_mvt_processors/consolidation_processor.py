@@ -99,15 +99,6 @@ class ConsolidationProcessor(BaseProcessor):
             self.logger.step(4, "Union AZ + AZEC (OUTER UNION CORR parity)")
             df_consolidated = df_az.unionByName(df_azec, allowMissingColumns=True)
             
-            # Diagnostic: Verify union before dedup
-            try:
-                union_count = df_consolidated.count()
-                az_count = df_consolidated.filter(col("dircom")=="AZ").count()
-                azec_count = df_consolidated.filter(col("dircom")=="AZEC").count()
-                self.logger.info(f"[UNION] Total={union_count:,} | AZ={az_count:,} | AZEC={azec_count:,}")
-            except Exception as e:
-                self.logger.warning(f"[UNION] Diagnostic failed: {e}")
-
             # Deduplicate with AZ priority
             priority = when(col("dircom").isin("AZ", "AZ "), lit(1)).otherwise(lit(0))
             df_consolidated = (
@@ -117,15 +108,6 @@ class ConsolidationProcessor(BaseProcessor):
                 .dropDuplicates(["nopol"])
                 .drop("_priority_dircom")
             )
-            
-            # Diagnostic: Verify after dedup
-            try:
-                dedup_count = df_consolidated.count()
-                az_count_post = df_consolidated.filter(col("dircom")=="AZ").count()
-                azec_count_post = df_consolidated.filter(col("dircom")=="AZEC").count()
-                self.logger.info(f"[DEDUP] Total={dedup_count:,} | AZ={az_count_post:,} | AZEC={azec_count_post:,}")
-            except Exception as e:
-                self.logger.warning(f"[DEDUP] Diagnostic failed: {e}")
         else:
             df_consolidated = df_az
 
@@ -243,16 +225,6 @@ class ConsolidationProcessor(BaseProcessor):
             when(col('noint').isin(['4A6160', '4A6947', '4A6956']), lit(1)).otherwise(lit(0))
         )
         
-        # ================================================================
-        # Final diagnostic: Display unique products in output
-        # ================================================================
-        try:
-            unique_products = df.select("cdprod").distinct().orderBy("cdprod").collect()
-            product_list = [row.cdprod for row in unique_products]
-            self.logger.info(f"[CONSOLIDATION] Unique CDPROD values ({len(product_list)}): {product_list}")
-        except Exception as e:
-            self.logger.warning(f"[CONSOLIDATION] Could not display unique CDPROD: {e}")
-        
         return df
 
 
@@ -294,10 +266,6 @@ class ConsolidationProcessor(BaseProcessor):
             self.logger.info(f"Dropping {len(extra_cols)} intermediate columns (e.g., {list(extra_cols)[:5]})")
 
         df_final = df.select(existing_gold_cols)
-
-        # Stats
-        row_count = df_final.count()
-        self.logger.info(f"Final gold output: {len(existing_gold_cols)} columns, {row_count:,} rows")
 
         from utils.helpers import write_to_layer
         write_to_layer(

@@ -34,7 +34,7 @@ from utils.transformations.base.isic_codification import (
 
 from utils.transformations.operations.business_logic import (
     extract_capitals,
-    calculate_movements,          # AZ
+    calculate_az_movements,       # AZ
     calculate_exposures,          # AZ
     calculate_azec_movements,     # AZEC
     calculate_exposures_azec,     # AZEC (nouveau)
@@ -93,7 +93,7 @@ __all__ = [
 
     # Operations - PTF_MVT
     'extract_capitals',
-    'calculate_movements',         # AZ
+    'calculate_az_movements',      # AZ
     'calculate_exposures',         # AZ
     'calculate_azec_movements',    # AZEC
     'calculate_exposures_azec',    # AZEC

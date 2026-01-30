@@ -258,8 +258,6 @@ def calculate_az_movements(
     return df
 
 
-# Backward-compatibility alias (AZ processors may import calculate_movements)
-calculate_movements = calculate_az_movements
 
 
 # ---------------------------------------------------------------------------

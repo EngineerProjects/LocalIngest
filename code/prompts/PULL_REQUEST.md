@@ -1,0 +1,1 @@
+vérifie si dans azec toutes les condition sont strictement respecter, surtout les conditions sur les produits, le marché, ..., vérifie tout et compare au sas pour s'assurer que c'est vraiment jsute.

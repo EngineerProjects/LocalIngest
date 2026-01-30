@@ -140,47 +140,23 @@ class AZECProcessor(BaseProcessor):
         # STEP 02: Business Filters (SAS WHERE)
         # ============================================================
         self.logger.step(2, "Applying business filters")
-        
-        initial_count = df.count()
-        self.logger.info(f"[ROW COUNT] Before filters: {initial_count:,} rows")
-
-        # Ces deux venaient du JSON
         df = df.filter(~col("intermed").isin("24050", "40490"))
-        count_1 = df.count()
-        self.logger.info(f"[ROW COUNT] After intermed filter: {count_1:,} rows (removed {initial_count - count_1:,})")
-        
         df = df.filter(~col("police").isin("012684940"))
-        count_2 = df.count()
-        self.logger.info(f"[ROW COUNT] After police filter: {count_2:,} rows")
-
-        # Filtre temporaires (Version SAS)
         df = df.filter(
             ~(
                 (col("duree") == "00") &
                 (~col("produit").isin("DO0", "TRC", "CTR", "CNR"))
             )
         )
-        count_3 = df.count()
-        self.logger.info(f"[ROW COUNT] After duree filter: {count_3:,} rows")
-
-        # SAS L84: datfin ne effetpol (excludes when both equal)
         df = df.filter(
             col("datfin").isNull() |
             col("effetpol").isNull() |
             (col("datfin") != col("effetpol"))
         )
-        count_4 = df.count()
-        self.logger.info(f"[ROW COUNT] After datfin filter: {count_4:,} rows")
-
         df = df.filter(
             (~col("gestsit").isin("MIGRAZ")) |
             ((col("gestsit") == "MIGRAZ") & (col("etatpol") == "R"))
         )
-        count_5 = df.count()
-        self.logger.info(f"[ROW COUNT] After gestsit filter: {count_5:,} rows")
-        
-        if count_5 == 0:
-            self.logger.error("[ZERO ROWS] All data lost after GESTSIT filter!")
 
 
         # ============================================================
@@ -188,24 +164,18 @@ class AZECProcessor(BaseProcessor):
         # ============================================================
         self.logger.step(3, "Handling AZEC migration")
         df = self._handle_migration(df, vision, azec_config)
-        count_after_migration = df.count()
-        self.logger.info(f"[ROW COUNT] After migration join: {count_after_migration:,} rows")
 
         # ============================================================
         # STEP 04: Data Quality Updates (SAS L113–137)
         # ============================================================
         self.logger.step(4, "Updating dates and policy states")
         df = self._update_dates_and_states(df, dates, year_int, month_int)
-        count_after_dates = df.count()
-        self.logger.info(f"[ROW COUNT] After date updates: {count_after_dates:,} rows")
 
         # ============================================================
         # STEP 05: Movement Indicators (SAS L144–182)
         # ============================================================
         self.logger.step(5, "Calculating movement indicators (NBPTF/NBAFN/NBRES)")
         df = self._calculate_movements(df, dates, year_int, month_int)
-        count_after_movements = df.count()
-        self.logger.info(f"[ROW COUNT] After movements: {count_after_movements:,} rows")
 
         # ============================================================
         # STEP 06: Suspension Days (SAS L189–194)
@@ -256,22 +226,10 @@ class AZECProcessor(BaseProcessor):
             col("s.lssseg")
         )
         
-        # SAS WHERE: t2.CMARCH in ("6") and t1.GESTSIT <> 'MIGRAZ'
-        # Deux conditions combinées (SAS L260)
-        initial_count = df.count()
         df = df.filter(
             (col("cmarch") == "6") &
             (col("gestsit") != "MIGRAZ")
         )
-        filtered_count = df.count()
-        self.logger.info(f"Segmentation: {initial_count:,} → {filtered_count:,} rows (CMARCH='6' AND GESTSIT!='MIGRAZ')")
-        
-        # Sample display with cmarch (now available after segmentation)
-        try:
-            self.logger.info("[AZEC SAMPLE] First 10 rows after segmentation (with cmarch):")
-            df.select("police", "produit", "cmarch", "etatpol", "nbafn", "nbres", "nbptf").show(10, truncate=False)
-        except Exception as e:
-            self.logger.warning(f"[AZEC SAMPLE] Sample display failed: {e}")
         
         # No CONSTRCU cache needed (simplified flow)
         self._cached_constrcu_ref = None
@@ -517,39 +475,6 @@ class AZECProcessor(BaseProcessor):
         # Default migration flag if missing (only happens in isolated tests)
         if "nbptf_non_migres_azec" not in df.columns:
             df = df.withColumn("nbptf_non_migres_azec", lit(1))
-        
-        # ========== DIAGNOSTIC: WHY NBAFN/NBRES = 0? ==========
-        from pyspark.sql.functions import sum as _sum, count as _count, when
-        
-        self.logger.info("[AZEC DIAG] Pre-movements diagnostics:")
-        
-        # 1. Check ETATPOL distribution (AFN/RES need etatpol='R')
-        try:
-            r_count = df.filter(col("etatpol") == "R").count()
-            self.logger.info(f"[AZEC DIAG] Rows with etatpol='R': {r_count:,} / {df.count():,}")
-        except Exception as e:
-            self.logger.warning(f"[AZEC DIAG] etatpol check failed: {e}")
-        
-        # 2. Check nbptf_non_migres_azec flag
-        try:
-            mig1_count = df.filter(col("nbptf_non_migres_azec") == 1).count()
-            self.logger.info(f"[AZEC DIAG] nbptf_non_migres_azec=1: {mig1_count:,} / {df.count():,}")
-        except Exception as e:
-            self.logger.warning(f"[AZEC DIAG] migration flag check failed: {e}")
-        
-        # 3. Check date columns non-NULL ratio
-        try:
-            date_stats = df.select(
-                _count("*").alias("total"),
-                _sum(when(col("datafn").isNotNull(), 1).otherwise(0)).alias("datafn_non_null"),
-                _sum(when(col("effetpol").isNotNull(), 1).otherwise(0)).alias("effetpol_non_null")
-            ).collect()[0]
-            
-            self.logger.info(f"[AZEC DIAG] Date columns: datafn={date_stats['datafn_non_null']:,}/{date_stats['total']:,}, effetpol={date_stats['effetpol_non_null']:,}/{date_stats['total']:,}")
-        except Exception as e:
-            self.logger.warning(f"[AZEC DIAG] date check failed: {e}")
-        # ========== END DIAGNOSTIC ==========
-
         # SAS AFN/RES/PTF logic
         df = calculate_azec_movements(df, dates, year, month)
 
@@ -559,18 +484,6 @@ class AZECProcessor(BaseProcessor):
                 df = df.withColumn(flag, col(flag).cast("int"))
             else:
                 df = df.withColumn(flag, lit(0).cast("int"))
-
-        # Final movement stats (concise)
-        try:
-            total = df.count()
-            nbptf_count = df.filter(col('nbptf')==1).count()
-            nbafn_count = df.filter(col('nbafn')==1).count()
-            nbres_count = df.filter(col('nbres')==1).count()
-            self.logger.info(
-                f"AZEC movements: NBPTF={nbptf_count:,} NBAFN={nbafn_count:,} NBRES={nbres_count:,} (total={total:,})"
-            )
-        except Exception:
-            pass
 
         return df
 

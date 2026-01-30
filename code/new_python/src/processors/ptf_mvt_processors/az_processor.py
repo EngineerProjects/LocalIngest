@@ -30,7 +30,7 @@ from utils.helpers import extract_year_month_int, compute_date_ranges
 from utils.transformations.base.column_operations import apply_column_config
 from utils.transformations.operations.business_logic import (
     extract_capitals,
-    calculate_movements,   # alias AZ
+    calculate_az_movements,
     calculate_exposures,
 )
 
@@ -79,24 +79,7 @@ class AZProcessor(BaseProcessor):
         self.logger.info(f"Reading ipf_az files (PTF16 + PTF36) with {len(custom_filters)} filters applied BEFORE union")
         return reader.read_file_group('ipf_az', vision, custom_filters=custom_filters)
 
-    def _log_nopol_count(self, df: DataFrame, step_name: str) -> DataFrame:
-        """
-        Helper to log total rows and distinct nopol counts at each step.
-        
-        Args:
-            df: Current DataFrame
-            step_name: Name of the step for logging
-            
-        Returns:
-            DataFrame unchanged (pass-through)
-        """
-        try:
-            total = df.count()
-            distinct_nopol = df.select("nopol").distinct().count()
-            self.logger.info(f"[{step_name:20s}] Total: {total:6,} | Distinct nopol: {distinct_nopol:6,} | Duplicates: {total - distinct_nopol:4,}")
-        except Exception as e:
-            self.logger.warning(f"[{step_name}] Count tracking failed: {e}")
-        return df
+
 
     def transform(self, df: DataFrame, vision: str) -> DataFrame:
         """
@@ -117,13 +100,7 @@ class AZProcessor(BaseProcessor):
         year_int, month_int = extract_year_month_int(vision)
         dates = compute_date_ranges(vision)
         
-        # ==================================================================
-        # DIAGNOSTIC: Start nopol count tracking
-        # ==================================================================
-        self.logger.info("="*80)
-        self.logger.info("DIAGNOSTIC: NOPOL COUNT TRACKING (Step-by-step comparison with SAS)")
-        self.logger.info("="*80)
-        df = self._log_nopol_count(df, "0_AFTER_READ")
+
 
         loader = get_default_loader()
         az_config = loader.get_az_config()
@@ -234,7 +211,7 @@ class AZProcessor(BaseProcessor):
         # ============================================================
         self.logger.step(5, "Joining IPFM99")
         df = self._join_ipfm99(df, vision)
-        df = self._log_nopol_count(df, "5_AFTER_IPFM99")
+
 
         # ============================================================
         # STEP 6 — Capital extraction (SMP, LCI, PERTE_EXP, RISQUE_DIRECT)
@@ -247,7 +224,7 @@ class AZProcessor(BaseProcessor):
             'perte_exp': capital_cfg['perte_exp'],
             'risque_direct': capital_cfg['risque_direct']
         })
-        df = self._log_nopol_count(df, "6_AFTER_CAPITALS")
+
 
         # ============================================================
         # STEP 7 — UPDATE-level computed fields (primeto, top_lta, top_temp, top_revisable)
@@ -259,53 +236,9 @@ class AZProcessor(BaseProcessor):
         # ============================================================
         # STEP 8 — Movement indicators (AFN, RES, RPC, RPT, NBPTF)
         # ============================================================
-        df = self._log_nopol_count(df, "7_BEFORE_MOVEMENTS")
         self.logger.step(8, "Calculating movement indicators")
-        
-        # DIAGNOSTIC: Log preconditions for movement calculations
-        try:
-            total = df.count()
-            self.logger.info("[AZ DIAG] Pre-movements diagnostics:")
-            self.logger.info(f"[AZ DIAG] Total rows: {total:,}")
-            
-            # CSSSEG distribution (critical for NBPTF)
-            cssseg_5 = df.filter(col('cssseg') == '5').count()
-            cssseg_null = df.filter(col('cssseg').isNull()).count()
-            self.logger.info(f"[AZ DIAG] CSSSEG='5': {cssseg_5:,} ({100*cssseg_5/total:.1%})")
-            self.logger.info(f"[AZ DIAG] CSSSEG NULL: {cssseg_null:,} ({100*cssseg_null/total:.1%})")
-            
-            # CDSITP distribution (critical for NBPTF/NBRES)
-            cdsitp_1 = df.filter(col('cdsitp') == '1').count()
-            cdsitp_3 = df.filter(col('cdsitp') == '3').count()
-            cdsitp_null = df.filter(col('cdsitp').isNull()).count()
-            self.logger.info(f"[AZ DIAG] CDSITP='1': {cdsitp_1:,} ({100*cdsitp_1/total:.1%})")
-            self.logger.info(f"[AZ DIAG] CDSITP='3': {cdsitp_3:,} ({100*cdsitp_3/total:.1%})")
-            self.logger.info(f"[AZ DIAG] CDSITP NULL: {cdsitp_null:,} ({100*cdsitp_null/total:.1%})")
-            
-            # CDNATP distribution (critical for NBPTF/NBRES)
-            cdnatp_ro = df.filter(col('cdnatp').isin('R', 'O')).count()
-            cdnatp_c = df.filter(col('cdnatp') == 'C').count()
-            cdnatp_null = df.filter(col('cdnatp').isNull()).count()
-            self.logger.info(f"[AZ DIAG] CDNATP in(R,O): {cdnatp_ro:,} ({100*cdnatp_ro/total:.1%})")
-            self.logger.info(f"[AZ DIAG] CDNATP='C': {cdnatp_c:,} ({100*cdnatp_c/total:.1%})")
-            self.logger.info(f"[AZ DIAG] CDNATP NULL: {cdnatp_null:,} ({100*cdnatp_null/total:.1%})")
-            
-            # Date columns NULL ratios (critical for AFN/RES conditions)
-            dtcrepol_null = df.filter(col('dtcrepol').isNull()).count()
-            dteffan_null = df.filter(col('dteffan').isNull()).count()
-            dttraan_null = df.filter(col('dttraan').isNull()).count()
-            dtresilp_null = df.filter(col('dtresilp').isNull()).count()
-            self.logger.info(f"[AZ DIAG] Date columns NULL ratios:")
-            self.logger.info(f"[AZ DIAG]   dtcrepol: {total-dtcrepol_null:,}/{total:,} ({100*(total-dtcrepol_null)/total:.1%} non-NULL)")
-            self.logger.info(f"[AZ DIAG]   dteffan: {total-dteffan_null:,}/{total:,} ({100*(total-dteffan_null)/total:.1%} non-NULL)")
-            self.logger.info(f"[AZ DIAG]   dttraan: {total-dttraan_null:,}/{total:,} ({100*(total-dttraan_null)/total:.1%} non-NULL)")
-            self.logger.info(f"[AZ DIAG]   dtresilp: {total-dtresilp_null:,}/{total:,} ({100*(total-dtresilp_null)/total:.1%} non-NULL)")
-        except Exception as e:
-            self.logger.warning(f"[AZ DIAG] Failed to compute diagnostics: {e}")
-        
         movement_cols = az_config['movements']['column_mapping']
-        df = calculate_movements(df, dates, year_int, movement_cols)
-        df = self._log_nopol_count(df, "8_AFTER_MOVEMENTS")
+        df = calculate_az_movements(df, dates, year_int, movement_cols)
 
         # ============================================================
         # STEP 9 — Exposure calculations (expo_ytd, expo_gli)
@@ -384,26 +317,14 @@ class AZProcessor(BaseProcessor):
         # ============================================================
         # STEP 14 — Segmentation & PT_GEST enrichment
         # ============================================================
-        df = self._log_nopol_count(df, "13_BEFORE_SEGMENT")
         self.logger.step(14, "Enriching segmentation and management point")
         df = self._enrich_segment_and_product_type(df, vision)
-        df = self._log_nopol_count(df, "14_AFTER_SEGMENT")
 
         # ============================================================
         # STEP 15 — Deduplication (SAS L505–507)
         # ============================================================
-        df = self._log_nopol_count(df, "14_BEFORE_DEDUP")
         self.logger.step(15, "Deduplicating by nopol")
-        # orderBy required before dropDuplicates for deterministic behavior (SAS NODUPKEY)
         df = df.orderBy("nopol", "cdsitp").dropDuplicates(["nopol"])
-        df = self._log_nopol_count(df, "15_AFTER_DEDUP")
-
-        # ==================================================================
-        # DIAGNOSTIC: End nopol count tracking
-        # ==================================================================
-        self.logger.info("="*80)
-        self.logger.info("END DIAGNOSTIC: Compare counts above with SAS at each step")
-        self.logger.info("="*80)
         
         self.logger.info("AZ transformations completed successfully")
         return df

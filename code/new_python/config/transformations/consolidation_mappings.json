@@ -241,45 +241,5 @@
       ],
       "comment": "SAS: if missing(DTRCPPR) and not missing(DTREFFIN) then DTRCPPR=DTREFFIN"
     }
-  },
-  "movement_column_mapping": {
-    "description": "Column mapping for movement calculations (AFN, RES, RPT, RPC) — parity with SAS inputs",
-    "az": {
-      "creation_date": "dtcrepol",
-      "effective_date": "dteffan",
-      "termination_date": "dtresilp",
-      "transfer_start": "dttraan",
-      "transfer_end": "dttraar",
-      "type_col1": "cdtypli1",
-      "type_col2": "cdtypli2",
-      "type_col3": "cdtypli3",
-      "type_date1": "dttypli1",
-      "type_date2": "dttypli2",
-      "type_date3": "dttypli3"
-    },
-    "azec": {
-      "creation_date": "poingest",
-      "effective_date": "effetpol",
-      "termination_date": "datresil",
-      "transfer_start": null,
-      "transfer_end": null,
-      "type_col1": null,
-      "type_col2": null,
-      "type_col3": null,
-      "type_date1": null,
-      "type_date2": null,
-      "type_date3": null
-    }
-  },
-  "exposure_column_mapping": {
-    "description": "Column mapping for exposure calculations (expo_ytd, expo_gli) — parity with SAS inputs",
-    "az": {
-      "creation_date": "dtcrepol",
-      "termination_date": "dtresilp"
-    },
-    "azec": {
-      "creation_date": "effetpol",
-      "termination_date": "datfin"
-    }
   }
 }
