@@ -142,6 +142,11 @@ class BronzeReader:
             bronze_path = build_layer_path(base_path, 'bronze', vision)
 
         file_patterns: List[str] = group_cfg['file_patterns']
+        
+        # Substitute {vision} template if present (e.g., "ird_risk_q45_{vision}.csv" → "ird_risk_q45_202509.csv")
+        # This allows dynamic monthly table patterns while keeping wildcards (*) for versioned references
+        file_patterns = [pattern.replace('{vision}', vision) for pattern in file_patterns]
+        
         schema_name: Optional[str] = group_cfg.get('schema')
         filters: List[Dict[str, Any]] = group_cfg.get('filters', [])
         read_options: Dict[str, Any] = group_cfg.get('read_options', {})

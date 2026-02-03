@@ -125,10 +125,9 @@ class ConsolidationProcessor(BaseProcessor):
         self.logger.step(4.5, "Applying common transformations")
         df_consolidated = self._apply_common_transformations(df_consolidated)
 
-        # ------------------------------------------------
-        # Step G — DO_DEST (monthly or fixed reference)
-        # ------------------------------------------------
-        self.logger.step(4.6, "Enriching with DO_DEST reference (monthly)")
+        # Step G — DO_DEST (reference table)
+        self.logger.step(4.6, "Enriching with DO_DEST reference")
+
         df_consolidated = self._enrich_do_dest(df_consolidated, vision)
 
         # -------------------------------------------------------------
@@ -1059,18 +1058,20 @@ class ConsolidationProcessor(BaseProcessor):
         return df
 
 
+
     def _enrich_do_dest(self, df: DataFrame, vision: str) -> DataFrame:
         """
         Enrich with DESTINAT from DO_DEST reference.
         
-        SAS L416-421 uses DEST.DO_DEST202110 (fixed October 2021 reference).
-        However, if your data has monthly DO_DEST files, use vision parameter.
+        SAS PTF_MVTS_CONSOLIDATION_MACRO.sas L420 uses DEST.DO_DEST202110 
+        (fixed October 2021 reference). In Python, we use do_dest.csv 
+        which is the latest/current version (replaces the old DO_DEST202110).
         
-        DO_DEST may contain date columns that need normalization.
+        NOTE: DO_DEST is a REFERENCE table (not vision-dependent).
         
         Args:
             df: Consolidated DataFrame
-            vision: Vision in YYYYMM format
+            vision: Vision parameter (not used for DO_DEST, kept for signature compatibility)
         
         Returns:
             DataFrame with destinat column enriched from DO_DEST reference
@@ -1080,7 +1081,10 @@ class ConsolidationProcessor(BaseProcessor):
 
         try:
             reader = get_bronze_reader(self)
-            do_dest_df = reader.read_file_group("do_dest", vision)
+            # Use DO_DEST (do_dest.csv = latest version, replaces historical DO_DEST202110 from SAS)
+            # This is a REFERENCE table, not vision-dependent
+            do_dest_df = reader.read_file_group("do_dest", "ref")
+
 
             if do_dest_df is None:
                 # Ensure DESTINAT exists (NULL)
