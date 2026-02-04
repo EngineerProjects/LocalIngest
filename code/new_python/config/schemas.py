@@ -39,7 +39,7 @@ RF_FR1_PRM_DTL_MIDCORP_M_SCHEMA = StructType([
     StructField("NU_CNT_PRM", StringType(), True),  # Policy number
     StructField("CD_PRD_PRM", StringType(), True),  # Product code
     StructField("CD_STATU_CTS", StringType(), True),  # Status code
-    StructField("DT_CPTA_CTS", DateType(), True),  # Accounting date
+    StructField("DT_CPTA_CTS", IntegerType(), True),  # Accounting period YYYYMM (202601, not a date)
     StructField("DT_EMIS_CTS", DateType(), True),  # Emission date
     StructField("DT_ANNU_CTS", DateType(), True),  # Cancellation date
     StructField("MT_HT_CTS", DoubleType(), True),  # Premium amount (excl tax)
@@ -81,7 +81,7 @@ IPF_AZ_SCHEMA = StructType([
     StructField("DTTYPLI1", DateType(), True),
     StructField("DTTYPLI2", DateType(), True),
     StructField("DTTYPLI3", DateType(), True),
-    StructField("DTECHANN", DateType(), True),
+    StructField("DTECHANN", IntegerType(), True),  # Anniversary MMJJ format (801=Aug 1st, not a date)
     StructField("DTOUCHAN", DateType(), True),
     StructField("DTRCPPR", DateType(), True),
     StructField("DTRECTRX", DateType(), True),

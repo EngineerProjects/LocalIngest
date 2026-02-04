@@ -216,11 +216,11 @@
                 "format": "csv",
                 "sep": "|",
                 "header": true,
-                "encoding": "LATIN9",
-                "dateFormat": "dd/MM/yyyy"
+                "encoding": "LATIN9"
             },
             "filters": [],
-            "location_type": "monthly"
+            "location_type": "monthly",
+            "_comment": "SAS DATETIME format (14MAY1991:00:00:00) requires manual datepart() parsing in processor"
         },
         "ird_risk_q46": {
             "description": "IRD Risk Q46 - Risk data with vision {vision}",
@@ -232,11 +232,11 @@
                 "format": "csv",
                 "sep": "|",
                 "header": true,
-                "encoding": "LATIN9",
-                "dateFormat": "dd/MM/yyyy"
+                "encoding": "LATIN9"
             },
             "filters": [],
-            "location_type": "monthly"
+            "location_type": "monthly",
+            "_comment": "SAS DATETIME format (04MAR2012:00:00:00) requires manual datepart() parsing in processor"
         },
         "ird_risk_qan": {
             "description": "IRD Risk QAN - For visions < 202210 with vision {vision}",
@@ -248,11 +248,11 @@
                 "format": "csv",
                 "sep": "|",
                 "header": true,
-                "encoding": "LATIN9",
-                "dateFormat": "dd/MM/yyyy"
+                "encoding": "LATIN9"
             },
             "filters": [],
-            "location_type": "monthly"
+            "location_type": "monthly",
+            "_comment": "SAS DATETIME format (12JAN2008:00:00:00) requires manual datepart() parsing in processor"
         },
         "ird_suivi_engagements": {
             "description": "IRD Suivi Engagements - NAF 2008 tracking with vision {vision}",
@@ -358,7 +358,7 @@
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9",
-                "dateFormat": "dd/MM/yyyy"
+                "dateFormat": "yyyy-MM-dd"
             },
             "filters": [],
             "location_type": "reference"

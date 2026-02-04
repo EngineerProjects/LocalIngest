@@ -116,8 +116,19 @@ class ConsolidationProcessor(BaseProcessor):
         # ----------------------------------------------------------
         self.logger.step(4.1, "Extracting MOIS_ECHEANCE / JOUR_ECHEANCE from DTECHANN")
         if "dtechann" in df_consolidated.columns:
-            df_consolidated = df_consolidated.withColumn("mois_echeance", month(col("dtechann")))
-            df_consolidated = df_consolidated.withColumn("jour_echeance", dayofmonth(col("dtechann")))
+            # DTECHANN is IntegerType MMJJ format (e.g., 801 = August 1st, 1225 = December 25th)
+            # SAS AZ: input(substr(put(DTECHANN, 5.), length(...) - 3, 2), 4.) AS MOIS_ECHEANCE
+            # Python equivalent: Integer arithmetic extraction
+            df_consolidated = df_consolidated.withColumn(
+                "mois_echeance",
+                when(col("dtechann").isNotNull(), 
+                     (col("dtechann") / 100).cast("int")).otherwise(lit(None))
+            )
+            df_consolidated = df_consolidated.withColumn(
+                "jour_echeance",
+                when(col("dtechann").isNotNull(),
+                     (col("dtechann") % 100).cast("int")).otherwise(lit(None))
+            )
 
         # ----------------------------------------------
         # Step F — Common transformations (e.g., CDTRE *)

@@ -8,8 +8,31 @@ Provides reusable functions for joining and coalescing IRD risk data
 from typing import List, Dict, Optional
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
-from pyspark.sql.functions import col, lit, when, to_date, broadcast
+from pyspark.sql.functions import col, lit, when, to_date, broadcast, substring
 from pyspark.sql.types import StringType, DateType
+
+
+def _parse_sas_datetime_to_date(col_expr):
+    """
+    Parse SAS DATETIME '14MAY1991:00:00:00' → PySpark DATE '1991-05-14'
+    
+    Equivalent to SAS datepart() function.
+    Extracts first 9 characters and parses with SAS date format.
+    
+    Args:
+        col_expr: PySpark Column expression containing SAS DATETIME string
+    
+    Returns:
+        PySpark Column with DateType value
+    
+    Examples:
+        >>> _parse_sas_datetime_to_date(col("dtouchan"))
+        # '14MAY1991:00:00:00' → date('1991-05-14')
+        # '04MAR2012:00:00:00' → date('2012-03-04')
+    """
+    # Extract first 9 characters: '14MAY1991:00:00:00' → '14MAY1991'
+    # Parse with SAS datetime format: ddMMMyyyy
+    return to_date(substring(col_expr, 1, 9), "ddMMMyyyy")
 
 
 def enrich_with_risk_data(
@@ -124,7 +147,11 @@ def _join_single_risk_source(
         
         for col_name in config['date_columns']:
             if col_name in df_ird.columns:
-                select_cols.append(to_date(col(col_name)).alias(f"{col_name}_risk"))
+                # Parse SAS DATETIME format '14MAY1991:00:00:00' → DATE
+                # Equivalent to SAS datepart() function
+                select_cols.append(
+                    _parse_sas_datetime_to_date(col(col_name)).alias(f"{col_name}_risk")
+                )
         
         for col_name in config['text_columns']:
             if col_name in df_ird.columns:

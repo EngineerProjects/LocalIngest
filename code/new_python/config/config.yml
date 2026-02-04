@@ -17,7 +17,7 @@ vision:
 # Runtime parameters (overridable via CLI/environment)
 runtime:
   # Default vision for development/testing
-  vision_: "202509"
+  vision_: "202512"
 
 # Azure Data Lake Storage configuration
 datalake:
