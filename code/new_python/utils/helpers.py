@@ -8,6 +8,7 @@ from dateutil.relativedelta import relativedelta
 from typing import List, Tuple, Dict, Optional
 from pathlib import Path
 from pyspark.sql import SparkSession
+from urllib.parse import urlparse
 
 
 def validate_vision(vision: str) -> bool:
@@ -216,38 +217,93 @@ def compute_date_ranges(vision: str) -> Dict[str, str]:
 
     return dates
 
-def delete_path_with_spark_fs(spark: SparkSession, path: str, logger=None) -> bool:
+def azure_delete_path(spark: SparkSession, path: str, logger=None) -> bool:
     """
-    Supprime récursivement un chemin (fichier ou dossier) sur ADLS/ABFS/HDFS/S3 via Hadoop FS.
+    Delete a path on ABFS/ADLS (abfss://...), recursively.
+    
+    Uses urlparse to correctly handle Azure ABFS URIs and avoid fragile string splits.
+    Properly constructs FileSystem with full URI including scheme and netloc.
 
     Args:
         spark: SparkSession
-        path: Chemin complet (ex: abfss://container@account.dfs.core.windows.net/construction/gold/ptf_mvt_202509)
-        logger: logger optionnel
+        path: Full path (e.g., abfss://container@account.dfs.core.windows.net/construction/gold/file.parquet)
+        logger: Optional logger instance
 
     Returns:
-        True si suppression réalisée, False si le chemin n'existait pas ou en cas d'erreur.
+        True  -> deletion happened
+        False -> path didn't exist
+        
+    Raises:
+        Exception on failure
+        
+    Example:
+        >>> azure_delete_path(
+        ...     spark,
+        ...     "abfss://shared@azfrdatalab.dfs.core.windows.net/ABR/P4D/gold/ptf_mvt_202512",
+        ...     logger
+        ... )
     """
     try:
-        jvm = spark._jvm
-        conf = spark._jsc.hadoopConfiguration()
-        fs = jvm.org.apache.hadoop.fs.FileSystem.get(conf)
-        jpath = jvm.org.apache.hadoop.fs.Path(path)
+        hadoop_conf = spark._jsc.hadoopConfiguration()
 
-        if fs.exists(jpath):
-            # True = suppression récursive (dossier et contenu)
-            fs.delete(jpath, True)
+        # Parse with urlparse to avoid fragile string splits
+        u = urlparse(path)
+
+        # ABFSS example:
+        #   scheme=abfss
+        #   netloc=shared@azfrdatalab.dfs.core.windows.net
+        #   path=/ABR/P4D/...
+        if u.scheme in ("abfss", "abfs"):
+            if not u.netloc:
+                raise ValueError(f"Invalid ABFS URI (missing netloc): {path}")
+
+            # Ensure we keep original URI, but also normalize "no-path" case
+            norm_path = u.path if u.path else "/"
+            full_uri = f"{u.scheme}://{u.netloc}{norm_path}"
+
+            fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(
+                spark._jvm.java.net.URI(full_uri),
+                hadoop_conf
+            )
+            target = spark._jvm.org.apache.hadoop.fs.Path(full_uri)
+
+            if not fs.exists(target):
+                if logger:
+                    logger.info(f"Path does not exist: {full_uri}")
+                return False
+
+            deleted = fs.delete(target, True)  # recursive
             if logger:
-                logger.info(f"🗑️  Cleaned existing path: {path}")
-            return True
-        else:
+                if deleted:
+                    logger.info(f"🗑️  Deleted {full_uri}")
+                else:
+                    logger.warning(f"Delete returned False for {full_uri} (may be in use/permission issue)")
+            return bool(deleted)
+
+        # Non-ABFS fallback (hdfs://, file://, etc.)
+        fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(
+            spark._jvm.java.net.URI(path),
+            hadoop_conf
+        )
+        target = spark._jvm.org.apache.hadoop.fs.Path(path)
+
+        if not fs.exists(target):
             if logger:
-                logger.debug(f"No existing path to clean: {path}")
+                logger.info(f"Path does not exist: {path}")
             return False
+
+        deleted = fs.delete(target, True)
+        if logger:
+            if deleted:
+                logger.info(f"🗑️  Deleted {path}")
+            else:
+                logger.warning(f"Delete returned False for {path}")
+        return bool(deleted)
+
     except Exception as e:
         if logger:
-            logger.error(f"Failed to clean path {path}: {e}")
-        return False
+            logger.error(f"Delete failed for {path}: {e}")
+        raise
 
 
 def write_to_layer(
@@ -317,7 +373,7 @@ def write_to_layer(
     if clean:
         # Récupère la SparkSession depuis le DataFrame si tu n'as pas spark en paramètre
         spark = df.sparkSession
-        delete_path_with_spark_fs(spark, output_path, logger)
+        azure_delete_path(spark, output_path, logger)
 
 
         # ================================================================
