@@ -149,14 +149,18 @@ def apply_emissions_filters(
         logger.info(f"After date filter (dt_cpta_cts <= {vision}): {df.count():,} records")
     
     # Filter 3: Excluded intermediaries
-    excluded_noint = config.get('excluded_intermediaries', [])
+    excluded_noint_config = config.get('excluded_intermediaries', {})
+    # Config structure: {"description": "...", "values": [...]}
+    excluded_noint = excluded_noint_config.get('values', []) if isinstance(excluded_noint_config, dict) else excluded_noint_config
     if excluded_noint:
         df = df.filter(~col('cd_int_stc').isin(excluded_noint))
         if logger:
             logger.info(f"After intermediary filter ({len(excluded_noint)} excluded): {df.count():,} records")
     
     # Filter 4: Product/guarantee exclusions
-    for exclusion in config.get('product_guarantee_exclusions', []):
+    product_guarantee_config = config.get('product_guarantee_exclusions', {})
+    product_guarantee_rules = product_guarantee_config.get('rules', []) if isinstance(product_guarantee_config, dict) else product_guarantee_config
+    for exclusion in product_guarantee_rules:
         if 'product_prefix' in exclusion:
             # Product prefix with guarantee
             df = df.filter(
@@ -171,18 +175,22 @@ def apply_emissions_filters(
             )
     
     # Filter 5: Excluded guarantees
-    excluded_guarantees = config.get('excluded_guarantees', [])
+    excluded_guarantees_config = config.get('excluded_guarantees', {})
+    excluded_guarantees = excluded_guarantees_config.get('values', []) if isinstance(excluded_guarantees_config, dict) else excluded_guarantees_config
     if excluded_guarantees:
         df = df.filter(~col('cd_gar_prospctiv').isin(excluded_guarantees))
     
     # Filter 6: Excluded product
-    excluded_product = config.get('excluded_product')
+    excluded_product_config = config.get('excluded_product', {})
+    excluded_product = excluded_product_config.get('value') if isinstance(excluded_product_config, dict) else excluded_product_config
     if excluded_product:
         df = df.filter(col('cd_prd_prm') != excluded_product)
     
     # Filter 7: Excluded categories and guarantee category
-    excluded_categories = config.get('excluded_categories', [])
-    excluded_gar_cat = config.get('excluded_guarantee_category')
+    excluded_categories_config = config.get('excluded_categories', {})
+    excluded_categories = excluded_categories_config.get('values', []) if isinstance(excluded_categories_config, dict) else excluded_categories_config
+    excluded_gar_cat_config = config.get('excluded_guarantee_category', {})
+    excluded_gar_cat = excluded_gar_cat_config.get('value') if isinstance(excluded_gar_cat_config, dict) else excluded_gar_cat_config
     
     if excluded_categories or excluded_gar_cat:
         filter_expr = lit(False)

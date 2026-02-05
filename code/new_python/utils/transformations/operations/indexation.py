@@ -120,13 +120,15 @@ def index_capitals(
         # =====================================================================
 
         # SAS L44-45: JOUR1 = SUBSTR(PUT(DTECHANN,4.),3,2); MOIS1 = SUBSTR(PUT(DTECHANN,4.),1,2)
+        # DTECHANN est IntegerType format MMJJ (ex: 1231 = 31 décembre)
+        # Extraction arithmétique: MOIS = DTECHANN / 100, JOUR = DTECHANN % 100
         df = df.withColumn(
             f"_temp_anniv_month_{i}",
-            month(col(date_col))
+            (col(date_col) / lit(100)).cast("int")  # MMJJ / 100 = MM
         )
         df = df.withColumn(
             f"_temp_anniv_day_{i}",
-            dayofmonth(col(date_col))
+            (col(date_col) % lit(100)).cast("int")  # MMJJ % 100 = JJ
         )
 
         # SAS L46-47: ANNEE1 = YEAR(DATE()); DATE = MDY(MOIS1,JOUR1,ANNEE1)
