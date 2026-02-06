@@ -8,16 +8,17 @@ The pipeline uses a **configuration-driven** architecture with all business logi
 
 ## Configuration Files
 
-| File | Location | Purpose |
-|------|----------|---------|
-| **config.yml** | `config/` | Paths, Spark settings, logging |
-| **reading_config.json** | `config/` | File patterns and read options |
-| **schemas.py** | `config/` | PySpark schema definitions |
-| **constants.py** | `config/` | Business constants and exclusion lists |
-| **az_transformations.json** | `config/transformations/` | AZ channel logic |
-| **azec_transformations.json** | `config/transformations/` | AZEC channel logic |
-| **business_rules.json** | `config/transformations/` | Shared business rules |
-| **emissions_config.json** | `config/transformations/` | Emissions filters and mappings |
+| File                            | Location                  | Purpose                                |
+| ------------------------------- | ------------------------- | -------------------------------------- |
+| **config.yml**                  | `config/`                 | Paths, Spark settings, logging         |
+| **reading_config.json**         | `config/`                 | File patterns and read options         |
+| **schemas.py**                  | `config/`                 | PySpark schema definitions             |
+| **constants.py**                | `config/`                 | Business constants and exclusion lists |
+| **az_transformations.json**     | `config/transformations/` | AZ channel logic                       |
+| **azec_transformations.json**   | `config/transformations/` | AZEC channel logic                     |
+| **business_rules.json**         | `config/transformations/` | Shared business rules                  |
+| **emissions_config.json**       | `config/transformations/` | Emissions filters and mappings         |
+| **consolidation_mappings.json** | `config/transformations/` | AZ/AZEC schema harmonization           |
 
 ---
 
@@ -25,13 +26,23 @@ The pipeline uses a **configuration-driven** architecture with all business logi
 
 ### Key Sections
 
-| Section | Purpose |
-|---------|---------|
+| Section              | Purpose                                 |
+| -------------------- | --------------------------------------- |
 | `datalake.base_path` | Root path for bronze/silver/gold layers |
-| `components` | Enable/disable pipeline components |
-| `spark.config` | Spark session configuration |
-| `logging` | Log level and file location |
-| `vision.validation` | Year range validation |
+| `output.format`      | Output format (delta, parquet)          |
+| `components`         | Enable/disable pipeline components      |
+| `spark.config`       | Spark session configuration             |
+| `logging`            | Log level and file location             |
+| `vision.validation`  | Year range validation                   |
+
+### Output Configuration
+
+| Key                  | Default     | Description                               |
+| -------------------- | ----------- | ----------------------------------------- |
+| `output.format`      | `delta`     | Output format (delta for ACID guarantees) |
+| `output.mode`        | `overwrite` | Write mode (overwrite, append)            |
+| `output.compression` | `snappy`    | Compression codec                         |
+| `output.clean`       | `true`      | Clean existing data before write          |
 
 ---
 
@@ -39,25 +50,25 @@ The pipeline uses a **configuration-driven** architecture with all business logi
 
 ### File Group Structure
 
-| Field | Description |
-|-------|-------------|
-| `description` | Human-readable description |
-| `file_patterns` | Glob patterns for file matching |
-| `schema` | Reference to schema in schemas.py |
-| `read_options.format` | csv, parquet |
-| `read_options.sep` | Column separator |
-| `read_options.header` | Has header row |
-| `read_options.encoding` | ISO-8859-15, UTF-8 |
-| `location_type` | monthly or reference |
+| Field                   | Description                       |
+| ----------------------- | --------------------------------- |
+| `description`           | Human-readable description        |
+| `file_patterns`         | Glob patterns for file matching   |
+| `schema`                | Reference to schema in schemas.py |
+| `read_options.format`   | csv, parquet                      |
+| `read_options.sep`      | Column separator                  |
+| `read_options.header`   | Has header row                    |
+| `read_options.encoding` | ISO-8859-15, UTF-8                |
+| `location_type`         | monthly or reference              |
 
 ### Location Types
 
-| Type | Path Pattern |
-|------|--------------|
-| **monthly** | `bronze/{YYYY}/{MM}/` |
-| **reference** | `bronze/ref/` |
+| Type          | Path Pattern          |
+| ------------- | --------------------- |
+| **monthly**   | `bronze/{YYYY}/{MM}/` |
+| **reference** | `bronze/ref/`         |
 
-### Current File Groups (36 total)
+### Current File Groups (45 total)
 
 - IMS files: `ipf_az`, `ipfm99_az`, `ipfspe_*`
 - OneBI: `rf_fr1_prm_dtl_midcorp_m`
@@ -91,19 +102,20 @@ Maps file group names to StructType schemas:
 
 ### Business Constants
 
-| Constant | Values |
-|----------|--------|
-| DIRCOM | AZ=100, AZEC=400 |
-| CDPOLE | Agent=1, Courtage=3 |
-| CMARCH | Construction=6 |
+| Constant | Values                             |
+| -------- | ---------------------------------- |
+| DIRCOM   | AZ="AZ", AZEC="AZEC" (string)      |
+| CDPOLE   | Agent="1", Courtage="3" (string)   |
+| CMARCH   | Construction="6"                   |
+| CSEG     | Segment="2" (Construction segment) |
 
 ### Exclusion Lists
 
-| List | Count | Used In |
-|------|-------|---------|
-| NOINT exclusions | 20 | AZ filters |
-| AZEC intermediary | 2 | AZEC filters |
-| Excluded products | 1 | All pipelines |
+| List              | Count | Used In       |
+| ----------------- | ----- | ------------- |
+| NOINT exclusions  | 20    | AZ filters    |
+| AZEC intermediary | 2     | AZEC filters  |
+| Excluded products | 1     | All pipelines |
 
 ---
 
@@ -111,37 +123,37 @@ Maps file group names to StructType schemas:
 
 ### az_transformations.json
 
-| Section | Purpose |
-|---------|---------|
-| `column_selection` | Passthrough, rename, computed columns |
-| `business_filters` | Market, segment, status filters |
-| `capital_extraction` | Keyword-based capital extraction |
-| `movements` | Date column mappings |
+| Section              | Purpose                               |
+| -------------------- | ------------------------------------- |
+| `column_selection`   | Passthrough, rename, computed columns |
+| `business_filters`   | Market, segment, status filters       |
+| `capital_extraction` | Keyword-based capital extraction      |
+| `movements`          | Date column mappings                  |
 
 ### business_rules.json
 
-| Section | Purpose |
-|---------|---------|
-| `coassurance_config` | COASS type determination |
+| Section              | Purpose                    |
+| -------------------- | -------------------------- |
+| `coassurance_config` | COASS type determination   |
 | `az_transform_steps` | Business rule calculations |
-| `gestsit_rules` | Status updates |
+| `gestsit_rules`      | Status updates             |
 
 ### azec_transformations.json
 
-| Section | Purpose |
-|---------|---------|
-| `column_selection` | AZEC column configuration |
-| `business_filters` | AZEC-specific filters |
-| `migration_handling` | Vision > 202009 logic |
-| `movement_products` | 47-product list for movements |
+| Section              | Purpose                       |
+| -------------------- | ----------------------------- |
+| `column_selection`   | AZEC column configuration     |
+| `business_filters`   | AZEC-specific filters         |
+| `migration_handling` | Vision > 202009 logic         |
+| `movement_products`  | 47-product list for movements |
 
 ### emissions_config.json
 
-| Section | Purpose |
-|---------|---------|
+| Section                   | Purpose               |
+| ------------------------- | --------------------- |
 | `excluded_intermediaries` | 15 intermediary codes |
-| `excluded_guarantees` | 4 guarantee codes |
-| `channel_mapping` | cd_niv_2_stc → CDPOLE |
+| `excluded_guarantees`     | 4 guarantee codes     |
+| `channel_mapping`         | cd_niv_2_stc → CDPOLE |
 
 ---
 
@@ -163,9 +175,14 @@ Maps file group names to StructType schemas:
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| Schema validation fails | Check column names match exactly (case-sensitive) |
-| Filter not applied | Verify column exists before filter step |
-| File not found | Check file_pattern glob matches filenames |
-| Transformation returns null | Add default values |
+| Issue                       | Solution                                          |
+| --------------------------- | ------------------------------------------------- |
+| Schema validation fails     | Check column names match exactly (case-sensitive) |
+| Filter not applied          | Verify column exists before filter step           |
+| File not found              | Check file_pattern glob matches filenames         |
+| Transformation returns null | Add default values                                |
+
+---
+
+**Last Updated**: 2026-02-06  
+**Version**: 1.1

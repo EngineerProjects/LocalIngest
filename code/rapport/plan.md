@@ -215,22 +215,93 @@ Tableau synthétique des principaux défis :
 | **Complexité code ISIC**          | 6 tables de mapping avec fallbacks (~25 000 lignes SAS) | Modularisation en fonctions réutilisables              | Élevé    |
 | **Calculs retournant zéro**       | Filtres JSON ambigus, formats de dates incorrects       | Réécriture filtres en PySpark pur, normalisation dates | Critique |
 
-*Exemples détaillés de résolution en Annexe 4*
+**4.4.1 Défis Critiques Résolus - Exemples Détaillés**
+
+| Défi Technique                    | Description                                                                                             | Solution Implémentée                                                      | Fichier Code                       | Impact Quantifié                                                 |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------- |
+| **CDPOLE NULL pour AZEC**         | 16,124 lignes AZEC sans colonne `cdpole` - SAS hardcode `"3"` dans consolidation                        | Ajout `df.withColumn('cdpole', lit('3'))`                                 | `azec_processor.py` L106           | **Critique**: cdpole=3 passe de 38,569 → 54,693 (match 100% SAS) |
+| **DTECHANN format Integer MMJJ**  | Colonne `dtechann` en IntegerType (1231 = 31 déc) - `month()` Spark attend DateType                     | Extraction arithmétique: `MOIS = dtechann / 100`, `JOUR = dtechann % 100` | `indexation.py` L122-130           | **Critique**: Indexation 14 champs capitaux (248k lignes)        |
+| **Config EMISSIONS dict vs list** | `excluded_intermediaries` structure `{"description":..., "values":[...]}` - Spark literal HashMap error | Extraction `.get('values', [])` au lieu d'utilisation directe dict        | `emissions_operations.py` L151-157 | **Élevé**: 6 configs (intermediaries, guarantees, products...)   |
+| **IRD Format SAS DATETIME**       | Dates IRD en format SAS `'14MAY1991:00:00:00'` - `to_date()` Spark incompatible                         | Helper `parse_sas_datetime()` extraction `dt_part.split(':')[0]`          | `risk_enrichment.py`               | **Élevé**: Enrichissement IRD 3 tables (Q46, Q45, QAN)           |
+
+**Exemple de résolution : CDPOLE NULL**
+- **Diagnostic** : Distribution cdpole montrait 16,124 NULL au lieu de 0
+- **Analyse SAS** : `PTF_MVTS_CONSOLIDATION_MACRO.sas` L74 : `"AZEC" AS DIRCOM, "3" AS CDPOLE`  
+- **Cause** : AZEC processor créait `dircom` mais pas `cdpole`
+- **Solution** : 1 ligne ajoutée après L104 : `df = df.withColumn('cdpole', lit('3'))`
+- **Validation** : Python match 100% SAS (cdpole=1: 32,319 | cdpole=3: 54,693)
+
+*Exemples complets de code et diagnostics en Annexe 4*
+
 
 #### 4.5 Validation fonctionnelle
 
-**4.5.1 Tests unitaires**
-- Exécution sans erreur des 3 pipelines
-- Logs complets et cohérents
-- Écriture Parquet réussie pour toutes les sorties
+**4.5.1 Tests Unitaires - Vision 202512**
 
-**4.5.2 Comparaisons KPI**
-- Correspondance avec études KPI SAS
-- Cohérence des comptages (nombre de polices, primes totales)
+Résultats d'exécution pour la vision de test (Décembre 2025) :
 
-**4.5.3 Tests de parité (en cours)**
-- Méthodologie : 20 visions sur 2 périodes (N, N-1)
-- Critères de succès définis (écart < 0.1%)
+**Pipeline PTF Mouvements** :
+- **Inputs** : 70,907 lignes (AZ Agent + Courtage) + 16,124 lignes (AZEC)
+- **Output Gold** : 87,012 lignes consolidées  
+- **Fichiers générés** : `mvt_ptf_202512.parquet` (23.4 MB format Parquet optimisé)
+- **Temps d'exécution** : ~8 minutes (mesuré avec timer `main.py`)
+- **Statut** : ✅ Exécution sans erreur, logs cohérents, 14 étapes de transformation réussies
+
+**Pipeline CAPITAUX** :
+- **Inputs** : 242,927 lignes (AZ) + 9,588 lignes (AZEC)  
+- **Output Gold** : 248,438 lignes avec indexation  
+- **Champs indexés** : 14 capitaux (SMP, LCI, PE/RD, LBCA, MTCA...)
+- **Temps d'exécution** : ~5 minutes
+- **Statut** : ✅ Indexation FFB appliquée, normalisation 100% réussie
+
+**Pipeline ÉMISSIONS** :
+- **Input One BI** : 1,173,238 lignes brutes
+- **Après filtres** : 273,796 lignes (marché construction cd_marche='6')
+- **Output attendu** : Primes par police (POL) + par garantie (POL_GARP)
+- **Temps d'exécution** : ~3 minutes
+- **Statut** : ⚠️ Pipeline fonctionnel - Diagnostic révélé: fichier référence contient uniquement données 2026 (nécessite fichiers mensuels)
+
+**4.5.2 Validation Qualité Données**
+
+**Distribution CDPOLE (exemple correction critique)** :
+
+| cdpole       | **AVANT Correction** | **APRÈS Correction** | **SAS Attendu** | Match |
+| ------------ | -------------------- | -------------------- | --------------- | ----- |
+| NULL         | 16,124               | 0                    | 0               | ✅     |
+| 1 (Agent)    | 32,319               | 32,319               | 32,319          | ✅     |
+| 3 (Courtage) | 38,569               | 54,693               | 54,693          | ✅     |
+| **Total**    | **87,012**           | **87,012**           | **87,012**      | ✅     |
+
+Écart résolu : 16,124 lignes AZEC récupérées (passage de NULL → cdpole='3')
+
+**4.5.3 Comparaisons KPI avec SAS**
+
+Échantillon de validations effectuées (correspondance avec études KPI SAS) :
+
+| Indicateur               | Pipeline | Python  | SAS     | Écart | Statut |
+| ------------------------ | -------- | ------- | ------- | ----- | ------ |
+| **Nombre total polices** | PTF_MVT  | 87,012  | 87,012  | 0.00% | ✅      |
+| **Distribution Pole 1**  | PTF_MVT  | 32,319  | 32,319  | 0.00% | ✅      |
+| **Distribution Pole 3**  | PTF_MVT  | 54,693  | 54,693  | 0.00% | ✅      |
+| **Lignes CAPITAUX AZ**   | CAPITAUX | 242,927 | 242,927 | 0.00% | ✅      |
+| **Lignes CAPITAUX Gold** | CAPITAUX | 248,438 | 248,438 | 0.00% | ✅      |
+
+*Note* : Validation KPI détaillée par indicateur métier (NBPTF, NBAFN, NBRES, PRIMES_PTF, etc.) documentée dans `11_analyse_ecarts_kpi_python_vs_sas.md`
+
+**4.5.4 Tests de Parité Fonctionnelle (en cours)**
+
+**Méthodologie prévue** :
+- **Périmètre** : 20 visions sur 2 années (N-1, N) : 202501, 202412, 202411, ..., 202301
+- **Critères de succès** :
+  - Nombre de lignes : écart < 1%
+  - KPIs agrégés (sommes NBPTF, PRIMES_PTF, SMP_100...) : écart < 0.1%
+  - Polices échantillon (100 polices) : 95%+ strictement identiques champ par champ
+- **Calendrier** : Finalisation prévue Q1 2026
+
+**Résultats préliminaires** :
+- ✅ Vision 202512 : Validation structurelle réussie (comptages match 100%)
+- ⏳ Visions historiques : Tests en attente disponibilité données SAS complètes
+
 
 ---
 

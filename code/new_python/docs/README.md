@@ -34,29 +34,29 @@ Check these for understanding inputs and outputs:
 
 ## 📖 Documents Available
 
-| Document | Who Should Read | What You'll Learn |
-|----------|----------------|-------------------|
-| [**Business Calculations**](calculs_assurance_construction.md) | Everyone | Insurance formulas and business logic |
-| [PTF_MVT Workflow](workflows/PTF_MVT_Workflow.md) | Analysts, Business | Portfolio movements process |
-| [Capitaux Workflow](workflows/Capitaux_Workflow.md) | Analysts, Business | Capital extraction process |
-| [Emissions Workflow](workflows/Emissions_Workflow.md) | Analysts, Business | Premium emissions process |
-| [Data Catalog](configs/Data_Catalog.md) | Data teams | Input/output table reference |
-| [Available Data](infos/available_datas.md) | Data teams | Current datalake inventory |
+| Document                                                       | Who Should Read    | What You'll Learn                     |
+| -------------------------------------------------------------- | ------------------ | ------------------------------------- |
+| [**Business Calculations**](calculs_assurance_construction.md) | Everyone           | Insurance formulas and business logic |
+| [PTF_MVT Workflow](workflows/PTF_MVT_Workflow.md)              | Analysts, Business | Portfolio movements process           |
+| [Capitaux Workflow](workflows/Capitaux_Workflow.md)            | Analysts, Business | Capital extraction process            |
+| [Emissions Workflow](workflows/Emissions_Workflow.md)          | Analysts, Business | Premium emissions process             |
+| [Data Catalog](configs/Data_Catalog.md)                        | Data teams         | Input/output table reference          |
+| [Available Data](infos/available_datas.md)                     | Data teams         | Current datalake inventory            |
 
 ---
 
 ## 🔑 Key Insurance Concepts
 
-| Term | Meaning | Example |
-|------|---------|---------|
-| **AFN** (Affaire Nouvelle) | New policy | Customer signs a new insurance contract |
-| **RES** (Résiliation) | Termination | Customer cancels their contract |
-| **PTF** (Portefeuille) | Active Portfolio | All policies currently in force |
-| **SMP** | Maximum claim amount | Biggest claim we might have to pay |
-| **LCI** | Contract limit | Maximum amount stated in contract |
+| Term                          | Meaning               | Example                                     |
+| ----------------------------- | --------------------- | ------------------------------------------- |
+| **AFN** (Affaire Nouvelle)    | New policy            | Customer signs a new insurance contract     |
+| **RES** (Résiliation)         | Termination           | Customer cancels their contract             |
+| **PTF** (Portefeuille)        | Active Portfolio      | All policies currently in force             |
+| **SMP**                       | Maximum claim amount  | Biggest claim we might have to pay          |
+| **LCI**                       | Contract limit        | Maximum amount stated in contract           |
 | **PE** (Perte d'Exploitation) | Business interruption | Coverage for lost revenue if business stops |
-| **RD** (Risque Direct) | Direct damage | Coverage for physical damage to property |
-| **Coassurance** | Risk sharing | Multiple insurers share the same policy |
+| **RD** (Risque Direct)        | Direct damage         | Coverage for physical damage to property    |
+| **Coassurance**               | Risk sharing          | Multiple insurers share the same policy     |
 
 For complete definitions, see [Business Calculations](calculs_assurance_construction.md).
 
@@ -83,3 +83,8 @@ For complete definitions, see [Business Calculations](calculs_assurance_construc
 - All documentation is **business-focused** - no programming code
 - Formulas are explained in **plain language** with examples
 - Technical implementation details are in the code comments, not here
+
+---
+
+**Last Updated**: 2026-02-06  
+**Version**: 1.0

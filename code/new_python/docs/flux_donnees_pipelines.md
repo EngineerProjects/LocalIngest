@@ -9,12 +9,12 @@
 
 ### 1.1 Vue d'Ensemble
 
-| Attribut             | Valeur                                             |
-| -------------------- | -------------------------------------------------- |
-| **Input Bronze**     | IPF16 (Agent), IPF36 (Courtage), IPFM99, PRDPFA1/3 |
-| **Output Silver**    | `mvt_const_ptf_{vision}`                           |
-| **Volume (~202512)** | ~100k lignes                                       |
-| **Temps Exécution**  | ~2-3 min                                           |
+| Attribut            | Valeur                                             |
+| ------------------- | -------------------------------------------------- |
+| **Input Bronze**    | IPF16 (Agent), IPF36 (Courtage), IPFM99, PRDPFA1/3 |
+| **Output Silver**   | `mvt_const_ptf_{vision}`                           |
+| **Volume**          | Varie selon vision (marché Construction seulement) |
+| **Temps Exécution** | ~2-3 min                                           |
 
 ### 1.2 Diagramme de Flux
 
@@ -51,20 +51,20 @@ sequenceDiagram
     
     AZ->>AZ: Data Cleanup (NULL dates, NMCLT fallback)
     
-    AZ->>S: Write mvt_const_ptf_202512 (~100k rows)
+    AZ->>S: Write mvt_const_ptf_{vision}
 ```
 
 ### 1.3 Étapes Détaillées
 
-| Step | SAS Ligne | Python Méthode                       | Description                                     | Row Count |
-| ---- | --------- | ------------------------------------ | ----------------------------------------------- | --------- |
-| 1    | L135-150  | `read()`                             | Extract IPF16 + IPF36 avec filtres construction | ~100k     |
-| 2    | L157-188  | `_join_ipfm99()`                     | Join IPFM99 pour produit 01099 (CA spécifique)  | ~100k     |
-| 3    | L195-231  | `transform()` - capitals             | Calcul SMP/LCI/PE/RD (14 MTCAPI fields)         | ~100k     |
-| 4    | L238-292  | `transform()` - movements            | NBPTF/NBAFN/NBRES/NBRPT/NBRPC indicators        | ~100k     |
-| 5    | L298-311  | `transform()` - expo                 | EXPO_YTD, EXPO_GLI, DT_DEB_EXPO, DT_FIN_EXPO    | ~100k     |
-| 6    | L377-503  | `_enrich_segment_and_product_type()` | Segment2, type_produit_2, upper_mid             | ~100k     |
-| 7    | L362-370  | `_finalize_data_cleanup()`           | Cleanup NULL dates, NMCLT fallback              | ~100k     |
+| Step | SAS Ligne | Python Méthode                       | Description                                     |
+| ---- | --------- | ------------------------------------ | ----------------------------------------------- |
+| 1    | L135-150  | `read()`                             | Extract IPF16 + IPF36 avec filtres construction |
+| 2    | L157-188  | `_join_ipfm99()`                     | Join IPFM99 pour produit 01099 (CA spécifique)  |
+| 3    | L195-231  | `transform()` - capitals             | Calcul SMP/LCI/PE/RD (14 MTCAPI fields)         |
+| 4    | L238-292  | `transform()` - movements            | NBPTF/NBAFN/NBRES/NBRPT/NBRPC indicators        |
+| 5    | L298-311  | `transform()` - expo                 | EXPO_YTD, EXPO_GLI, DT_DEB_EXPO, DT_FIN_EXPO    |
+| 6    | L377-503  | `_enrich_segment_and_product_type()` | Segment2, type_produit_2, upper_mid             |
+| 7    | L362-370  | `_finalize_data_cleanup()`           | Cleanup NULL dates, NMCLT fallback              |
 
 ---
 
@@ -72,12 +72,12 @@ sequenceDiagram
 
 ### 2.1 Vue d'Ensemble
 
-| Attribut             | Valeur                                                 |
-| -------------------- | ------------------------------------------------------ |
-| **Input Bronze**     | POLIC_CU, CAPITXCU, INCENDCU, MPACU, RCENTCU, RISTECCU |
-| **Output Silver**    | `azec_ptf_{vision}`                                    |
-| **Volume (~202512)** | ~2M lignes                                             |
-| **Temps Exécution**  | ~5-7 min                                               |
+| Attribut            | Valeur                                                 |
+| ------------------- | ------------------------------------------------------ |
+| **Input Bronze**    | POLIC_CU, CAPITXCU, INCENDCU, MPACU, RCENTCU, RISTECCU |
+| **Output Silver**   | `azec_ptf_{vision}`                                    |
+| **Volume**          | Varie selon vision (filtre migration vision >202009)   |
+| **Temps Exécution** | ~5-7 min                                               |
 
 ### 2.2 Diagramme de Flux
 
@@ -114,20 +114,20 @@ sequenceDiagram
     AZECProc->>AZECProc: Calculate Premiums & Adjustments
     Note over AZECProc: Exclude DO0/TRC/CTR/CNR, RMPLCANT replacements
     
-    AZECProc->>S: Write azec_ptf_202512 (~2M rows)
+    AZECProc->>S: Write azec_ptf_{vision}
 ```
 
 ### 2.3 Étapes Spécifiques AZEC
 
-| Step | SAS Ligne | Python Méthode               | CRITICAL LOGIC                                      | Row Count |
-| ---- | --------- | ---------------------------- | --------------------------------------------------- | --------- |
-| 1    | L61       | `read()`                     | DTECHANN = `mdy(echeanmm, echeanjj, &annee.)`       | ~2M       |
-| 2    | L94-106   | `_handle_migration()`        | Vision >202009: LEFT JOIN ref_mig_azec_vs_ims       | ~2M       |
-| 3    | L113-137  | `_update_dates_and_states()` | 4 data quality rules (datexpir, tacit renewal >1yr) | ~2M       |
-| 4    | L144-182  | `_calculate_movements()`     | PRODUIT-dependent AFN/RES (list vs date-based)      | ~2M       |
-| 5    | L387-420  | `_join_capitals()`           | SMP/LCI agregation (PE + DD branches)               | ~2M       |
-| 6    | L272-302  | `_enrich_naf_codes()`        | **FULL JOIN 4 tables** → COALESCEC NAF priority     | ~2M       |
-| 7    | L448-466  | `_adjust_nbres()`            | Exclude DO0/TRC/CTR/CNR, replacements               | ~2M       |
+| Step | SAS Ligne | Python Méthode               | CRITICAL LOGIC                                      |
+| ---- | --------- | ---------------------------- | --------------------------------------------------- |
+| 1    | L61       | `read()`                     | DTECHANN = `mdy(echeanmm, echeanjj, &annee.)`       |
+| 2    | L94-106   | `_handle_migration()`        | Vision >202009: LEFT JOIN ref_mig_azec_vs_ims       |
+| 3    | L113-137  | `_update_dates_and_states()` | 4 data quality rules (datexpir, tacit renewal >1yr) |
+| 4    | L144-182  | `_calculate_movements()`     | PRODUIT-dependent AFN/RES (list vs date-based)      |
+| 5    | L387-420  | `_join_capitals()`           | SMP/LCI agregation (PE + DD branches)               |
+| 6    | L272-302  | `_enrich_naf_codes()`        | **FULL JOIN 4 tables** → COALESCEC NAF priority     |
+| 7    | L448-466  | `_adjust_nbres()`            | Exclude DO0/TRC/CTR/CNR, replacements               |
 
 ---
 
@@ -135,12 +135,12 @@ sequenceDiagram
 
 ### 3.1 Vue d'Ensemble
 
-| Attribut             | Valeur                              |
-| -------------------- | ----------------------------------- |
-| **Input Silver**     | mvt_const_ptf (AZ), azec_ptf (AZEC) |
-| **Output Gold**      | `CUBE.MVT_PTF_{vision}`             |
-| **Volume (~202512)** | ~2.1M lignes (AZ+AZEC)              |
-| **Temps Exécution**  | ~8-10 min                           |
+| Attribut            | Valeur                              |
+| ------------------- | ----------------------------------- |
+| **Input Silver**    | mvt_const_ptf (AZ), azec_ptf (AZEC) |
+| **Output Gold**     | `CUBE.MVT_PTF_{vision}`             |
+| **Volume**          | AZ + AZEC consolidé (varie)         |
+| **Temps Exécution** | ~8-10 min                           |
 
 ### 3.2 Diagramme de Flux
 
@@ -151,10 +151,10 @@ sequenceDiagram
     participant B as Bronze
     participant G as Gold
     
-    Cons->>S: Load mvt_const_ptf_202512 (AZ ~100k)
-    Cons->>S: Load azec_ptf_202512 (AZEC ~2M)
+    Cons->>S: Load mvt_const_ptf_{vision} (AZ)
+    Cons->>S: Load azec_ptf_{vision} (AZEC)
     
-    Note over Cons: Vision 202512 >= 201211 → AZ + AZEC
+    Note over Cons: Vision >= 201211 → AZ + AZEC
     
     Cons->>Cons: Harmonize Schemas
     Note over Cons: Rename POLICE→NOPOL, CDMOTRES mapping, etc.
@@ -162,9 +162,9 @@ sequenceDiagram
     Cons->>Cons: UNION BY NAME (allowMissingColumns=True)
     Cons->>Cons: Dedup by NOPOL (AZ priority)
     
-    Note over Cons: ~2.1M rows after union
+    Note over Cons: Consolidated dataset
     
-    Cons->>B: Load ird_risk_q46_202512
+    Cons->>B: Load ird_risk_q46_{vision}
     Cons->>Cons: LEFT JOIN by NOPOL
     Cons->>Cons: Fallback: Q46 → Q45 → QAN
     
@@ -183,17 +183,17 @@ sequenceDiagram
     
     Cons->>Cons: Apply 11 ISIC Corrections (hardcoded)
     
-    Cons->>G: Write CUBE.MVT_PTF_202512 (~2.1M rows)
+    Cons->>G: Write CUBE.MVT_PTF_{vision}
 ```
 
 ### 3.3 Vision-Dependent Logic
 
-| Vision Threshold | Logique                                     | Row Impact         |
-| ---------------- | ------------------------------------------- | ------------------ |
-| **< 201211**     | AZ only                                     | ~100k              |
-| **>= 201211**    | AZ + AZEC union                             | ~2.1M              |
-| **< 202210**     | Use RISK_REF 202210                         | N/A (ref data)     |
-| **>= 202210**    | Use current vision RISK (ird_risk_{vision}) | N/A (monthly data) |
+| Vision Threshold | Logique                                     | Note                |
+| ---------------- | ------------------------------------------- | ------------------- |
+| **< 201211**     | AZ only                                     | AZ seul             |
+| **>= 201211**    | AZ + AZEC union                             | AZ + AZEC consolidé |
+| **< 202210**     | Use RISK_REF 202210                         | Ref data fixe       |
+| **>= 202210**    | Use current vision RISK (ird_risk_{vision}) | Monthly data        |
 
 ### 3.4 Enrichissements Gold
 
@@ -221,12 +221,12 @@ graph TB
     end
     
     subgraph "Silver Layer - Processors"
-        S1[AZ Processor<br/>~100k rows]
-        S2[AZEC Processor<br/>~2M rows]
+        S1[AZ Processor]
+        S2[AZEC Processor]
     end
     
     subgraph "Gold Layer - Business Ready"
-        G1[mvt_ptf_YYYYMM<br/>~2.1M rows]
+        G1[mvt_ptf_YYYYMM]
         G2[ird_risk_q45_YYYYMM]
         G3[ird_risk_q46_YYYYMM]
     end
@@ -309,15 +309,5 @@ python main.py --vision 202512 --component ptf_mvt --processor consolidation
 
 ---
 
-## 7. Validations Row Counts
-
-| Pipeline   | Bronze Input     | Silver Output | Filtres Appliqués                    | Expected Loss % |
-| ---------- | ---------------- | ------------- | ------------------------------------ | --------------- |
-| **AZ**     | ~100k (IPF16+36) | ~100k         | Construction only (CMARCH=6, CSEG=2) | <1%             |
-| **AZEC**   | ~2.5M (POLIC_CU) | ~2M           | Migration filter (vision >202009)    | ~20%            |
-| **CONSOL** | ~2.1M (AZ+AZEC)  | ~2.1M         | Dedup by NOPOL (AZ priority)         | <1%             |
-
----
-
-**Dernière Mise à Jour**: 2026-02-04  
-**Vision Testée**: 202512 (Décembre 2025)
+**Dernière Mise à Jour**: 2026-02-06  
+**Note**: Row counts varient selon vision (filtres Construction, migration AZEC, etc.)
