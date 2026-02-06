@@ -7,6 +7,7 @@ Coordinates execution of all pipeline components based on configuration.
 import sys
 import os
 import argparse
+import time
 from pathlib import Path
 
 # Add project root to path
@@ -232,6 +233,12 @@ Examples:
             logger.info(f"Custom Spark config: {len(spark_config)} settings applied")
 
         # =====================================================================
+        # Performance Tracking - Start Timer
+        # =====================================================================
+        pipeline_start_time = time.time()
+        logger.info(f"Pipeline execution started at: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(pipeline_start_time))}")
+
+        # =====================================================================
         # Run Component Pipelines (Loop through all enabled components)
         # =====================================================================
         component_results = {}
@@ -271,11 +278,28 @@ Examples:
 
             logger.info("─" * 80)  # Separator between components
 
+        # =====================================================================
+        # Performance Tracking - End Timer
+        # =====================================================================
+        pipeline_end_time = time.time()
+        total_duration = pipeline_end_time - pipeline_start_time
+        
+        # Format duration as HH:MM:SS
+        hours, remainder = divmod(int(total_duration), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        duration_formatted = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        
+        logger.info(f"Pipeline execution ended at: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(pipeline_end_time))}")
+        logger.info(f"Total pipeline execution time: {duration_formatted} ({total_duration:.2f} seconds)")
+
         # Log summary of all components
         logger.section("Component Execution Summary")
         for comp, result in component_results.items():
             status = "✓ SUCCESS" if result else "✗ FAILED"
             logger.info(f"{comp}: {status}")
+        
+        logger.info("")
+        logger.info(f"⏱️  TOTAL EXECUTION TIME: {duration_formatted}")
 
         success = overall_success
 
@@ -322,14 +346,24 @@ Examples:
     # =========================================================================
     # Exit with appropriate code
     # =========================================================================
+    # Calculate final times for console display
+    try:
+        hours, remainder = divmod(int(total_duration), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        duration_display = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    except:
+        duration_display = "N/A"
+    
     if success:
         print("\n" + "=" * 80)
         print("✓ Pipeline completed successfully!")
+        print(f"⏱️  Total execution time: {duration_display}")
         print("=" * 80)
         sys.exit(0)
     else:
         print("\n" + "=" * 80)
         print("✗ Pipeline failed!")
+        print(f"⏱️  Total execution time: {duration_display}")
         print("=" * 80)
         sys.exit(1)
 

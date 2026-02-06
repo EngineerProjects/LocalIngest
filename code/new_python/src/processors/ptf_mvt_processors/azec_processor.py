@@ -100,8 +100,9 @@ class AZECProcessor(BaseProcessor):
         column_config = azec_config['column_selection']
         df = apply_column_config(df, column_config, vision, year_int, month_int)
 
-        # Constante DIRCOM
+        # Add DIRCOM and CDPOLE constants (SAS CONSOLIDATION L74: "AZEC" AS DIRCOM, "3" AS CDPOLE)
         df = df.withColumn('dircom', lit(DIRCOM.AZEC))
+        df = df.withColumn('cdpole', lit('3'))  # AZEC is always Courtage (pole 3)
 
         # ============================================================
         # STEP 1.1 — Initialize columns (safe defaults like AZ)

@@ -40,7 +40,7 @@ output:
 # Component toggles
 components:
   ptf_mvt:
-    enabled: true
+    enabled: false
     description: "Portfolio Movements (AZ + AZEC)"
 
   capitaux:
@@ -48,7 +48,7 @@ components:
     description: "Capitaux domain (SMP/LCI extraction)"
 
   emissions:
-    enabled: false
+    enabled: true
     description: "Emissions domain (future)"
 
 # Spark configuration
