@@ -38,8 +38,7 @@ from utils.transformations.operations.business_logic import (
 from utils.processor_helpers import (
     safe_reference_join,
     safe_multi_reference_join,
-    add_null_columns,
-    get_bronze_reader
+    add_null_columns
 )
 
 class AZProcessor(BaseProcessor):
@@ -64,7 +63,8 @@ class AZProcessor(BaseProcessor):
         Returns:
             Combined DataFrame (PTF16 + PTF36) with lowercase columns and filters applied
         """
-        reader = get_bronze_reader(self)
+        from src.reader import BronzeReader
+        reader = BronzeReader(self.spark, self.config)
         
         # Load business filters (SAS: &filtres_ptf in WHERE clause)
         loader = get_default_loader()
@@ -74,7 +74,18 @@ class AZProcessor(BaseProcessor):
         # Convert business_rules filter format to reader's custom_filter format
         # business_rules uses: {type: "equals", column: "cmarch", value: "6"}
         # reader expects: {operator: "==", column: "cmarch", value: "6"}
-        custom_filters = self._convert_filters_to_reader_format(az_filters)
+        operator_map = {
+            'equals': '==', 'not_equals': '!=', 'in': 'in', 'not_in': 'not_in',
+            'greater_than': '>', 'less_than': '<', 'greater_equal': '>=', 'less_equal': '<='
+        }
+        custom_filters = [
+            {
+                'operator': operator_map.get(f.get('type'), f.get('type')),
+                'column': f.get('column'),
+                'value': f.get('value') if 'value' in f else f.get('values')
+            }
+            for f in az_filters
+        ]
         
         self.logger.info(f"Reading ipf_az files (PTF16 + PTF36) with {len(custom_filters)} filters applied BEFORE union")
         return reader.read_file_group('ipf_az', vision, custom_filters=custom_filters)
@@ -107,7 +118,6 @@ class AZProcessor(BaseProcessor):
 
         # ============================================================
         # STEP 1 — Initialize indicator columns (SAS L106–115)
-        #   ⚠️ Ne PAS écraser les colonnes si elles existent déjà !
         # ============================================================
         self.logger.step(1, "Initializing indicator columns")
         init_columns = {
@@ -161,14 +171,15 @@ class AZProcessor(BaseProcessor):
         # STEP 3 — Apply renames from JSON (SAS SELECT renames)
         # ============================================================
         self.logger.step(3, "Applying renames")
-        df = self._apply_renames(df, az_config)
-
-        # Dates are already cast by BronzeReader._safe_cast() using dateFormat from reading_config.json
-        # No need to re-cast here
+        rename_map = az_config.get("column_selection", {}).get("rename", {})
+        self.logger.info(f"Rename map loaded: {rename_map}")
+        for old, new in rename_map.items():
+            if old in df.columns:
+                df = df.withColumnRenamed(old, new)
 
         # ============================================================
         # STEP 4a — COASS + PARTCIE (comme dans le SELECT SAS)
-        #   ✅ Standardiser sur cdcoass (double "s")
+        #   Standardiser sur cdcoass (double "s")
         #   (si la colonne s'appelle cdcoas, on la renomme à la volée)
         # ============================================================
         if 'cdcoass' not in df.columns and 'cdcoas' in df.columns:
@@ -218,7 +229,7 @@ class AZProcessor(BaseProcessor):
         # ============================================================
         self.logger.step(6, "Extracting capital fields")
         capital_cfg = az_config['capital_extraction']
-        # CRITICAL: Dictionary order = execution order ("last write wins")
+        # Dictionary order = execution order ("last write wins")
         # Must match SAS UPDATE sequence exactly: LCI → SMP → RISQUE_DIRECT → PERTE_EXP
         df = extract_capitals(df, {
             'lci_100': capital_cfg['lci_100'],              # 1st - SAS L199-204
@@ -311,10 +322,31 @@ class AZProcessor(BaseProcessor):
         )
 
         # ============================================================
-        # STEP 13 — Final cleanup (expo dates, nmclt)
+        # STEP 13 — Final cleanup (expo dates, nmclt) - SAS L362-370
         # ============================================================
         self.logger.step(13, "Final data cleanup")
-        df = self._finalize_data_cleanup(df)
+        
+        # Cleanup EXPO dates if exposure is zero
+        if 'expo_ytd' in df.columns and 'dt_deb_expo' in df.columns and 'dt_fin_expo' in df.columns:
+            df = df.withColumn(
+                'dt_deb_expo',
+                when(col('expo_ytd') == 0, lit(None)).otherwise(col('dt_deb_expo'))
+            ).withColumn(
+                'dt_fin_expo',
+                when(col('expo_ytd') == 0, lit(None)).otherwise(col('dt_fin_expo'))
+            )
+            self.logger.debug("  ✓ Cleaned DT_DEB_EXPO and DT_FIN_EXPO when EXPO_YTD = 0")
+        
+        # Replace empty NMCLT with NMACTA
+        if 'nmclt' in df.columns and 'nmacta' in df.columns:
+            df = df.withColumn(
+                'nmclt',
+                when(
+                    (col('nmclt').isNull()) | (col('nmclt') == '') | (col('nmclt') == ' '),
+                    col('nmacta')
+                ).otherwise(col('nmclt'))
+            )
+            self.logger.debug("  ✓ Replaced empty NMCLT with NMACTA")
 
         # ============================================================
         # STEP 14 — Segmentation & PT_GEST enrichment
@@ -351,14 +383,7 @@ class AZProcessor(BaseProcessor):
             optimize=True,
         )
 
-    def _apply_renames(self, df, az_config):
-        column_selection = az_config.get("column_selection", {})
-        rename_map = column_selection.get("rename", {})
-        self.logger.info(f"Rename map loaded: {rename_map}")
-        for old, new in rename_map.items():
-            if old in df.columns:
-                df = df.withColumnRenamed(old, new)
-        return df
+
 
     def _apply_computed_generic(self, df: DataFrame, computed_config: dict) -> DataFrame:
         """
@@ -472,7 +497,8 @@ class AZProcessor(BaseProcessor):
         Returns:
             DataFrame with IPFM99 joined (lowercase columns)
         """
-        reader = get_bronze_reader(self)
+        from src.reader import BronzeReader
+        reader = BronzeReader(self.spark, self.config)
         
         # IPFM99 is optional (SAS L157-187)
         # SAS joins on (CDPOLE, CDPROD, NOPOL, NOINT) - 4 keys
@@ -512,7 +538,7 @@ class AZProcessor(BaseProcessor):
         2. Add reseau column ('1' or '3')
         3. Union them into Segment table
         4. Join with CPRODUIT for Type_Produit_2
-        5. Join with main DF on cdprod AND cdpole=reseau (CRITICAL!)
+        5. Join with main DF on cdprod AND cdpole=reseau
         
         This ensures Agent products don't get Courtage segmentation and vice-versa.
         
@@ -527,13 +553,14 @@ class AZProcessor(BaseProcessor):
             RuntimeError: If required reference data is unavailable
         """
         self.logger.info("Enriching segment and product type (using PRDPFA1/PRDPFA3)...")
-        reader = get_bronze_reader(self)
+        from src.reader import BronzeReader
+        reader = BronzeReader(self.spark, self.config)
         
         # STEP 1: Read PRDPFA1 (Agent segmentation) - SAS L377-392
         try:
             df_prdpfa1 = reader.read_file_group('segmprdt_prdpfa1', 'ref')
         except FileNotFoundError as e:
-            self.logger.error("CRITICAL: PRDPFA1 reference table is REQUIRED for AZ processing")
+            self.logger.error("PRDPFA1 reference table is required for AZ processing")
             raise RuntimeError("Missing required reference data: PRDPFA1. Cannot process AZ without product segmentation.") from e
         
         # Filter construction market and add reseau='1' (Agent)
@@ -557,7 +584,7 @@ class AZProcessor(BaseProcessor):
         try:
             df_prdpfa3 = reader.read_file_group('segmprdt_prdpfa3', 'ref')
         except FileNotFoundError as e:
-            self.logger.error("CRITICAL: PRDPFA3 reference table is REQUIRED for AZ processing")
+            self.logger.error("PRDPFA3 reference table is required for AZ processing")
             raise RuntimeError("Missing required reference data: PRDPFA3. Cannot process AZ without product segmentation.") from e
         
         # Filter construction market and add reseau='3' (Courtage)
@@ -634,12 +661,12 @@ class AZProcessor(BaseProcessor):
         df = df.withColumn('cdpole', trim(col('cdpole'))) \
                .withColumn('cdprod', trim(col('cdprod')))
         
-        # STEP 7: Join with main DataFrame - CRITICAL FIX! (SAS L500)
+        # Join with main DataFrame (SAS L500)
         # SAS: left join segment b on a.cdprod = b.cprod and a.CDPOLE = b.reseau
         df = df.join(
             broadcast(df_segment.select(
                 col('cprod').alias('cdprod'),
-                col('reseau').alias('cdpole'),  # CRITICAL: Must match cdpole!
+                col('reseau').alias('cdpole'),  # Must match cdpole
                 col('segment_from_cproduit').alias('segment2') if 'segment_from_cproduit' in df_segment.columns else lit(None).alias('segment2'),
                 col('type_produit_2') if 'type_produit_2' in df_segment.columns else lit(None).alias('type_produit_2')
             )),
@@ -687,87 +714,5 @@ class AZProcessor(BaseProcessor):
         
         return df
     
-    def _finalize_data_cleanup(self, df: DataFrame) -> DataFrame:
-        """
-        Final data cleanup step matching SAS L362-370.
-        
-        Cleanup rules:
-        1. If EXPO_YTD = 0, reset DT_DEB_EXPO and DT_FIN_EXPO to NULL
-        2. If NMCLT is empty/null, replace with NMACTA
-        
-        Args:
-            df: Input DataFrame after all transformations
-        
-        Returns:
-            DataFrame with cleaned data
-        """
-        self.logger.info("Applying final data cleanup (SAS L362-370)...")
-        
-        # Cleanup EXPO dates if exposure is zero
-        if 'expo_ytd' in df.columns and 'dt_deb_expo' in df.columns and 'dt_fin_expo' in df.columns:
-            df = df.withColumn(
-                'dt_deb_expo',
-                when(col('expo_ytd') == 0, lit(None)).otherwise(col('dt_deb_expo'))
-            ).withColumn(
-                'dt_fin_expo',
-                when(col('expo_ytd') == 0, lit(None)).otherwise(col('dt_fin_expo'))
-            )
-            self.logger.debug("  ✓ Cleaned DT_DEB_EXPO and DT_FIN_EXPO when EXPO_YTD = 0")
-        
-        # Replace empty NMCLT with NMACTA
-        if 'nmclt' in df.columns and 'nmacta' in df.columns:
-            df = df.withColumn(
-                'nmclt',
-                when(
-                    (col('nmclt').isNull()) | (col('nmclt') == '') | (col('nmclt') == ' '),
-                    col('nmacta')
-                ).otherwise(col('nmclt'))
-            )
-            self.logger.debug("  ✓ Replaced empty NMCLT with NMACTA")
-        
-        return df
-    
-    def _convert_filters_to_reader_format(self, business_filters: list) -> list:
-        """
-        Convert business_rules filter format to reader's custom_filter format.
-        
-        Business rules format:
-            {"type": "equals", "column": "cmarch", "value": "6"}
-            {"type": "not_in", "column": "noint", "value": ["H90061", ...]}
-        
-        Reader format:
-            {"operator": "==", "column": "cmarch", "value": "6"}
-            {"operator": "not_in", "column": "noint", "value": ["H90061", ...]}
-        
-        Args:
-            business_filters: List of filter dicts in business_rules format
-        
-        Returns:
-            List of filter dicts in reader format
-        """
-        reader_filters = []
-        
-        for f in business_filters:
-            filter_type = f.get('type')
-            
-            # Map business_rules type to reader operator
-            operator_map = {
-                'equals': '==',
-                'not_equals': '!=',
-                'in': 'in',
-                'not_in': 'not_in',
-                'greater_than': '>',
-                'less_than': '<',
-                'greater_equal': '>=',
-                'less_equal': '<='
-            }
-            
-            operator = operator_map.get(filter_type, filter_type)
-            
-            reader_filters.append({
-                'operator': operator,
-                'column': f.get('column'),
-                'value': f.get('value') if 'value' in f else f.get('values')  # Handle both 'value' and 'values'
-            })
-        
-        return reader_filters
+
+

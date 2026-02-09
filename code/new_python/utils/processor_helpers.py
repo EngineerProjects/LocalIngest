@@ -91,7 +91,7 @@ def safe_reference_join(
         
         if df_ref is None:
             if required:
-                error_msg = f"CRITICAL: Required reference data '{file_group}' is unavailable (returned None)"
+                error_msg = f"Required reference data '{file_group}' is unavailable (returned None)"
                 if logger:
                     logger.error(error_msg)
                 raise RuntimeError(error_msg)
@@ -126,7 +126,7 @@ def safe_reference_join(
         
     except FileNotFoundError as e:
         if required:
-            error_msg = f"CRITICAL: Required reference file '{file_group}' not found"
+            error_msg = f"Required reference file '{file_group}' not found"
             if logger:
                 logger.error(f"{error_msg}: {e}")
             raise RuntimeError(error_msg) from e

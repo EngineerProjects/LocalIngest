@@ -1,9 +1,5 @@
-
 # -*- coding: utf-8 -*-
 """
-Column transformation configurations for Construction Data Pipeline.
-
-IMPORTANT:
 - Most configurations have been migrated to JSON files in config/transformations/.
 - This module now ONLY exposes constants for backward compatibility, loaded safely.
 - Missing OPTIONAL keys DO NOT cascade; only the missing key is defaulted.

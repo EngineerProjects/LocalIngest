@@ -448,7 +448,7 @@ class BronzeReader:
         """
         Apply filters AFTER union and AFTER cleaning/casting.
         
-        CRITICAL: Uses SAS NULL semantics (not PySpark defaults):
+        Uses SAS NULL semantics (not PySpark defaults):
         - equals (==):     col == value           → NULL excluded (same as PySpark)
         - not_equals (!=): col IS NULL OR col != value  → NULL INCLUDED (SAS behavior!)
         - in:              col IS NOT NULL AND col IN (...)  → NULL excluded

@@ -4,10 +4,10 @@ Explicit PySpark schemas for all bronze layer file groups.
 Defines strict schemas to ensure correct type inference and prevent runtime errors.
 All schemas use nullable=True to handle missing values gracefully.
 
-IMPORTANT: Column names are CASE-SENSITIVE and must match EXACTLY as they appear 
+Column names are CASE-SENSITIVE and must match EXACTLY as they appear 
 in the actual CSV files. These are validated against actual data discovery.
 
-NOTE: Schemas are OPTIONAL during the column discovery phase. When schema_name is None 
+NOTE: Schemas are optional during the column discovery phase. When schema_name is None 
 in reading_config.json, data will be read with automatic type inference, allowing you 
 to discover all available columns.
 

@@ -25,7 +25,7 @@ from utils.helpers import build_layer_path, extract_year_month_int, compute_date
 from utils.transformations import (
     apply_column_config,
 )
-from utils.processor_helpers import get_bronze_reader
+from src.reader import BronzeReader
 
 
 class AZECProcessor(BaseProcessor):
@@ -46,7 +46,7 @@ class AZECProcessor(BaseProcessor):
         Returns:
             POLIC_CU DataFrame with DTECHANM calculated (lowercase columns)
         """
-        reader = get_bronze_reader(self)
+        reader = BronzeReader(self.spark, self.config)
 
         self.logger.info("Reading POLIC_CU file")
         df = reader.read_file_group('polic_cu_azec', vision)
@@ -199,7 +199,7 @@ class AZECProcessor(BaseProcessor):
         self.logger.step(8, "Enriching LOB segmentation (AZEC)")
         
         # Read pre-built segmentation reference (like SAS REF.TABLE_SEGMENTATION_AZEC_MML)
-        reader = get_bronze_reader(self)
+        reader = BronzeReader(self.spark, self.config)
         df_seg = reader.read_file_group('table_segmentation_azec_mml', 'ref')
         
         if df_seg is None or df_seg.count() == 0:
@@ -241,11 +241,8 @@ class AZECProcessor(BaseProcessor):
         self.logger.step(9, "Calculating premiums and flags")
         df = self._calculate_premiums(df)
 
-        # ============================================================
-        # NOTE: ISIC codification is NOT part of AZEC SAS baseline
-        # (only used in AZ/CONSOLIDATION pipelines)
+        # ISIC codification not used in AZEC baseline (only in AZ/CONSOLIDATION)
         # Previously caused data explosion with 6 superfluous LEFT JOINs
-        # ============================================================
 
         # ============================================================
         # STEP 10: NAF Codes (SAS L272–302)
@@ -347,18 +344,18 @@ class AZECProcessor(BaseProcessor):
         
         migration_config = azec_config['migration_handling']
         if int(vision) > migration_config['vision_threshold']:
-            reader = get_bronze_reader(self)
+            reader = BronzeReader(self.spark, self.config)
             
             try:
                 df_mig = reader.read_file_group('ref_mig_azec_vs_ims', vision='ref')
             except FileNotFoundError as e:
-                self.logger.error(f"CRITICAL: ref_mig_azec_vs_ims is REQUIRED for vision > {migration_config['vision_threshold']}")
+                self.logger.error(f"ref_mig_azec_vs_ims is required for vision > {migration_config['vision_threshold']}")
                 self.logger.error(f"Cannot find migration table: {e}")
                 self.logger.error("This matches SAS behavior which would fail with 'File does not exist'")
                 raise RuntimeError(f"Missing required reference data: ref_mig_azec_vs_ims for vision {vision}") from e
             
             if df_mig is None:
-                self.logger.error("CRITICAL: ref_mig_azec_vs_ims returned None")
+                self.logger.error("ref_mig_azec_vs_ims returned None")
                 raise RuntimeError("ref_mig_azec_vs_ims reference data is unavailable")
             
             # Join with migration table
@@ -509,7 +506,7 @@ class AZECProcessor(BaseProcessor):
             RuntimeError: If required CAPITXCU table is unavailable
         """
         from pyspark.sql.functions import col, lit, coalesce, sum as spark_sum, when
-        reader = get_bronze_reader(self)
+        reader = BronzeReader(self.spark, self.config)
 
         # 0) Fail-fast mapping vide
         if not AZEC_CAPITAL_MAPPING:
@@ -522,7 +519,7 @@ class AZECProcessor(BaseProcessor):
         try:
             df_cap = reader.read_file_group('capitxcu_azec', vision)
         except FileNotFoundError as e:
-            self.logger.error("CRITICAL: CAPITXCU is REQUIRED for AZEC processing")
+            self.logger.error("CAPITXCU is required for AZEC processing")
             raise RuntimeError("Missing required capital data: CAPITXCU") from e
 
         if df_cap is None or not df_cap.columns:
@@ -677,7 +674,7 @@ class AZECProcessor(BaseProcessor):
         Returns:
             DataFrame enriched with region and p_num columns
         """
-        reader = get_bronze_reader(self)
+        reader = BronzeReader(self.spark, self.config)
         
         try:
             df_ptgst = reader.read_file_group('ptgst_static', vision='ref')
@@ -724,9 +721,9 @@ class AZECProcessor(BaseProcessor):
         """
         Enrich AZEC data with NAF codes using FULL OUTER JOIN strategy.
         
-        CRITICAL: Reproduces SAS L272-302 EXACTLY.
+        Reproduces SAS L272-302 exactly.
         SAS uses FULL JOIN of 4 tables (INCENDCU, MPACU, RCENTCU, RISTECCU)
-        to ensure ALL policies from ALL tables are captured.
+        to ensure all policies from all tables are captured.
         
         Args:
             df: AZEC DataFrame
@@ -735,7 +732,7 @@ class AZECProcessor(BaseProcessor):
         Returns:
             DataFrame enriched with NAF codes (cdnaf, cdtre)
         """
-        reader = get_bronze_reader(self)
+        reader = BronzeReader(self.spark, self.config)
         
         # ================================================================
         # STEP 1: FULL OUTER JOIN of 4 tables for NAF codes (SAS L272-279)
@@ -863,7 +860,7 @@ class AZECProcessor(BaseProcessor):
         """
         Calculate premiums and related fields AFTER segmentation (SAS L217-248).
         
-        CRITICAL: Must be called AFTER _enrich_segmentation() to have CSSSEG available.
+        This method must be called after _enrich_segmentation() to ensure CSSSEG is available.
         
         Args:
             df: AZEC DataFrame with segmentation (CSSSEG column)
@@ -956,7 +953,7 @@ class AZECProcessor(BaseProcessor):
         Returns:
             DataFrame enriched with formulas (formule, formule2, formule3, formule4)
         """
-        reader = get_bronze_reader(self)
+        reader = BronzeReader(self.spark, self.config)
         
         # Initialize formula columns if not present
         from utils.processor_helpers import add_null_columns
@@ -1029,7 +1026,7 @@ class AZECProcessor(BaseProcessor):
         Returns:
             DataFrame enriched with MTCA (turnover)
         """
-        reader = get_bronze_reader(self)
+        reader = BronzeReader(self.spark, self.config)
 
         try:
             df_mulprocu = reader.read_file_group('mulprocu_azec', vision)
@@ -1095,7 +1092,7 @@ class AZECProcessor(BaseProcessor):
         Returns:
             DataFrame enriched with PERTE_EXP, RISQUE_DIRECT, VALUE_INSURED
         """
-        reader = get_bronze_reader(self)
+        reader = BronzeReader(self.spark, self.config)
 
         try:
             df_incendcu = reader.read_file_group('incendcu_azec', vision)
@@ -1151,15 +1148,10 @@ class AZECProcessor(BaseProcessor):
         Returns:
             DataFrame with segment2, type_produit_2, site data, and upper_mid
         """
-        from utils.processor_helpers import get_bronze_reader
-        from types import SimpleNamespace
         from pyspark.sql.functions import col
+        from src.reader import BronzeReader
         
-        reader = get_bronze_reader(SimpleNamespace(
-            spark=self.spark,
-            config=self.config,
-            logger=self.logger
-        ))
+        reader = BronzeReader(self.spark, self.config)
         
         # ============================================================
         # 1. CONSTRCU_AZEC join (segment2/type_produit_2)

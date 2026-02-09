@@ -41,7 +41,7 @@ class POLE:
 # MARKET & SEGMENT CODES
 # =========================================================================
 # 
-# IMPORTANT: File naming convention vs Data filtering
+# File naming convention vs Data filtering
 # -----------------------------------------------------
 # 
 # FILE NAMING (Bronze layer):

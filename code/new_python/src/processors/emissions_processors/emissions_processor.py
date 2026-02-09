@@ -198,7 +198,7 @@ class EmissionsProcessor(BaseProcessor):
         reader = BronzeReader(self.spark, self.config, reading_config_path)
         
         # Use enrich_segmentation helper to replace 21 lines of duplicate code
-        # CRITICAL: Emissions requires join on BOTH cdprod AND cdpole (SAS L264-265)
+        # Emissions requires join on both cdprod AND cdpole (SAS L264-265)
         df = enrich_segmentation(df, reader, vision, include_cdpole=True, logger=self.logger)
         
         # Filter for construction market

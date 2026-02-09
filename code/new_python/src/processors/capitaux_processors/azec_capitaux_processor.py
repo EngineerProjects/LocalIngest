@@ -138,7 +138,7 @@ class AZECCapitauxProcessor(BaseProcessor):
         self.logger.step(4, "Enriching with segmentation")
         
         # Use enrich_segmentation helper to replace 21 lines of duplicate code
-        # IMPORTANT: AZEC joins segmentation on CPROD ONLY (SAS L130)
+        # AZEC joins segmentation on CPROD ONLY (SAS L130)
         # Different from AZ which joins on BOTH CPROD + CDPOLE
         # AZEC gets cdpole='3' later in consolidation
         df = enrich_segmentation(df, reader, vision, logger=self.logger)

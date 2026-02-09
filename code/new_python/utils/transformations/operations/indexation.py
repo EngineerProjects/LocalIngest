@@ -6,7 +6,7 @@ Indexes capital amounts based on construction cost indices.
 
 Based on: indexation_v2.sas (109 lines)
 
-IMPORTANT: SAS has TWO distinct indexation modes:
+SAS has TWO distinct indexation modes:
   - CASE 1 (DATE = .): Use existing PRPRVC coefficients (1st year indices)
   - CASE 2 (DATE specified): Lookup indices from INDICES table via $INDICE format
 """
@@ -207,7 +207,7 @@ def index_capitals(
             # SAS L75: VAL1 = &NOMNAT&IND. !! PUT(DTEFSITT, Z5.)
             # SAS L76: IF SUBSTR(VAL1,1,1)='0' THEN INDXORIG = PUT(VAL1,$INDICE.)
             # 
-            # WARNING: Format currently incorrect - see plan_correction_indexation.md
+            # Format currently incorrect - see plan_correction_indexation.md
             # TODO: Correct date format after INDICES structure is clarified
             
             # Build lookup key for origin index: nature_code + DTEFSITT

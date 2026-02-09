@@ -19,7 +19,7 @@ from src.reader import SilverReader, BronzeReader
 from utils.loaders import get_default_loader
 from config.constants import DIRCOM
 from utils.helpers import build_layer_path, extract_year_month_int
-from utils.processor_helpers import safe_reference_join, get_bronze_reader
+from utils.processor_helpers import safe_reference_join
 
 
 class ConsolidationProcessor(BaseProcessor):
@@ -315,7 +315,7 @@ class ConsolidationProcessor(BaseProcessor):
             old_l = old_name.lower()
             new_l = new_name.lower()
 
-            # CRITICAL: Skip identity renames (cdprod → cdprod)
+            # Skip identity renames (cdprod → cdprod)
             # SAS doesn't do identity renames - columns keep their names
             if old_l == new_l:
                 continue  # Skip - no rename needed
@@ -536,7 +536,7 @@ class ConsolidationProcessor(BaseProcessor):
         """
         from utils.transformations.enrichment.risk_enrichment import enrich_with_risk_data
         
-        reader = get_bronze_reader(self)
+        reader = BronzeReader(self.spark, self.config)
         
         # Use refactored module (eliminates ~100 lines of duplicate code)
         df = enrich_with_risk_data(
@@ -637,7 +637,7 @@ class ConsolidationProcessor(BaseProcessor):
 
         from utils.helpers import compute_date_ranges
         
-        reader = get_bronze_reader(self)
+        reader = BronzeReader(self.spark, self.config)
         dates = compute_date_ranges(vision)
         
         try:
@@ -696,7 +696,7 @@ class ConsolidationProcessor(BaseProcessor):
         Returns:
             DataFrame with ACTPRIN (enrichi), CDNAF (enrichi), CDACTCONST2, TypeAct
         """
-        reader = get_bronze_reader(self)
+        reader = BronzeReader(self.spark, self.config)
 
         try:
             df_tabspec = None
@@ -923,7 +923,7 @@ class ConsolidationProcessor(BaseProcessor):
             DataFrame with CDNAF08_W6 and CDNAF03_CLI columns added
             (NULL if data unavailable)
         """
-        reader = get_bronze_reader(self)
+        reader = BronzeReader(self.spark, self.config)
         
         # Step 1: W6 NAF enrichment
         try:
@@ -1034,7 +1034,7 @@ class ConsolidationProcessor(BaseProcessor):
             DataFrame with isic_code_gbl column added
         """
         try:
-            reader = get_bronze_reader(self)
+            reader = BronzeReader(self.spark, self.config)
             df_isic_lg = reader.read_file_group('isic_lg', 'ref')
             
             if df_isic_lg is not None:  # OPTIMIZED: Removed count() check
@@ -1091,7 +1091,7 @@ class ConsolidationProcessor(BaseProcessor):
         from pyspark.sql.types import DateType, StringType
 
         try:
-            reader = get_bronze_reader(self)
+            reader = BronzeReader(self.spark, self.config)
             # Use DO_DEST (do_dest.csv = latest version, replaces historical DO_DEST202110 from SAS)
             # This is a REFERENCE table, not vision-dependent
             do_dest_df = reader.read_file_group("do_dest", "ref")

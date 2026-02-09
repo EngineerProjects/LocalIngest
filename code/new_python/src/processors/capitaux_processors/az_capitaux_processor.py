@@ -238,7 +238,7 @@ class AZCapitauxProcessor(BaseProcessor):
                 df = df.drop(col)
         
         # Use enrich_segmentation helper to replace 14 lines of duplicate code
-        # CRITICAL: AZ requires join on BOTH cdprod AND cdpole (SAS L308-309)
+        # AZ requires join on both cdprod AND cdpole (SAS L308-309)
         df = enrich_segmentation(df, reader, vision, include_cdpole=True, logger=self.logger)
         
         self.logger.success("AZ capital transformations completed")

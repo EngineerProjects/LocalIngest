@@ -80,7 +80,7 @@ def load_constrcu_reference(
     # SAS defines: CDPROD, CPROD, cmarch, lmarch, lmarch2, cseg, lseg, lseg2, 
     #              cssseg, lssseg, lssseg2, lprod, segment
     
-    # CRITICAL FIX: LOB MUST have exactly 1 row per produit to avoid cartesian explosion
+    # LOB must have exactly 1 row per produit to avoid cartesian explosion
     # First, select columns and validate for duplicates
     lob_pre_dedup = lob_ref.select(
         "produit", "cdprod", "cprod", "cmarch", "lmarch", 
@@ -98,7 +98,7 @@ def load_constrcu_reference(
             logger.error("[SEG] Top duplicates:")
             dup_check.filter(col("dup_count") > 1).orderBy("dup_count", ascending=False).show(20, False)
         
-        # CRITICAL: Fail-fast if duplicates detected
+        # Fail-fast if duplicates detected
         # raise RuntimeError(
         #     f"LOB reference contains {dup_count_total} duplicate produit values. "
         # "This would cause cartesian explosion in CONSTRCU join (observed: 1.7M rows instead of 13-14k). "

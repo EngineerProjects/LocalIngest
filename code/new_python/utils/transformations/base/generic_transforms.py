@@ -184,7 +184,7 @@ def _build_expression_from_string(
         pattern = rf'\b{re.escape(c)}\b'
         expr_work = re.sub(pattern, f'col("{c}")', expr_work)
 
-    # CRITICAL: Replace null checks BEFORE logical operators
+    # Replace null checks BEFORE logical operators
     # Otherwise 'is not null' becomes 'is ~ null' due to ' not ' → ' ~ ' replacement
     expr_work = re.sub(r'(col\(["\'][^"\']+["\']\))\s+is\s+not\s+null', r'\1.isNotNull()', expr_work, flags=re.IGNORECASE)
     expr_work = re.sub(r'(col\(["\'][^"\']+["\']\))\s+is\s+null', r'\1.isNull()', expr_work, flags=re.IGNORECASE)

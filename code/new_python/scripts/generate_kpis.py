@@ -93,7 +93,7 @@ def generate_kpis_with_sas_precision(spark, vision: str, config: ConfigLoader):
         coalesce(spark_sum("nbafn"), lit(0)).cast("int").alias("sum_of_nbafn"),
         coalesce(spark_sum("nbres"), lit(0)).cast("int").alias("sum_of_nbres"),
         
-        # PRIMES - PRECISION FIX 2: Round to 2 decimals (CRITICAL for match)
+        # PRIMES - PRECISION FIX 2: Round to 2 decimals for exact match
         # SAS stores with higher precision but displays rounded
         spark_round(coalesce(spark_sum("primes_afn"), lit(0.0)), 2).alias("sum_of_primes_afn"),
         spark_round(coalesce(spark_sum("primes_res"), lit(0.0)), 2).alias("sum_of_primes_res"),

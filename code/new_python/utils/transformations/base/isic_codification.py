@@ -668,7 +668,7 @@ def finalize_isic_codes(df: DataFrame) -> DataFrame:
         if c not in cur.columns:
             cur = cur.withColumn(c, lit(None).cast("string"))
     
-    # CRITICAL FIX: Initialize _temp columns from existing columns (SAS modifies in-place, we use temp versions)
+    # Initialize _temp columns from existing columns (SAS modifies in-place, we use temp versions)
     # SAS directly modifies CDNAF, CDTRE, CDNAF2008, etc. We create _temp versions first
     if "cdnaf" in cur.columns:
         cur = cur.withColumn("cdnaf_temp", col("cdnaf"))
