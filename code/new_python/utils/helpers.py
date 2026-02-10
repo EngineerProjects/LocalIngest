@@ -1,6 +1,6 @@
 """
-Helper utilities for Construction Data Pipeline.
-Vision parsing, path building, date range computations.
+Utilitaires pour le Pipeline de Données Construction.
+Validation de visions, construction de chemins, calcul de plages de dates.
 """
 
 from datetime import datetime, timedelta
@@ -13,21 +13,22 @@ from urllib.parse import urlparse
 
 def validate_vision(vision: str) -> bool:
     """
-    Validate vision format (YYYYMM).
+    Valide le format de la vision (YYYYMM).
 
-    Args:
-        vision: Vision string to validate
+    PARAMÈTRES :
+    -----------
+    vision : str
+        Vision à valider
 
-    Returns:
-        True if valid, False otherwise
+    RETOUR :
+    -------
+    bool
+        True si valide, False sinon
 
-    Example:
-        >>> validate_vision("202509")
-        True
-        >>> validate_vision("20251")
-        False
-        >>> validate_vision("202513")
-        False
+    EXEMPLE :
+    --------
+    >>> validate_vision("202509")
+    True
     """
     if not isinstance(vision, str) or len(vision) != 6:
         return False
@@ -36,7 +37,7 @@ def validate_vision(vision: str) -> bool:
         year = int(vision[:4])
         month = int(vision[4:6])
 
-        # Basic validation
+        # Validation basique
         if year < 2000 or year > 2100:
             return False
         if month < 1 or month > 12:
@@ -49,25 +50,27 @@ def validate_vision(vision: str) -> bool:
 
 def extract_year_month(vision: str) -> Tuple[str, str]:
     """
-    Extract year and month from vision.
+    Extrait l'année et le mois d'une vision.
 
-    Args:
-        vision: Vision in YYYYMM format
+    PARAMÈTRES :
+    -----------
+    vision : str
+        Vision au format YYYYMM
 
-    Returns:
-        Tuple of (year, month) as strings ('YYYY', 'MM')
+    RETOUR :
+    -------
+    Tuple[str, str]
+        (Année, Mois) sous forme de chaînes de caractères
 
-    Raises:
-        ValueError: If vision format is invalid
-
-    Example:
-        >>> year, month = extract_year_month("202509")
-        >>> print(year, month)
-        '2025' '09'
+    EXEMPLE :
+    --------
+    >>> year, month = extract_year_month("202509")
+    >>> print(year, month)
+    '2025' '09'
     """
     if not validate_vision(vision):
         raise ValueError(
-            f"Invalid vision format: {vision}. Expected YYYYMM (e.g., 202509)"
+            f"Format de vision invalide : {vision}. Attendu : YYYYMM (ex: 202509)"
         )
 
     year = vision[:4]
@@ -78,21 +81,17 @@ def extract_year_month(vision: str) -> Tuple[str, str]:
 
 def extract_year_month_int(vision: str) -> Tuple[int, int]:
     """
-    Extract year and month from vision as integers.
+    Extrait l'année et le mois d'une vision sous forme d'entiers.
 
-    Args:
-        vision: Vision in YYYYMM format
+    PARAMÈTRES :
+    -----------
+    vision : str
+        Vision au format YYYYMM
 
-    Returns:
-        Tuple of (year, month) as integers
-
-    Raises:
-        ValueError: If vision format is invalid
-
-    Example:
-        >>> year, month = extract_year_month_int("202509")
-        >>> print(year, month)
-        2025 9
+    RETOUR :
+    -------
+    Tuple[int, int]
+        (Année, Mois) sous forme d'entiers
     """
     year_str, month_str = extract_year_month(vision)
     return int(year_str), int(month_str)
@@ -105,25 +104,23 @@ def build_layer_path(
     path_template: str = None
 ) -> str:
     """
-    Build path for a specific layer following datalake structure.
+    Construit le chemin d'accès pour une couche donnée du Data Lake.
 
-    Args:
-        base_path: Base datalake path
-        layer: Layer name (bronze, silver, gold)
-        vision: Vision in YYYYMM format
-        path_template: Optional custom template (default: "{base_path}/{layer}/{year}/{month}")
+    PARAMÈTRES :
+    -----------
+    base_path : str
+        Chemin racine du Data Lake
+    layer : str
+        Nom de la couche (bronze, silver, gold)
+    vision : str
+        Vision au format YYYYMM
+    path_template : str, optionnel
+        Modèle de chemin (par défaut: "{base_path}/{layer}/{year}/{month}")
 
-    Returns:
-        Full path to the layer
-
-    Example:
-        >>> path = build_layer_path(
-        ...     "abfss://container@account.dfs.core.windows.net/construction",
-        ...     "bronze",
-        ...     "202509"
-        ... )
-        >>> print(path)
-        'abfss://container@account.dfs.core.windows.net/construction/bronze/2025/09'
+    RETOUR :
+    -------
+    str
+        Chemin complet vers la couche
     """
     year, month = extract_year_month(vision)
 
@@ -142,69 +139,69 @@ def build_layer_path(
 
 def build_log_filename(vision: str) -> str:
     """
-    Build log file name for a vision.
+    Construit le nom du fichier de log pour une vision donnée.
 
-    Args:
-        vision: Vision in YYYYMM format
+    PARAMÈTRES :
+    -----------
+    vision : str
+        Vision au format YYYYMM
 
-    Returns:
-        Log filename (e.g., 'pipeline_202509.log')
-
-    Example:
-        >>> filename = build_log_filename("202509")
-        >>> print(filename)
-        'pipeline_202509.log'
+    RETOUR :
+    -------
+    str
+        Nom du fichier de log (ex: 'pipeline_202509.log')
     """
     if not validate_vision(vision):
-        raise ValueError(f"Invalid vision format: {vision}. Expected YYYYMM.")
+        raise ValueError(f"Format de vision invalide : {vision}. Attendu : YYYYMM.")
 
     return f"pipeline_{vision}.log"
 
+
 def compute_date_ranges(vision: str) -> Dict[str, str]:
     """
-    Compute all date ranges required for PTF_MVT processing.
-    
-    Generates dates used in movement calculations, exposures, etc.
+    Calcule toutes les plages de dates requises pour le traitement PTF_MVT.
+    Génère les dates utilisées pour les calculs de mouvements, d'expositions, etc.
 
-    Args:
-        vision: Vision in YYYYMM format
+    PARAMÈTRES :
+    -----------
+    vision : str
+        Vision au format YYYYMM
 
-    Returns:
-        Dictionary with computed dates:
-        - 'DTFIN': Last day of vision month (YYYY-MM-DD)
-        - 'DTDEB_AN': First day of vision year (YYYY-01-01)
-        - 'dtfinmm': Last day of vision month (same as DTFIN)
-        - 'dtfinmm1': Last day of previous month
-        - 'dtdebn': First day of vision month
-        - 'dtfinmn': Last day of vision month
-        - 'finmois': Last day of vision month
-
-    Raises:
-        ValueError: If vision format is invalid
+    RETOUR :
+    -------
+    Dict[str, str]
+        Dictionnaire contenant les dates clés :
+        - 'dtfin' : Dernier jour du mois de vision (YYYY-MM-DD)
+        - 'dtdeb_an' : Premier jour de l'année de vision (YYYY-01-01)
+        - 'dtfinmm' : Dernier jour du mois de vision (Identique dtfin)
+        - 'dtfinmm1' : Dernier jour du mois précédent
+        - 'dtdebn' : Premier jour du mois de vision
+        - 'dtfinmn' : Dernier jour du mois de vision
+        - 'finmois' : Dernier jour du mois de vision
     """
     if not validate_vision(vision):
-        raise ValueError(f"Invalid vision format: {vision}")
+        raise ValueError(f"Format de vision invalide : {vision}")
 
     year, month = extract_year_month_int(vision)
 
-    # Last day of vision month
+    # Dernier jour du mois de vision
     if month == 12:
         last_day_of_month = datetime(year, month, 31)
     else:
         next_month = datetime(year, month + 1, 1) if month < 12 else datetime(year + 1, 1, 1)
         last_day_of_month = next_month - timedelta(days=1)
 
-    # First day of vision year
+    # Premier jour de l'année
     first_day_of_year = datetime(year, 1, 1)
 
-    # First day of vision month
+    # Premier jour du mois
     first_day_of_month = datetime(year, month, 1)
 
-    # Last day of previous month
+    # Dernier jour du mois précédent
     first_day_this_month = datetime(year, month, 1)
     last_day_prev_month = first_day_this_month - timedelta(days=1)
 
-    # Format all dates as strings (YYYY-MM-DD) — LOWERCASE KEYS ONLY
+    # Formatage de toutes les dates en chaînes (YYYY-MM-DD) - Clés en minuscules uniquement
     dates = {
         'dtfin':     last_day_of_month.strftime('%Y-%m-%d'),
         'dtdeb_an':  first_day_of_year.strftime('%Y-%m-%d'),
@@ -217,47 +214,37 @@ def compute_date_ranges(vision: str) -> Dict[str, str]:
 
     return dates
 
+
 def azure_delete_path(spark: SparkSession, path: str, logger=None) -> bool:
     """
-    Delete a path on ABFS/ADLS (abfss://...), recursively.
-    
-    Uses urlparse to correctly handle Azure ABFS URIs and avoid fragile string splits.
-    Properly constructs FileSystem with full URI including scheme and netloc.
+    Supprime un chemin sur ABFS/ADLS (abfss://...) de manière récursive.
+    Utilise 'urlparse' pour gérer correctement les URI Azure.
 
-    Args:
-        spark: SparkSession
-        path: Full path (e.g., abfss://container@account.dfs.core.windows.net/construction/gold/file.parquet)
-        logger: Optional logger instance
+    PARAMÈTRES :
+    -----------
+    spark : SparkSession
+        Session Spark active
+    path : str
+        Chemin complet (ex: abfss://container@account.../gold/file.parquet)
+    logger : optionnel
+        Instance de logger pour tracer l'opération
 
-    Returns:
-        True  -> deletion happened
-        False -> path didn't exist
-        
-    Raises:
-        Exception on failure
-        
-    Example:
-        >>> azure_delete_path(
-        ...     spark,
-        ...     "abfss://shared@azfrdatalab.dfs.core.windows.net/ABR/P4D/gold/ptf_mvt_202512",
-        ...     logger
-        ... )
+    RETOUR :
+    -------
+    bool
+        True si suppression effectuée, False si chemin inexistant
     """
     try:
         hadoop_conf = spark._jsc.hadoopConfiguration()
 
-        # Parse with urlparse to avoid fragile string splits
+        # Analyse de l'URI pour éviter les erreurs de parsing manuel
         u = urlparse(path)
 
-        # ABFSS example:
-        #   scheme=abfss
-        #   netloc=shared@azfrdatalab.dfs.core.windows.net
-        #   path=/ABR/P4D/...
+        # Gestion spécifique ABFSS/ABFS
         if u.scheme in ("abfss", "abfs"):
             if not u.netloc:
-                raise ValueError(f"Invalid ABFS URI (missing netloc): {path}")
+                raise ValueError(f"URI ABFS invalide (netloc manquant) : {path}")
 
-            # Ensure we keep original URI, but also normalize "no-path" case
             norm_path = u.path if u.path else "/"
             full_uri = f"{u.scheme}://{u.netloc}{norm_path}"
 
@@ -269,18 +256,18 @@ def azure_delete_path(spark: SparkSession, path: str, logger=None) -> bool:
 
             if not fs.exists(target):
                 if logger:
-                    logger.info(f"Path does not exist: {full_uri}")
+                    logger.info(f"Chemin inexistant : {full_uri}")
                 return False
 
-            deleted = fs.delete(target, True)  # recursive
+            deleted = fs.delete(target, True)  # Récursif
             if logger:
                 if deleted:
-                    logger.info(f"🗑️  Deleted {full_uri}")
+                    logger.info(f"🗑️  Supprimé : {full_uri}")
                 else:
-                    logger.warning(f"Delete returned False for {full_uri} (may be in use/permission issue)")
+                    logger.warning(f"Suppression retournée False pour {full_uri} (peut-être utilisé ?)")
             return bool(deleted)
 
-        # Non-ABFS fallback (hdfs://, file://, etc.)
+        # Fallback pour autres systèmes de fichiers (local, hdfs...)
         fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(
             spark._jvm.java.net.URI(path),
             hadoop_conf
@@ -289,20 +276,20 @@ def azure_delete_path(spark: SparkSession, path: str, logger=None) -> bool:
 
         if not fs.exists(target):
             if logger:
-                logger.info(f"Path does not exist: {path}")
+                logger.info(f"Chemin inexistant : {path}")
             return False
 
         deleted = fs.delete(target, True)
         if logger:
             if deleted:
-                logger.info(f"🗑️  Deleted {path}")
+                logger.info(f"🗑️  Supprimé : {path}")
             else:
-                logger.warning(f"Delete returned False for {path}")
+                logger.warning(f"Suppression retournée False pour {path}")
         return bool(deleted)
 
     except Exception as e:
         if logger:
-            logger.error(f"Delete failed for {path}: {e}")
+            logger.error(f"Échec suppression pour {path} : {e}")
         raise
 
 
@@ -317,37 +304,47 @@ def write_to_layer(
     zorder_cols: Optional[List[str]] = None
 ) -> None:
     """
-    Generic datalake writer for silver/gold layers.
-    Supports Delta, Parquet, CSV.
+    Écrivain générique pour les couches Silver/Gold du Data Lake.
+    Supporte Delta, Parquet, CSV.
 
-    Features:
-    - Dynamic overwrite/append mode from config.yml
-    - Delta-safe overwrite (no duplicate partitions)
-    - Optional OPTIMIZE + ZORDER per-table (not global)
-    - Optional VACUUM cleanup
-    - Coalesce gold files
-    
-    Args:
-        df: DataFrame to write
-        config: ConfigLoader instance
-        layer: 'silver' or 'gold'
-        filename: Output filename (without extension for parquet/csv)
-        vision: YYYYMM format
-        logger: Optional logger
-        optimize: If True, run OPTIMIZE + ZORDER after Delta write
-        zorder_cols: Columns to ZORDER by (only if optimize=True)
+    FONCTIONNALITÉS :
+    ----------------
+    - Mode écriture dynamique (overwrite/append) depuis config.yml
+    - Overwrite "safe" pour Delta (évite la duplication de partitions)
+    - OPTIMIZE + ZORDER optionnels (par table)
+    - Nettoyage VACUUM optionnel
+    - Coalesce automatique pour les petits fichiers Gold
+
+    PARAMÈTRES :
+    -----------
+    df : DataFrame
+        Données à écrire
+    config : ConfigLoader
+        Configuration chargée
+    layer : str
+        'silver' ou 'gold'
+    filename : str
+        Nom du fichier de sortie (sans extension)
+    vision : str
+        Vision au format YYYYMM
+    logger : optionnel
+        Logger pour le suivi
+    optimize : bool
+        Si True, exécute OPTIMIZE sur la table Delta
+    zorder_cols : List[str], optionnel
+        Colonnes pour le Z-Ordering (si optimize=True)
     """
 
-    # Resolve config
+    # Résolution configuration
     base_path = config.get("datalake.base_path")
     path_template = config.get("datalake.path_template")
     output_format = config.get("output.format", "delta").lower()
     compression = config.get("output.compression", "snappy")
     mode = config.get("output.mode", "overwrite").lower()
     vacuum_hours = config.get("output.vacuum_hours", 168)
-    clean = config.get("output.clean", False)  # NEW: Delete before write
+    clean = config.get("output.clean", False)  # Suppression avant écriture
 
-    # Build path
+    # Construction du chemin
     year, month = extract_year_month_int(vision)
     layer_path = path_template.format(
         base_path=base_path,
@@ -356,28 +353,27 @@ def write_to_layer(
         month=f"{month:02d}"
     )
 
-    # Delta = directory, others = file with extension
+    # Delta = dossier, autres = fichier avec extension
     if output_format == "delta":
         output_path = f"{layer_path}/{filename}"
     else:
         output_path = f"{layer_path}/{filename}.{output_format}"
 
     if logger:
-        logger.info(f"Writing to {output_path}")
+        logger.info(f"Écriture vers {output_path}")
         logger.info(f"Format={output_format}, Mode={mode}, Layer={layer}, Clean={clean}")
 
 
     # ================================================================
-    # CLEAN: DELETE EXISTING FILES/DIRECTORY BEFORE WRITE (Azure-safe)
+    # NETTOYAGE : Suppression préalable si demandée (Azure-safe)
     # ================================================================
     if clean:
-        # Récupère la SparkSession depuis le DataFrame si tu n'as pas spark en paramètre
         spark = df.sparkSession
         azure_delete_path(spark, output_path, logger)
 
 
         # ================================================================
-        # COALESCE OPTIMIZATION FOR GOLD LAYER
+        # OPTIMISATION COALESCE POUR COUCHE GOLD
         # ================================================================
         if layer == "gold":
             try:
@@ -385,17 +381,17 @@ def write_to_layer(
                 if row_count < 1_000_000:
                     df = df.coalesce(1)
                     if logger:
-                        logger.debug(f"Coalesced to 1 partition ({row_count:,} rows)")
+                        logger.debug(f"Coalesce à 1 partition ({row_count:,} lignes)")
                 elif row_count < 10_000_000:
                     df = df.coalesce(4)
                     if logger:
-                        logger.debug(f"Coalesced to 4 partitions ({row_count:,} rows)")
+                        logger.debug(f"Coalesce à 4 partitions ({row_count:,} lignes)")
             except Exception as e:
                 if logger:
-                    logger.warning(f"Coalesce skipped: {e}")
+                    logger.warning(f"Coalesce ignoré : {e}")
 
     # ================================================================
-    # WRITE LOGIC BY FORMAT
+    # LOGIQUE D'ÉCRITURE PAR FORMAT
     # ================================================================
     writer = df.write.mode(mode)
 
@@ -403,67 +399,63 @@ def write_to_layer(
     if output_format == "parquet":
         writer.option("compression", compression).parquet(output_path)
         if logger:
-            logger.success(f"Parquet write complete: {output_path}")
+            logger.success(f"Écriture Parquet terminée : {output_path}")
 
     # CSV
     elif output_format == "csv":
         writer.option("header", True).option("delimiter", ";").csv(output_path)
         if logger:
-            logger.success(f"CSV write complete: {output_path}")
+            logger.success(f"Écriture CSV terminée : {output_path}")
 
     # DELTA LAKE
     elif output_format == "delta":
         
-        # ✅ FIX: Local config only (not global session config)
         writer = writer.format("delta")
         
-        # Overwrite schema only in overwrite mode
+        # Overwrite schema seulement en mode overwrite
         if mode == "overwrite":
             writer = writer.option("overwriteSchema", "true")
-            # Static overwrite mode (replaces entire table, not individual partitions)
+            # Mode "static" pour remplacer toute la table (pas juste une partition)
             writer = writer.option("partitionOverwriteMode", "static")
         
-        # Execute write
         writer.save(output_path)
 
         if logger:
-            logger.info("Delta write complete")
+            logger.info("Écriture Delta terminée")
 
         # ================================================================
-        # DELTA POST-WRITE OPTIMIZATIONS
+        # OPTIMISATIONS POST-ÉCRITURE (DELTA)
         # ================================================================
         
-        # Import Delta only when needed
         try:
             from delta.tables import DeltaTable
         except ImportError:
             if logger:
-                logger.warning("Delta Lake not available - skipping optimizations")
+                logger.warning("Delta Lake non disponible - optimisations ignorées")
             return
         
-        # VACUUM cleanup (remove old file versions)
+        # VACUUM (Nettoyage des anciennes versions)
         try:
             delta_tbl = DeltaTable.forPath(df.sparkSession, output_path)
             delta_tbl.vacuum(vacuum_hours)
             if logger:
-                logger.info(f"VACUUM completed (retention={vacuum_hours}h)")
+                logger.info(f"VACUUM terminé (rétention={vacuum_hours}h)")
         except Exception as e:
             if logger:
-                logger.warning(f"VACUUM skipped: {e}")
+                logger.warning(f"VACUUM ignoré : {e}")
 
-        # OPTIMIZE + ZORDER (optional, per-table)
+        # OPTIMIZE + ZORDER
         if optimize:
             try:
                 spark = df.sparkSession
                 optimize_sql = f"OPTIMIZE delta.`{output_path}`"
 
                 if zorder_cols:
-                    # Validate columns exist
                     invalid_cols = [c for c in zorder_cols if c not in df.columns]
                     if invalid_cols:
                         if logger:
-                            logger.warning(f"ZORDER cols not found: {invalid_cols}")
-                        # Only use valid columns
+                            logger.warning(f"Colonnes ZORDER introuvables : {invalid_cols}")
+                        # Utiliser uniquement les colonnes valides
                         valid_zorder = [c for c in zorder_cols if c in df.columns]
                         if valid_zorder:
                             optimize_sql += " ZORDER BY (" + ", ".join(valid_zorder) + ")"
@@ -473,17 +465,18 @@ def write_to_layer(
                 spark.sql(optimize_sql)
 
                 if logger:
-                    logger.success(f"OPTIMIZE completed: {output_path}")
+                    logger.success(f"OPTIMIZE terminé : {output_path}")
 
             except Exception as e:
                 if logger:
-                    logger.warning(f"OPTIMIZE failed: {e}")
+                    logger.warning(f"OPTIMIZE échoué : {e}")
 
     else:
-        raise ValueError(f"Unsupported output format: {output_format}")
+        raise ValueError(f"Format de sortie non supporté : {output_format}")
 
     if logger:
-        logger.success(f"{layer.capitalize()} data written successfully")
+        logger.success(f"Données {layer.capitalize()} écrites avec succès")
+
 
 def upload_log_to_datalake(
     spark,
@@ -491,25 +484,22 @@ def upload_log_to_datalake(
     datalake_base_path: str
 ) -> bool:
     """
-    Upload local log file to Azure Data Lake bronze/logs container.
-    
-    Uses Spark to upload to datalake and deletes local file on success.
-    
-    Args:
-        spark: SparkSession instance
-        local_log_path: Path to local log file (e.g., "logs/pipeline_202509.log")
-        datalake_base_path: Base datalake path
-    
-    Returns:
-        True if successful, False otherwise
-    
-    Example:
-        >>> success = upload_log_to_datalake(
-        ...     spark,
-        ...     "logs/pipeline_202509.log",
-        ...     "abfss://container@account.dfs.core.windows.net/construction"
-        ... )
-        >>> # Uploads to: {base_path}/bronze/logs/pipeline_202509.log
+    Téléverse un fichier de log local vers le conteneur 'bronze/logs' du Data Lake.
+    Supprime le fichier local après succès.
+
+    PARAMÈTRES :
+    -----------
+    spark : SparkSession
+        Session Spark active
+    local_log_path : str
+        Chemin local du fichier de log
+    datalake_base_path : str
+        Chemin racine du Data Lake
+
+    RETOUR :
+    -------
+    bool
+        True si succès, False sinon
     """
     try:
         local_path = Path(local_log_path)
@@ -517,29 +507,25 @@ def upload_log_to_datalake(
         if not local_path.exists():
             return False
         
-        print(f"Local path to log file : {local_path}")
+        print(f"Chemin local du fichier log : {local_path}")
         datalake_log_path = f"{datalake_base_path}/bronze/logs/{local_path.name}"
-        print(f"Path to log file on the datalake : {datalake_log_path}")
+        print(f"Chemin cible sur le Data Lake : {datalake_log_path}")
         
-        # Read the local file
+        # Lecture du fichier local
         with open(local_path, 'r', encoding="utf-8") as f:
             file_content = f.read()
         
-        # Get the FileSystem for ADLS
+        # Récupération du FileSystem
         hadoop_conf = spark._jsc.hadoopConfiguration()
-        
-        # Create destination path
         dest_path = spark._jvm.org.apache.hadoop.fs.Path(datalake_log_path)
-        
-        # Get FileSystem from the path itself
         fs = dest_path.getFileSystem(hadoop_conf)
         
-        # Open a writing stream
+        # Création du flux d'écriture
         fs_output_stream = fs.create(dest_path, True)  # True = Overwrite
         output_stream_writer = spark._jvm.java.io.OutputStreamWriter(fs_output_stream, "UTF-8")
         buffered_writer = spark._jvm.java.io.BufferedWriter(output_stream_writer)
         
-        # Write the content
+        # Écriture du contenu
         buffered_writer.write(file_content)
         
         buffered_writer.flush()
@@ -547,15 +533,15 @@ def upload_log_to_datalake(
         output_stream_writer.close()
         fs_output_stream.close()
         
-        print("√ File uploaded successfully")
+        print("√ Fichier téléversé avec succès")
         
-        # Delete local file after successful upload
+        # Suppression locale
         local_path.unlink()
         
         return True
         
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Erreur : {e}")
         import traceback
         traceback.print_exc()
         return False

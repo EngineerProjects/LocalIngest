@@ -1,12 +1,29 @@
+# -*- coding: utf-8 -*-
 """
-AZEC Capitaux Processor.
+===============================================================================
+PROCESSEUR CAPITAUX AZEC (Canal Construction)
+===============================================================================
 
-Processes AZEC channel capital data:
-- Processes CAPITXCU (SMP/LCI by branch)
-- Aggregates INCENDCU (PE/RD)
-- Enriches with segmentation
+Ce processeur traite les données de capitaux pour le périmètre "AZEC" (Construction).
 
-Based on: CAPITAUX_AZEC_MACRO.sas (149 lines)
+OBJECTIFS DU PROCESSEUR :
+------------------------
+1. Lire le fichier CAPITXCU pour obtenir les capitaux de base (SMP/LCI)
+2. Lire le fichier INCENDCU pour obtenir les Perte d'Exploitation (PE) et Risques Directs (RD)
+3. Consolider les informations de capitaux
+4. Enrichir avec la segmentation
+5. Filtrer sur le marché Construction uniquement
+
+SOURCES DE DONNÉES :
+-------------------
+- CAPITXCU : Capitaux par branche (Données principales)
+- INCENDCU : Données Incendie (Complément PE/RD)
+
+DIFFÉRENCES AVEC AZ :
+--------------------
+- AZEC génère uniquement des colonnes de capitaux INDEXÉS
+- La jointure pour la segmentation se fait seulement sur le Code Produit (CPROD)
+- Nécessite une jointure supplémentaire avec INCENDCU pour être complet
 """
 
 from pyspark.sql import DataFrame # type: ignore
@@ -20,152 +37,182 @@ from utils.processor_helpers import enrich_segmentation
 from pathlib import Path
 
 
-
 class AZECCapitauxProcessor(BaseProcessor):
     """
-    Process AZEC capital data: CAPITXCU + INCENDCU → Silver layer.
+    =======================================================================
+    PROCESSEUR CAPITAUX AZEC
+    =======================================================================
     
-    Workflow:
-    1. Read: CAPITXCU + INCENDCU files
-    2. Transform:
-       - Process CAPITXCU (SMP/LCI by branch)
-       - Aggregate INCENDCU (PE/RD)
-       - Join PE/RD data
-       - Enrich segmentation
-       - Filter construction market
-    3. Write: azec_capitaux_{vision}.parquet to silver
+    Transforme les données brutes AZEC en données Silver enrichies.
+    
+    FLUX DE TRAITEMENT (WORKFLOW) :
+    ------------------------------
+    1. READ : Lecture du fichier CAPITXCU
+    2. TRANSFORM :
+       - Extraction des SMP/LCI
+       - Lecture et agrégation de INCENDCU (PE/RD)
+       - Jointure des deux sources
+       - Enrichissement (Segmentation via CPROD)
+       - Filtrage sur le marché Construction
+    3. WRITE : Écriture du fichier Silver résultant
     """
     
     def __init__(self, spark, config: ConfigLoader, logger):
         """
-        Initialize AZEC Capitaux Processor.
+        Initialise le processeur AZEC Capitaux.
         
-        Args:
-            spark: SparkSession
-            config: ConfigLoader instance
-            logger: Logger instance
+        PARAMÈTRES :
+        -----------
+        spark : SparkSession
+            Session Spark active
+        config : ConfigLoader
+            Configuration du pipeline
+        logger : PipelineLogger
+            Système de journalisation
         """
         super().__init__(spark, config, logger)
-        self.logger.info("AZEC Capitaux Processor initialized")
+        self.logger.info("Initialisation du Processeur Capitaux AZEC")
     
     def read(self, vision: str) -> DataFrame:
         """
-        Read CAPITXCU from bronze layer.
+        Lit le fichier principal CAPITXCU depuis la couche Bronze.
         
-        Args:
-            vision: Vision in YYYYMM format
-        
-        Returns:
-            CAPITXCU DataFrame
+        PARAMÈTRES :
+        -----------
+        vision : str
+            La période à traiter (YYYYMM)
+            
+        RETOUR :
+        -------
+        DataFrame
+            Les données brutes CAPITXCU
         """
-        self.logger.info(f"Reading AZEC capital data for vision {vision}")
+        self.logger.info(f"Lecture des données capitaux AZEC pour vision {vision}")
         
         from src.reader import BronzeReader
         
         reading_config_path = self.config.get('config_files.reading_config', 'config/reading_config.json')
         
-        # Convert to absolute path if relative
         if not Path(reading_config_path).is_absolute():
             reading_config_path = str(self.get_project_root() / reading_config_path)
-        
+            
         reader = BronzeReader(self.spark, self.config, reading_config_path)
 
-        
-        # Read CAPITXCU
+        # Lire le fichier principal CAPITXCU
         df_capitxcu = reader.read_file_group('capitxcu_azec', vision)
         
-        self.logger.success(f"Read {df_capitxcu.count():,} records from CAPITXCU")
+        self.logger.success(f"Lecture terminée : {df_capitxcu.count():,} enregistrements chargés (CAPITXCU)")
         return df_capitxcu
     
     def transform(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Apply AZEC capital transformations.
+        Applique les règles de gestion pour consolider les capitaux AZEC.
         
-        Steps:
-        1. Process CAPITXCU (SMP/LCI by branch)
-        2. Aggregate INCENDCU (PE/RD)
-        3. Join PE/RD data
-        4. Enrich segmentation
-        5. Filter construction market
+        ÉTAPES DE TRANSFORMATION :
+        -------------------------
+        1. Extraction des SMP et LCI depuis CAPITXCU
+        2. Lecture et agrégation des données INCENDCU (Pour PE/RD)
+        3. Jointure entre CAPITXCU et INCENDCU
+        4. Enrichissement avec la segmentation (jointure sur CPROD uniquement)
+        5. Filtrage strict sur le marché Construction
         
-        Args:
-            df: CAPITXCU DataFrame from read()
-            vision: Vision in YYYYMM format
-        
-        Returns:
-            Transformed DataFrame ready for silver
+        PARAMÈTRES :
+        -----------
+        df : DataFrame
+            Données brutes CAPITXCU lues par read()
+        vision : str
+            Période traitée
+            
+        RETOUR :
+        -------
+        DataFrame
+            Données transformées prêtes pour la couche Silver
         """
-        self.logger.info("Starting AZEC capital transformations")
+        self.logger.info("Démarrage des transformations Capitaux AZEC")
         
         year_int, month_int = extract_year_month_int(vision)
         
-        # Step 1: Process CAPITXCU
-        self.logger.step(1, "Processing CAPITXCU (SMP/LCI by branch)")
+        # --- Étape 1 : Traitement CAPITXCU ---
+        self.logger.step(1, "Extraction SMP/LCI depuis CAPITXCU")
+        
         from utils.transformations import process_azec_capitals
+        # Applique la logique d'extraction spécifique à AZEC
         df = process_azec_capitals(df)
         
-        # Step 2: Read and aggregate INCENDCU
-        self.logger.step(2, "Reading and aggregating INCENDCU (PE/RD)")
+        # --- Étape 2 : Traitement INCENDCU ---
+        self.logger.step(2, "Lecture et agrégation INCENDCU (PE/RD)")
+        
         from src.reader import BronzeReader
         
         reading_config_path = self.config.get('config_files.reading_config', 'config/reading_config.json')
-        
-        # Convert to absolute path if relative
         if not Path(reading_config_path).is_absolute():
             reading_config_path = str(self.get_project_root() / reading_config_path)
         
         reader = BronzeReader(self.spark, self.config, reading_config_path)
 
-        
         try:
+            # Lire le fichier complémentaire INCENDCU
             df_incendcu = reader.read_file_group('incendcu_azec', vision)
             
+            # Agréger les montants PE (Perte Exploitation) et RD (Risques Directs)
             from utils.transformations import aggregate_azec_pe_rd
             df_pe_rd = aggregate_azec_pe_rd(df_incendcu)
             
-            # Step 3: Join PE/RD data
-            self.logger.step(3, "Joining PE/RD data")
+            # --- Étape 3 : Jointure ---
+            self.logger.step(3, "Jointure CAPITXCU + INCENDCU")
+            
+            # Joindre les informations complémentaires via une jointure gauche
             df = df.join(df_pe_rd, on=['nopol', 'cdprod'], how='left')
+            
         except Exception as e:
-            self.logger.warning(f"INCENDCU not available: {e}")
-            self.logger.info("Initializing PE/RD columns to 0")
+            # En cas d'absence du fichier INCENDCU (peut arriver)
+            self.logger.warning(f"INCENDCU non disponible : {e}")
+            self.logger.info("Initialisation des colonnes PE/RD à 0")
+            
+            # Initialiser les colonnes manquantes avec 0
             from pyspark.sql.functions import lit
             df = df.withColumn('perte_exp_100_ind', lit(0.0))
             df = df.withColumn('risque_direct_100_ind', lit(0.0))
             df = df.withColumn('value_insured_100_ind', lit(0.0))
         
-        # Step 4: Enrich with segmentation (using helper)
-        self.logger.step(4, "Enriching with segmentation")
+        # --- Étape 4 : Enrichissement Segmentation ---
+        self.logger.step(4, "Enrichissement avec la segmentation")
         
-        # Use enrich_segmentation helper to replace 21 lines of duplicate code
-        # AZEC joins segmentation on CPROD ONLY (SAS L130)
-        # Different from AZ which joins on BOTH CPROD + CDPOLE
-        # AZEC gets cdpole='3' later in consolidation
+        # Pour AZEC, la jointure se fait UNIQUEMENT sur CPROD (Code Produit)
+        # Contrairement à AZ qui utilise CPROD + CDPOLE
+        # Le code pôle sera fixé à '3' (Courtage) lors de la consolidation
         df = enrich_segmentation(df, reader, vision, logger=self.logger)
 
-        # Step 5: Filter construction market
-        self.logger.step(5, "Filtering construction market (CMARCH=6)")
+        # --- Étape 5 : Filtre Marché ---
+        self.logger.step(5, "Filtre Marché Construction (CMARCH=6)")
         from pyspark.sql.functions import col
 
-        # SAS L141-145: WHERE CMARCH = "6"
         if 'cmarch' in df.columns:
+            # Ne conserver que les lignes du marché Construction
             df = df.filter(col('cmarch') == MARKET_CODE.MARKET)
-            self.logger.info(f"After CMARCH=6 filter: {df.count():,} rows")
+            self.logger.info(f"Après filtre marché : {df.count():,} enregistrements")
         else:
-            self.logger.warning("CMARCH column not found - skipping construction market filter")
+            self.logger.warning("Colonne CMARCH introuvable - Filtre ignoré (Risque de données hors périmètre)")
         
-        self.logger.success("AZEC capital transformations completed")
+        self.logger.success("Transformations Capitaux AZEC terminées")
         return df
     
     def write(self, df: DataFrame, vision: str) -> None:
         """
-        Write transformed data to silver layer.
+        Écrit les résultats transformés en couche Silver.
         
-        Args:
-            df: Transformed DataFrame
-            vision: Vision in YYYYMM format
+        FICHIER PRODUIT :
+        ----------------
+        azec_capitaux_{vision}.parquet
+        
+        PARAMÈTRES :
+        -----------
+        df : DataFrame
+            Données transformées
+        vision : str
+            Période traitée
         """
-        self.logger.info(f"Writing AZEC capital data to silver for vision {vision}")
+        self.logger.info(f"Écriture des données Silver AZEC pour vision {vision}")
         
         from utils.helpers import write_to_layer
         
@@ -174,4 +221,4 @@ class AZECCapitauxProcessor(BaseProcessor):
             df, self.config, 'silver', output_name, vision, self.logger
         )
         
-        self.logger.success(f"Wrote {df.count():,} records to silver: {output_name}.parquet")
+        self.logger.success(f"Fichier écrit : {output_name}.parquet ({df.count():,} enregistrements)")

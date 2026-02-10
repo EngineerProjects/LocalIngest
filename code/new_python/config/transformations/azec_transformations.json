@@ -1,8 +1,7 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "description": "AZEC transformation configurations - aligned to SAS PTF_MVTS_AZEC_MACRO.sas. Only safe, deterministic config-driven rules live here.",
+  "description": "Règles de transformation pour les données AZEC (domaine construction)",
   "column_selection": {
-    "description": "Columns to drop",
+    "description": "Colonnes à exclure du traitement",
     "drop": [],
     "metadata": {
       "dircom": "AZEC",
@@ -11,72 +10,72 @@
     }
   },
   "migration_handling": {
-    "description": "AZEC migration handling: logic implemented in code (_handle_migration); JSON only keeps the threshold.",
+    "description": "Gestion des données migrées : seuil de vision au-delà duquel certaines règles s'appliquent",
     "vision_threshold": 202009
   },
   "capital_mapping": {
-    "description": "AZEC capital extraction from CAPITXCU - SAS L387-408",
+    "description": "Extraction et mappage des capitaux depuis les données brutes de capitaux par contrat",
     "mappings": [
       {
         "target": "lci_pe_100",
         "smp_sre": "LCI",
         "brch_rea": "IP0",
         "source": "capx_100",
-        "description": "LCI Perte Exploitation 100%"
+        "description": "Limite contractuelle d'indemnité - Perte d'exploitation 100%"
       },
       {
         "target": "lci_pe_cie",
         "smp_sre": "LCI",
         "brch_rea": "IP0",
         "source": "capx_cua",
-        "description": "LCI Perte Exploitation CIE%"
+        "description": "Limite contractuelle d'indemnité - Perte d'exploitation part compagnie"
       },
       {
         "target": "lci_dd_100",
         "smp_sre": "LCI",
         "brch_rea": "ID0",
         "source": "capx_100",
-        "description": "LCI Dommages Directs 100%"
+        "description": "Limite contractuelle d'indemnité - Dommages directs 100%"
       },
       {
         "target": "lci_dd_cie",
         "smp_sre": "LCI",
         "brch_rea": "ID0",
         "source": "capx_cua",
-        "description": "LCI Dommages Directs CIE%"
+        "description": "Limite contractuelle d'indemnité - Dommages directs part compagnie"
       },
       {
         "target": "smp_pe_100",
         "smp_sre": "SMP",
         "brch_rea": "IP0",
         "source": "capx_100",
-        "description": "SMP Perte Exploitation 100%"
+        "description": "Sinistre maximum possible - Perte d'exploitation 100%"
       },
       {
         "target": "smp_pe_cie",
         "smp_sre": "SMP",
         "brch_rea": "IP0",
         "source": "capx_cua",
-        "description": "SMP Perte Exploitation CIE%"
+        "description": "Sinistre maximum possible - Perte d'exploitation part compagnie"
       },
       {
         "target": "smp_dd_100",
         "smp_sre": "SMP",
         "brch_rea": "ID0",
         "source": "capx_100",
-        "description": "SMP Dommages Directs 100%"
+        "description": "Sinistre maximum possible - Dommages directs 100%"
       },
       {
         "target": "smp_dd_cie",
         "smp_sre": "SMP",
         "brch_rea": "ID0",
         "source": "capx_cua",
-        "description": "SMP Dommages Directs CIE%"
+        "description": "Sinistre maximum possible - Dommages directs part compagnie"
       }
     ]
   },
   "product_list": {
-    "description": "AZEC-specific product codes for movement calculations - SAS L43 (kept for code-side usage)",
+    "description": "Liste des codes produits spécifiques au domaine AZEC utilisés pour les calculs",
     "products": [
       "A00",
       "A01",

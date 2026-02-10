@@ -305,13 +305,13 @@ Avant de coder, créer deux **fichiers de référence Excel** pour :
 
 **Exemples extraits** :
 
-| ID | Pipeline | Domaine | Règle | Source SAS | Impl. Python |
-|----|----------|---------|-------|------------|--------------|
-| RG001 | PTF_MVT | Filtres | Marché construction uniquement (CMARCH=6, CSEGT=2) | PTF_MVTS_AZ_MACRO.sas L47-48 | az_config['filters'] |
-| RG012 | PTF_MVT | Mouvements | NBAFN: AFN si (DTDEB_AN ≤ dteffan ≤ DTFIN) ET (DTDEB_AN ≤ dttraan ≤ DTFIN) | PTF_MVTS_AZ_MACRO.sas L259-263 | calculate_movements() |
-| RG025 | PTF_MVT | Capitaux | LCI si lbcapi contient "LCI GLOBAL DU CONTRAT" | PTF_MVTS_AZ_MACRO.sas L198-204 | extract_capitals() |
-| RG078 | CAPITAUX | Indexation | Indexation capitaux avec indices FFB | CAPITAUX_AZ_MACRO.sas L127 | indexation_v2() |
-| RG134 | PTF_MVT | ISIC | Fallback CDNAF2008 → CDNAF2003 → ACTPRIN | CODIFICATION_ISIC L... | assign_isic_codes() |
+| ID    | Pipeline | Domaine    | Règle                                                                      | Source SAS                     | Impl. Python          |
+| ----- | -------- | ---------- | -------------------------------------------------------------------------- | ------------------------------ | --------------------- |
+| RG001 | PTF_MVT  | Filtres    | Marché construction uniquement (CMARCH=6, CSEGT=2)                         | PTF_MVTS_AZ_MACRO.sas L47-48   | az_config['filters']  |
+| RG012 | PTF_MVT  | Mouvements | NBAFN: AFN si (DTDEB_AN ≤ dteffan ≤ DTFIN) ET (DTDEB_AN ≤ dttraan ≤ DTFIN) | PTF_MVTS_AZ_MACRO.sas L259-263 | calculate_movements() |
+| RG025 | PTF_MVT  | Capitaux   | LCI si lbcapi contient "LCI GLOBAL DU CONTRAT"                             | PTF_MVTS_AZ_MACRO.sas L198-204 | extract_capitals()    |
+| RG078 | CAPITAUX | Indexation | Indexation capitaux avec indices FFB                                       | CAPITAUX_AZ_MACRO.sas L127     | indexation_v2()       |
+| RG134 | PTF_MVT  | ISIC       | Fallback CDNAF2008 → CDNAF2003 → ACTPRIN                                   | CODIFICATION_ISIC L...         | assign_isic_codes()   |
 
 **Total recensé** : **~150 règles de gestion** réparties sur les 3 pipelines
 
@@ -337,13 +337,13 @@ Avant de coder, créer deux **fichiers de référence Excel** pour :
 
 **Exemples extraits** :
 
-| Dataset | Source SAS | Fichier SAS | Type | File Group Python | Disponible |
-|---------|------------|-------------|------|-------------------|------------|
-| ipf16.csv | PTF16.IPF | PTF_MVTS_AZ_MACRO.sas L134 | Mensuel | ipf_az | OUI |
-| ipf36.csv | PTF36.IPF | PTF_MVTS_AZ_MACRO.sas L148 | Mensuel | ipf_az | OUI |
-| polic_cu.csv | POLIC_CU.POLIC_CU | PTF_MVTS_AZEC_MACRO.sas L80 | Référentiel | polic_cu_azec | OUI |
-| cproduit.csv | AACPRTF.Cproduit | PTF_MVTS_AZ_MACRO.sas L414 | Référentiel | cproduit | ⚠️ NON |
-| ird_risk_q45_*.csv | (Généré) | PTF_MVTS_CONSOLIDATION L158 | Mensuel | ird_risk_q45 | OUI |
+| Dataset            | Source SAS        | Fichier SAS                 | Type        | File Group Python | Disponible |
+| ------------------ | ----------------- | --------------------------- | ----------- | ----------------- | ---------- |
+| ipf16.csv          | PTF16.IPF         | PTF_MVTS_AZ_MACRO.sas L134  | Mensuel     | ipf               | OUI        |
+| ipf36.csv          | PTF36.IPF         | PTF_MVTS_AZ_MACRO.sas L148  | Mensuel     | ipf               | OUI        |
+| polic_cu.csv       | POLIC_CU.POLIC_CU | PTF_MVTS_AZEC_MACRO.sas L80 | Référentiel | polic_cu_azec     | OUI        |
+| cproduit.csv       | AACPRTF.Cproduit  | PTF_MVTS_AZ_MACRO.sas L414  | Référentiel | cproduit          | ⚠️ NON      |
+| ird_risk_q45_*.csv | (Généré)          | PTF_MVTS_CONSOLIDATION L158 | Mensuel     | ird_risk_q45      | OUI        |
 
 **Total recensé** : **45 file groups** (datasets ou groupes de fichiers)
 
@@ -458,7 +458,7 @@ Fichier : `src/processors/ptf_mvt_processors/az_processor.py`
 **Architecture** :
 ```python
 class AZProcessor(BaseProcessor):
-    def read(vision) → DataFrame        # Lecture ipf_az
+    def read(vision) → DataFrame        # Lecture ipf
     def transform(df, vision) → DataFrame  # 14 étapes de transformation
     def write(df, vision)                # Écriture silver
 ```
@@ -573,11 +573,11 @@ Fichier : `src/processors/ptf_mvt_processors/consolidation_processor.py`
 
 **Tests effectués** (en cours) :
 
-| Pipeline | Vision Test | Statut | Temps Exécution | Commentaires |
-|----------|-------------|--------|-----------------|--------------|
-| PTF_MVT | 202509 | ✅ OK | ~X min | Aucune erreur |
-| CAPITAUX | 202509 | ✅ OK | ~X min | Aucune erreur |
-| ÉMISSIONS | 202509 | ✅ OK | ~X min | Aucune erreur |
+| Pipeline  | Vision Test | Statut | Temps Exécution | Commentaires  |
+| --------- | ----------- | ------ | --------------- | ------------- |
+| PTF_MVT   | 202509      | ✅ OK   | ~X min          | Aucune erreur |
+| CAPITAUX  | 202509      | ✅ OK   | ~X min          | Aucune erreur |
+| ÉMISSIONS | 202509      | ✅ OK   | ~X min          | Aucune erreur |
 
 **Validations techniques** :
 - ✅ Lecture de toutes les sources Bronze
@@ -749,16 +749,16 @@ Fichier : `src/processors/ptf_mvt_processors/consolidation_processor.py`
 
 ## 📅 Timeline Récapitulative
 
-| Période | Phase | Activités Principales | Livrables |
-|---------|-------|----------------------|-----------|
-| **Semaine 1** (Nov) | **Intégration** | Rencontres équipe, formations Allianz (éthique, règles internes), familiarisation avec le datamart Construction | Accès et compréhension initiale |
-| **Semaine 2-3** (Nov) | Analyse & Documentation SAS | Lecture code SAS, schémas flux, rédaction documentation (2 versions) | `SAS_DOCUMENTATION.md` |
-| **Semaine 4** (Nov-Déc) | Conception & Recensement | Réunion architecture (validation médaillon), création fichiers Excel (règles + datasets) | Architecture validée + 2 fichiers Excel |
-| **Semaine 5** (Déc) | Setup Projet | Arborescence, readers, helpers, configuration | Fondations Python (readers, helpers, config) |
-| **Semaine 6** (Déc) | PTF Mouvements | Implémentation AZ → AZEC → Consolidation | 3 processors PTF |
-| **Semaine 7** (Déc) | Capitaux & Émissions | Implémentation Capitaux (AZ/AZEC) + Émissions | 4 processors (Capitaux + Émissions) |
-| **Semaine 8** (Déc-Jan) | Tests Unitaires | Exécution sans erreurs, validation logs | Logs de validation, pipelines fonctionnels |
-| **Semaine 9** (Jan) | **Tests Parité** | Comparaison SAS vs Python (20 visions), benchmarks performance | ⏳ **EN COURS** |
+| Période                 | Phase                       | Activités Principales                                                                                           | Livrables                                    |
+| ----------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| **Semaine 1** (Nov)     | **Intégration**             | Rencontres équipe, formations Allianz (éthique, règles internes), familiarisation avec le datamart Construction | Accès et compréhension initiale              |
+| **Semaine 2-3** (Nov)   | Analyse & Documentation SAS | Lecture code SAS, schémas flux, rédaction documentation (2 versions)                                            | `SAS_DOCUMENTATION.md`                       |
+| **Semaine 4** (Nov-Déc) | Conception & Recensement    | Réunion architecture (validation médaillon), création fichiers Excel (règles + datasets)                        | Architecture validée + 2 fichiers Excel      |
+| **Semaine 5** (Déc)     | Setup Projet                | Arborescence, readers, helpers, configuration                                                                   | Fondations Python (readers, helpers, config) |
+| **Semaine 6** (Déc)     | PTF Mouvements              | Implémentation AZ → AZEC → Consolidation                                                                        | 3 processors PTF                             |
+| **Semaine 7** (Déc)     | Capitaux & Émissions        | Implémentation Capitaux (AZ/AZEC) + Émissions                                                                   | 4 processors (Capitaux + Émissions)          |
+| **Semaine 8** (Déc-Jan) | Tests Unitaires             | Exécution sans erreurs, validation logs                                                                         | Logs de validation, pipelines fonctionnels   |
+| **Semaine 9** (Jan)     | **Tests Parité**            | Comparaison SAS vs Python (20 visions), benchmarks performance                                                  | ⏳ **EN COURS**                               |
 
 ---
 

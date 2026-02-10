@@ -1,13 +1,13 @@
 from types import SimpleNamespace
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, lit, when, coalesce, broadcast
+from pyspark.sql.functions import col, lit, when, coalesce, broadcast, first, count as spark_count
 from pyspark.sql.types import StringType
 from utils.processor_helpers import get_bronze_reader
 from config.constants import MARKET_CODE
 
 # ----------------------------------------------------------------------
-# Small helper: build a single CASE WHEN expression from (cond, value) pairs
-# Order matters (first match wins), so we fold from bottom to top.
+# Petit utilitaire : construire une expression CASE WHEN à partir de paires (cond, valeur)
+# L'ordre compte (le premier qui correspond gagne), donc on plie de bas en haut.
 # ----------------------------------------------------------------------
 def _case_when(pairs, default):
     expr = default
@@ -23,40 +23,40 @@ def load_constrcu_reference(
     lob_ref: DataFrame,
     logger=None,
     *,
-    drop_dups_by=("police", "produit")  # set to ("police",) if you want to mirror SAS NODUPKEY BY POLICE
+    drop_dups_by=("police", "produit")
 ) -> DataFrame:
     """
-    Load and prepare the SAS CONSTRCU reference block (concise & SAS-accurate).
+    Charge et prépare le bloc de référence CONSTRCU.
 
-    SAS REF_segmentation_azec.sas (core points reproduced):
-      - SET CONSTRCU + RISTECCU (select only required columns)
-      - Join LOB (cmarch='6'), HASH-like behavior (broadcast)
-      - typmarc1 fallback from ltypmar1
-      - nat_cnt relevant only for DPC
-      - ACTIVITE computed with exact SAS conditions
+    Points clés de la logique métier :
+      - SET CONSTRCU + RISTECCU (sélectionner uniquement les colonnes requises)
+      - Joindre LOB (cmarch='6'), comportement type HASH (broadcast)
+      - Repli typmarc1 depuis ltypmar1
+      - nat_cnt pertinent uniquement pour DPC
+      - ACTIVITE calculé avec conditions exactes
 
-    Returns columns:
+    Retourne les colonnes :
       police, produit, typmarc1, nat_cnt, activite, cdprod (LOB), segment (LOB), lssseg (LOB)
     """
     reader = get_bronze_reader(SimpleNamespace(spark=spark, config=config, logger=logger))
 
-    # 1) Read raw sources (lowercase ensured by BronzeReader)
+    # 1) Lire les sources brutes (minuscules assurées par BronzeReader)
     try:
         df_constrcu = reader.read_file_group("constrcu", "ref")
     except Exception as e:
-        if logger: logger.debug(f"[SEG] CONSTRCU missing: {e}")
+        if logger: logger.debug(f"[SEG] CONSTRCU manquante : {e}")
         df_constrcu = None
 
     try:
         df_risteccu = reader.read_file_group("risteccu_azec", "ref")
     except Exception as e:
-        if logger: logger.debug(f"[SEG] RISTECCU missing: {e}")
+        if logger: logger.debug(f"[SEG] RISTECCU manquante : {e}")
         df_risteccu = None
 
     if df_constrcu is None and df_risteccu is None:
-        raise RuntimeError("CONSTRCU and RISTECCU references are missing.")
+        raise RuntimeError("Les références CONSTRCU et RISTECCU sont manquantes.")
 
-    # 2) Project required columns and union like SAS SET
+    # 2) Projeter les colonnes requises et unir comme un SET
     base_cols = ["police", "produit", "typmarc1", "ltypmar1", "formule", "nat_cnt"]
 
     left = None
@@ -75,42 +75,34 @@ def load_constrcu_reference(
     else:
         merged = left if left is not None else right
 
-    # 3) Join LOB (cmarch already filtered upstream ideally; still protect)
-    #    Only pick the columns we actually need.
-    # SAS defines: CDPROD, CPROD, cmarch, lmarch, lmarch2, cseg, lseg, lseg2, 
+    # 3) Joindre LOB (cmarch déjà filtré en amont idéalement ; protéger quand même)
+    #    Ne prendre que les colonnes dont nous avons réellement besoin.
+    #    Définit : CDPROD, CPROD, cmarch, lmarch, lmarch2, cseg, lseg, lseg2,
     #              cssseg, lssseg, lssseg2, lprod, segment
     
-    # LOB must have exactly 1 row per produit to avoid cartesian explosion
-    # First, select columns and validate for duplicates
+    # LOB doit avoir exactement 1 ligne par produit pour éviter l'explosion cartésienne
+    # D'abord, sélectionner les colonnes et valider les doublons
     lob_pre_dedup = lob_ref.select(
         "produit", "cdprod", "cprod", "cmarch", "lmarch", 
         "cseg", "lseg", "cssseg", "lssseg", "lprod", "segment"
     )
     
-    # Detect duplicates BEFORE dedup to raise error if LOB is corrupted
-    from pyspark.sql.functions import count as spark_count, first
+    # Détecter les doublons AVANT de dédupliquer pour lever une erreur si LOB est corrompu
     dup_check = lob_pre_dedup.groupBy("produit").agg(spark_count("*").alias("dup_count"))
     dup_count_total = dup_check.filter(col("dup_count") > 1).count()
     
     if dup_count_total > 0:
         if logger:
-            logger.error(f"[SEG] LOB contains {dup_count_total} products with duplicates!")
-            logger.error("[SEG] Top duplicates:")
+            logger.error(f"[SEG] LOB contient {dup_count_total} produits avec doublons !")
+            logger.error("[SEG] Top doublons :")
             dup_check.filter(col("dup_count") > 1).orderBy("dup_count", ascending=False).show(20, False)
         
-        # Fail-fast if duplicates detected
-        # raise RuntimeError(
-        #     f"LOB reference contains {dup_count_total} duplicate produit values. "
-        # "This would cause cartesian explosion in CONSTRCU join (observed: 1.7M rows instead of 13-14k). "
-        #     "Fix LOB reference data or use a deterministic dedup strategy."
-        # )
-        
-        # WORKAROUND: Use groupBy + first() for deterministic dedup
+        # Contournement : Utiliser groupBy + first() pour une déduplication déterministe
         if logger:
-            logger.warning(f"[SEG] Applying deterministic dedup using first() for {dup_count_total} duplicate products")
+            logger.warning(f"[SEG] Application de la déduplication déterministe avec first() pour {dup_count_total} produits dupliqués")
     
-    # Safe dedup: use groupBy + first() instead of dropDuplicates
-    # This is deterministic and ensures exactly 1 row per produit
+    # Déduplication sûre : utiliser groupBy + first() au lieu de dropDuplicates
+    # C'est déterministe et assure exactement 1 ligne par produit
     lob_small = (
         lob_pre_dedup
         .groupBy("produit")
@@ -128,13 +120,13 @@ def load_constrcu_reference(
         )
     )
     
-    # Validation: ensure exactly 1 row per produit
+    # Validation : assurer exactement 1 ligne par produit
     final_count = lob_small.count()
     unique_produits = lob_pre_dedup.select("produit").distinct().count()
     if final_count != unique_produits:
         if logger:
-            logger.error(f"[SEG] LOB dedup failed: {final_count} rows vs {unique_produits} unique products")
-        raise RuntimeError(f"LOB dedup verification failed: {final_count} != {unique_produits}")
+            logger.error(f"[SEG] Échec de la déduplication LOB : {final_count} lignes vs {unique_produits} produits uniques")
+        raise RuntimeError(f"Échec de la vérification déduplication LOB : {final_count} != {unique_produits}")
 
     merged = (
         merged.alias("c")
@@ -144,7 +136,7 @@ def load_constrcu_reference(
             "left"
         )
         .select(
-            "c.*",  # Preserve ALL columns from CONSTRCU/RISTECCU union
+            "c.*",  # Préserver TOUTES les colonnes de l'union CONSTRCU/RISTECCU
             col("l.cdprod"),   col("l.cprod"),
             col("l.cmarch"),   col("l.lmarch"),
             col("l.cseg"),     col("l.lseg"),
@@ -153,44 +145,43 @@ def load_constrcu_reference(
         )
     )
 
-    # 4) Keep construction only
+    # 4) Garder construction uniquement
     merged = merged.filter(col("cmarch") == lit("6"))
 
-    # 5) typmarc1 fallback (ltypmar1 mirrors SAS typmarc7/typmarc fallback behavior)
+    # 5) Repli typmarc1 (ltypmar1 reflète le comportement de repli typmarc7/typmarc)
     merged = merged.withColumn("typmarc1", coalesce(col("typmarc1"), col("ltypmar1")))
 
-    # 6) nat_cnt only relevant for DPC (SAS clears it for other products)
+    # 6) nat_cnt pertinent uniquement pour DPC (la logique nettoie pour les autres produits)
     merged = merged.withColumn("nat_cnt",
         when(col("produit") == "DPC", col("nat_cnt")).otherwise(lit(""))
     )
 
-    # 7) ACTIVITE — exact SAS logic, but expressed once as a single CASE
-    merged = _compute_activite_sas(merged)
+    # 7) ACTIVITE — logique exacte, mais exprimée une fois en un seul CASE
+    merged = _compute_activite(merged)
     
-    # 8) TYPE_PRODUIT — required for CONSTRCU_AZEC (SAS L324-334, L341-344)
-    # SAS creates CONSTRCU_AZEC with TYPE_PRODUIT from Typrd_2 mapping
+    # 8) TYPE_PRODUIT — requis pour CONSTRCU_AZEC
     merged_with_lmarch2 = merged.withColumn(
         "lmarch2",
         when(col("cmarch") == "6", lit("6_CONSTRUCTION")).otherwise(lit(None))
     )
-    merged = compute_type_produit_sas(merged_with_lmarch2, spark, config, logger)
+    merged = compute_type_produit(merged_with_lmarch2, spark, config, logger)
 
-    # Final dedup (default by police+produit; set drop_dups_by=("police",) if you want strict SAS)
+    # Déduplication finale (par défaut police+produit)
     return merged.dropDuplicates(list(drop_dups_by))
 
 
-def _compute_activite_sas(df: DataFrame) -> DataFrame:
+def _compute_activite(df: DataFrame) -> DataFrame:
     """
-    Compute ACTIVITE exactly like SAS, null-safe, in a single pass.
-    Priority/order is preserved (top to bottom).
-    
-    Hypothèse: stratégie all-NULL (toutes valeurs manquantes → NULL, jamais "").
+    Calcule ACTIVITE exactement comme la logique métier, null-safe, en une seule passe.
+    La priorité/ordre est préservée (haut vers bas).
+
+    Hypothèse : stratégie all-NULL (toutes valeurs manquantes → NULL, jamais "").
     Donc, on utilise .isNull() au lieu de == "" pour détecter le 'manquant'.
     """
     is_rba_rcd = col("produit").isin("RBA", "RCD")
 
     pairs = [
-        # RBA/RCD cases
+        # Cas RBA/RCD
         (is_rba_rcd & (col("typmarc1") == "01"), "ARTISAN"),
 
         (
@@ -227,10 +218,10 @@ def _compute_activite_sas(df: DataFrame) -> DataFrame:
         ((col("produit") == "RBA") & col("typmarc1").isin("11"), "FABRICANT"),
         (is_rba_rcd & col("typmarc1").isin("12", "13"), "M. OEUVRE G.C"),
 
-        # Special RCD override
+        # Remplacement spécial RCD
         ((col("produit") == "RCD") & col("typmarc1").isin("07", "14"), "NEGOCIANT"),
 
-        # DPC product (nat_cnt mapping)
+        # Produit DPC (mappage nat_cnt)
         ((col("produit") == "DPC") & (col("nat_cnt") == "01"), "COMP. GROUPE"),
         ((col("produit") == "DPC") & (col("nat_cnt") == "02"), "PUC BATIMENT"),
         ((col("produit") == "DPC") & (col("nat_cnt") == "03"), "PUC G.C."),
@@ -243,31 +234,32 @@ def _compute_activite_sas(df: DataFrame) -> DataFrame:
     activite_expr = _case_when(pairs, default=lit(None).cast(StringType()))
     return df.withColumn("activite", activite_expr)
 
-def join_constrcu_sas(
+
+def join_constrcu(
     df: DataFrame,
     df_constrcu_ref: DataFrame,
     *,
     logger=None
 ) -> DataFrame:
     """
-    SAS-faithful join of prepared CONSTRCU reference onto the AZEC dataset.
+    Jointure fidèle de la référence CONSTRCU préparée sur le jeu de données AZEC.
 
-    Keys:
+    Clés :
       - (police, produit)
 
-    Columns brought from CONSTRCU reference:
+    Colonnes apportées de la référence CONSTRCU :
       - typmarc1, nat_cnt, activite
-      - cdprod (from LOB ref), segment (from LOB ref), lssseg (from LOB ref)
+      - cdprod (de réf LOB), segment (de réf LOB), lssseg (de réf LOB)
 
-    Overwrite policy:
-      - Do NOT overwrite existing left columns. Prefer left if present; otherwise take right.
+    Politique d'écrasement :
+      - NE PAS écraser les colonnes de gauche existantes. Préférer gauche si présent ; sinon prendre droite.
     """
     if df_constrcu_ref is None or not df_constrcu_ref.columns:
         if logger:
-            logger.warning("[SEG] CONSTRCU reference is empty or missing. Skipping join.")
+            logger.warning("[SEG] La référence CONSTRCU est vide ou manquante. Jointure ignorée.")
         return df
 
-    # Only keep required reference columns and drop dup keys
+    # Garder uniquement les colonnes de référence requises et supprimer les doublons de clés
     right_keep = [
         "police", "produit",
         "typmarc1", "nat_cnt", "activite",
@@ -276,7 +268,7 @@ def join_constrcu_sas(
     right_cols = [c for c in right_keep if c in df_constrcu_ref.columns]
     if not {"police", "produit"}.issubset(set(right_cols)):
         if logger:
-            logger.warning("[SEG] CONSTRCU reference missing join keys 'police'/'produit'. Skipping join.")
+            logger.warning("[SEG] La référence CONSTRCU manque les clés de jointure 'police'/'produit'. Jointure ignorée.")
         return df
 
     r = df_constrcu_ref.select(*right_cols).dropDuplicates(["police", "produit"]).alias("r")
@@ -288,97 +280,98 @@ def join_constrcu_sas(
         how="left"
     )
 
-    # SAS pattern: SELECT t1.*, t2.col1, t2.col2, ...
-    # We preserve ALL left columns + add specific columns from right
-    # Columns to add from reference (matching SAS)
+    # Modèle : SELECT t1.*, t2.col1, t2.col2, ...
+    # Nous préservons TOUTES les colonnes de gauche + ajoutons des colonnes spécifiques de droite
+    # Colonnes à ajouter de la référence
     ref_cols_to_add = [
-        "typmarc1", "nat_cnt", "activite",  # From CONSTRCU
-        "cdprod", "cprod", "cmarch", "lmarch", "cseg", "lseg", "cssseg", "lssseg", "lprod", "segment"  # From LOB
+        "typmarc1", "nat_cnt", "activite",  # De CONSTRCU
+        "cdprod", "cprod", "cmarch", "lmarch", "cseg", "lseg", "cssseg", "lssseg", "lprod", "segment"  # De LOB
     ]
     
-    # Build SELECT: l.* + r.specific_cols (with coalesce for conflicts)
-    select_list = ["l.*"]  # ALL left columns
+    # Construire SELECT : l.* + r.specific_cols (avec coalesce pour conflits)
+    select_list = ["l.*"]  # TOUTES colonnes gauche
     
     for col_name in ref_cols_to_add:
         r_col = f"r.{col_name}"
         l_col = f"l.{col_name}"
         
-        # If column exists in right, add it (coalesce with left if both exist)
+        # Si la colonne existe à droite, l'ajouter (coalesce avec gauche si les deux existent)
         if r_col in joined.columns:
             if l_col in joined.columns:
-                # Both exist: coalesce (prefer left)
+                # Les deux existent : coalesce (préférer gauche)
                 select_list.append(coalesce(col(l_col), col(r_col)).alias(col_name))
             else:
-                # Only right exists: take right
+                # Seulement droite existe : prendre droite
                 select_list.append(col(r_col).alias(col_name))
         elif l_col in joined.columns:
-            # Only left exists: already in l.*, skip (will be included via l.*)
+            # Seulement gauche existe : déjà dans l.*, ignorer (sera inclus via l.*)
             pass
         else:
-            # Neither exists: add NULL
+            # Aucun n'existe : ajouter NULL
             select_list.append(lit(None).cast(StringType()).alias(col_name))
     
     out = joined.select(*select_list)
 
     if logger:
-        logger.info("✓ CONSTRCU reference joined (SAS-faithful, keys=(police, produit))")
+        logger.info("✓ Référence CONSTRCU jointe (fidèle à la logique métier, clés=(police, produit))")
 
     return out
 
-def compute_type_produit_sas(
+
+def compute_type_produit(
     df: DataFrame,
     spark,
     config,
     logger=None
 ) -> DataFrame:
     """
-    Compute TYPE_PRODUIT exactly like SAS REF_segmentation_azec.sas.
+    Calcule TYPE_PRODUIT exactement comme la logique métier.
 
-    SAS logic reproduced:
-      1) Try to map TYPE_PRODUIT from Typrd_2 on ACTIVITE
-         (excluding ACTIVITE values handled by fallback).
-      2) If no mapping: fallback:
+    Logique reproduite :
+      1) Essayer de mapper TYPE_PRODUIT depuis Typrd_2 sur ACTIVITE
+         (excluant les valeurs ACTIVITE gérées par repli).
+      2) Si pas de mappage : repli via LSSSEG :
            - LSSSEG == 'TOUS RISQUES CHANTIERS' -> 'TRC'
            - LSSSEG == 'DOMMAGES OUVRAGES'      -> 'DO'
-           - else                               -> 'Autres'
-      3) Override: if PRODUIT == 'RCC' then TYPE_PRODUIT = 'Entreprises'
-      4) CSSSEG correction: if LSSSEG == 'RC DECENNALE' and TYPE_PRODUIT == 'Artisans'
-           then CSSSEG = '7'
+           - sinon                              -> 'Autres'
+      3) Remplacement : si PRODUIT == 'RCC' alors TYPE_PRODUIT = 'Entreprises'
+      4) Correction CSSSEG : si LSSSEG == 'RC DECENNALE' et TYPE_PRODUIT == 'Artisans'
+           alors CSSSEG = '7'
 
-    Notes:
-      - Does not modify any other fields.
-      - Leaves TYPE_PRODUIT as a new column (string).
-      - Creates CSSSEG if missing (string), then applies correction.
+    Notes :
+      - Ne modifie aucun autre champ.
+      - Laisse TYPE_PRODUIT comme une nouvelle colonne (string).
+      - Crée CSSSEG si manquant (string), puis applique la correction.
     """
-    # Ensure required columns exist
+    # Assurer que les colonnes requises existent
     base = df
     for c in ["activite", "lssseg", "cssseg", "produit"]:
         if c not in base.columns:
             base = base.withColumn(c, lit(None).cast(StringType()))
 
-    # Try to load Typrd_2 mapping from bronze/ref
+    # Essayer de charger le mappage Typrd_2 depuis bronze/ref
     reader = get_bronze_reader(SimpleNamespace(spark=spark, config=config, logger=logger))
     df_map = None
     try:
         df_map = reader.read_file_group("typrd_2", "ref")
     except Exception as e:
         if logger:
-            logger.debug(f"[SEG] Typrd_2 not available: {e}")
+            logger.debug(f"[SEG] Typrd_2 non disponible : {e}")
         df_map = None
 
-    # Prepare mapping if available
+    # Préparer le mappage si disponible
     mapped = base
     map_col_activite = None
     map_col_typeprod = None
 
     if df_map is not None and df_map.columns:
-        # Normalize case-insensitively (BronzeReader already lowercase, but be defensive).
+        # Normaliser insensible à la casse (BronzeReader déjà minuscule, mais être défensif).
         cols = {c.lower(): c for c in df_map.columns}
         if "activite" in cols and ("type_produit" in cols or "typeproduit" in cols):
             map_col_activite = cols["activite"]
             map_col_typeprod = cols.get("type_produit", cols.get("typeproduit"))
 
-            # Exclude ACTIVITE values handled by fallback, as SAS does
+            # Exclure les valeurs ACTIVITE gérées par repli
             exclude_acts = ["", "DOMMAGES OUVRAGES", "RC ENTREPRISES DE CONSTRUCTION",
                             "RC DECENNALE", "TOUS RISQUES CHANTIERS"]
 
@@ -392,7 +385,7 @@ def compute_type_produit_sas(
                 .dropDuplicates(["map_activite"])
             )
 
-            # LEFT JOIN on ACTIVITE
+            # LEFT JOIN sur ACTIVITE
             mapped = (
                 mapped.alias("a")
                 .join(broadcast(df_map_clean).alias("m"),
@@ -402,14 +395,14 @@ def compute_type_produit_sas(
             )
         else:
             if logger:
-                logger.debug("[SEG] Typrd_2 missing required columns (activite/type_produit). Using fallback only.")
+                logger.debug("[SEG] Typrd_2 manque colonnes requises (activite/type_produit). Utilisation repli uniquement.")
             mapped = mapped.withColumn("map_type_produit", lit(None).cast(StringType()))
     else:
         mapped = mapped.withColumn("map_type_produit", lit(None).cast(StringType()))
 
-    # Build TYPE_PRODUIT with SAS priority:
-    # 1) use mapping if present
-    # 2) fallback via LSSSEG
+    # Construire TYPE_PRODUIT avec priorité :
+    # 1) utiliser mappage si présent
+    # 2) repli via LSSSEG
     type_prod = when(col("map_type_produit").isNotNull(), col("map_type_produit")) \
         .otherwise(
             when(col("lssseg") == "TOUS RISQUES CHANTIERS", lit("TRC"))
@@ -419,14 +412,14 @@ def compute_type_produit_sas(
 
     mapped = mapped.withColumn("type_produit", type_prod)
 
-    # Override for PRODUIT == 'RCC'
+    # Remplacement pour PRODUIT == 'RCC'
     mapped = mapped.withColumn(
         "type_produit",
         when(col("produit") == "RCC", lit("Entreprises"))
         .otherwise(col("type_produit"))
     )
 
-    # CSSSEG correction for RC DECENNALE + Artisans
+    # Correction CSSSEG pour RC DECENNALE + Artisans
     if "cssseg" not in mapped.columns:
         mapped = mapped.withColumn("cssseg", lit(None).cast(StringType()))
 
@@ -436,25 +429,26 @@ def compute_type_produit_sas(
              lit("7")).otherwise(col("cssseg"))
     )
 
-    # Cleanup temp
+    # Nettoyage temp
     mapped = mapped.drop("map_type_produit")
 
     if logger:
-        logger.info("✓ TYPE_PRODUIT computed (SAS-faithful) with Typrd_2 mapping and fallbacks")
+        logger.info("✓ TYPE_PRODUIT calculé avec mappage Typrd_2 et replis")
 
     return mapped
 
-def compute_segment3_sas(df: DataFrame, logger=None) -> DataFrame:
-    """
-    Compute Segment_3 exactly as in REF_segmentation_azec.sas.
 
-    SAS logic:
-      IF lmarch2 = '6_CONSTRUCTION' THEN
-         IF Type_Produit = 'Artisans' THEN Segment_3='Artisans';
-         ELSE IF Type_Produit IN ('TRC','DO','CNR','Autres Chantiers') THEN Segment_3='Chantiers';
-         ELSE Segment_3='Renouvelables hors artisans';
+def compute_segment3(df: DataFrame, logger=None) -> DataFrame:
     """
-    # Ensure required columns exist
+    Calcule Segment_3 exactement comme dans la logique métier.
+
+    Logique :
+      SI lmarch2 = '6_CONSTRUCTION' ALORS
+         SI Type_Produit = 'Artisans' ALORS Segment_3='Artisans'
+         SINON SI Type_Produit DANS ('TRC','DO','CNR','Autres Chantiers') ALORS Segment_3='Chantiers'
+         SINON Segment_3='Renouvelables hors artisans'
+    """
+    # Assurer que les colonnes requises existent
     for c in ["lmarch", "type_produit"]:
         if c not in df.columns:
             df = df.withColumn(c, lit(None).cast(StringType()))
@@ -471,13 +465,14 @@ def compute_segment3_sas(df: DataFrame, logger=None) -> DataFrame:
     )
 
     if logger:
-        logger.info("✓ Segment_3 computed (SAS-faithful)")
+        logger.info("✓ Segment_3 calculé")
 
     return df
 
+
 def apply_cssseg_corrections(df: DataFrame, logger=None) -> DataFrame:
     """
-    Apply SAS CSSSEG correction rules from REF_segmentation_azec.sas.
+    Applique les règles de correction CSSSEG.
     """
     if "cssseg" not in df.columns:
         df = df.withColumn("cssseg", lit(None).cast(StringType()))
@@ -501,35 +496,32 @@ def apply_cssseg_corrections(df: DataFrame, logger=None) -> DataFrame:
     )
 
     if logger:
-        logger.info("✓ CSSSEG corrections applied (SAS-faithful)")
+        logger.info("✓ Corrections CSSSEG appliquées")
 
     return df
 
 
-def enrich_segmentation_sas(df, spark, config, vision, logger=None, return_reference=False):
+def enrich_segmentation(df, spark, config, vision, logger=None, return_reference=False):
     """
-    Full SAS-faithful segmentation pipeline:
-      1) LOB join
-      2) Load CONSTRCU reference
-      3) Join CONSTRCU
-      4) Compute TYPE_PRODUIT (SAS)
-      5) CSSSEG SAS corrections
-      6) Segment_3 SAS computation
+    Pipeline complet d'enrichissement de segmentation :
+      1) Jointure LOB
+      2) Chargement référence CONSTRCU
+      3) Jointure CONSTRCU
+      4) Calcul TYPE_PRODUIT
+      5) Corrections CSSSEG
+      6) Calcul Segment_3
       
     Args:
-        df: Input DataFrame
-        spark: Spark session
-        config: Configuration dict
-        vision: Vision string (YYYYMM)
-        logger: Optional logger
-        return_reference: If True, returns (df, df_constrcu_ref) tuple for caching
-        
-    Returns:
-        DataFrame or tuple(DataFrame, DataFrame) if return_reference=True
+        df: DataFrame en entrée
+        spark: Session Spark
+        config: Dictionnaire de configuration
+        vision: Chaîne vision (YYYYMM)
+        logger: Logger optionnel
+        return_reference: Si True, retourne le tuple (df, df_constrcu_ref) pour mise en cache
     """
 
     # --------------------------------------------------------------------
-    # 1. LOB join (construction only)
+    # 1. Jointure LOB (construction uniquement)
     # --------------------------------------------------------------------
     reader = get_bronze_reader(SimpleNamespace(spark=spark, config=config, logger=logger))
     lob_ref = (
@@ -538,7 +530,7 @@ def enrich_segmentation_sas(df, spark, config, vision, logger=None, return_refer
     )
 
     # --------------------------------------------------------------------
-    # 2. Load CONSTRCU reference
+    # 2. Chargement référence CONSTRCU
     # --------------------------------------------------------------------
     df_constrcu_ref = load_constrcu_reference(
         spark=spark,
@@ -549,9 +541,9 @@ def enrich_segmentation_sas(df, spark, config, vision, logger=None, return_refer
     )
 
     # --------------------------------------------------------------------
-    # 3. Join CONSTRCU reference
+    # 3. Jointure référence CONSTRCU
     # --------------------------------------------------------------------
-    df = join_constrcu_sas(df, df_constrcu_ref, logger=logger)
+    df = join_constrcu(df, df_constrcu_ref, logger=logger)
     df = df.withColumn(
         "lmarch2",
         when(col("cmarch") == "6", lit("6_CONSTRUCTION"))
@@ -559,22 +551,22 @@ def enrich_segmentation_sas(df, spark, config, vision, logger=None, return_refer
     )
 
     # --------------------------------------------------------------------
-    # 4. Compute TYPE_PRODUIT (SAS)
+    # 4. Calcul TYPE_PRODUIT
     # --------------------------------------------------------------------
-    df = compute_type_produit_sas(df, spark, config, logger)
+    df = compute_type_produit(df, spark, config, logger)
 
     # --------------------------------------------------------------------
-    # 5. CSSSEG SAS corrections
+    # 5. Corrections CSSSEG
     # --------------------------------------------------------------------
     df = apply_cssseg_corrections(df, logger)
 
     # --------------------------------------------------------------------
-    # 6. Compute Segment_3 (SAS)
+    # 6. Calcul Segment_3
     # --------------------------------------------------------------------
-    df = compute_segment3_sas(df, logger)
+    df = compute_segment3(df, logger)
 
     if logger:
-        logger.info("✓ Full SAS segmentation enrichment completed")
+        logger.info("✓ Enrichissement complet de la segmentation terminé")
 
     if return_reference:
         return df, df_constrcu_ref

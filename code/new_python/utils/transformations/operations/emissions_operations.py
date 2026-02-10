@@ -1,13 +1,11 @@
 """
-Emissions-specific transformation operations.
+Opérations de transformation spécifiques aux Émissions.
 
-Simple helpers for:
-- Distribution channel (CDPOLE) assignment from CD_NIV_2_STC
-- Current/prior year split (EXERCICE) calculation
-- Guarantee code extraction (CGARP)
-- Business filter applications
-
-Based on: EMISSIONS_RUN.sas (308 lines)
+Assistants simples pour :
+- Affectation du canal de distribution (CDPOLE) à partir de CD_NIV_2_STC
+- Calcul de la répartition de l'exercice (courant vs antérieur)
+- Extraction du code de garantie (CGARP)
+- Applications des filtres métiers
 """
 
 from pyspark.sql import DataFrame  # type: ignore
@@ -20,20 +18,17 @@ from config.constants import MARKET_CODE
 
 def assign_distribution_channel(df: DataFrame) -> DataFrame:
     """
-    Assign distribution channel (CDPOLE) based on CD_NIV_2_STC.
-    
-    Based on EMISSIONS_RUN.sas L174-177:
+    Affecte le canal de distribution (CDPOLE) basé sur CD_NIV_2_STC.
+
+    Règles métier :
     - DCAG, DCPS, DIGITAL → '1' (Agent)
     - BROKDIV → '3' (Courtage)
-    
-    Args:
-        df: Input DataFrame with cd_niv_2_stc column
-    
-    Returns:
-        DataFrame with cdpole column added
-    
-    Example:
-        >>> df = assign_distribution_channel(df)
+
+    Paramètres :
+        df : DataFrame en entrée avec la colonne cd_niv_2_stc
+
+    Retourne :
+        DataFrame avec la colonne cdpole ajoutée
     """
     df = df.withColumn('cdpole',
         when(col('cd_niv_2_stc').isin(['DCAG', 'DCPS', 'DIGITAL']), lit('1'))
@@ -49,26 +44,23 @@ def calculate_exercice_split(
     year_col: str = 'nu_ex_ratt_cts'
 ) -> DataFrame:
     """
-    Split premiums into current year (cou) vs prior year (ant).
-    
-    Based on EMISSIONS_RUN.sas L173:
-    - If attachment year >= vision year → 'cou' (current)
-    - Else → 'ant' (anterior/prior)
-    
-    Args:
-        df: Input DataFrame
-        vision: Vision in YYYYMM format
-        year_col: Column containing attachment year
-    
-    Returns:
-        DataFrame with exercice column added
-    
-    Example:
-        >>> df = calculate_exercice_split(df, '202509')
+    Répartit les primes en exercice courant ('cou') vs exercice antérieur ('ant').
+
+    Logique :
+    - Si année de rattachement >= année de vision → 'cou' (courant)
+    - Sinon → 'ant' (antérieur)
+
+    Paramètres :
+        df : DataFrame en entrée
+        vision : Vision au format YYYYMM
+        year_col : Colonne contenant l'année de rattachement
+
+    Retourne :
+        DataFrame avec la colonne exercice ajoutée
     """
     from utils.helpers import extract_year_month_int
     year_int, _ = extract_year_month_int(vision)
-    
+
     df = df.withColumn('exercice',
         when(col(year_col) >= lit(str(year_int)), lit('cou'))
         .otherwise(lit('ant'))
@@ -82,22 +74,19 @@ def extract_guarantee_code(
     target_col: str = 'cgarp'
 ) -> DataFrame:
     """
-    Extract guarantee code from prospective guarantee field.
-    
-    Based on EMISSIONS_RUN.sas L172, L275:
-    - Extract characters 3-5 from cd_gar_prospctiv
-    - Remove spaces (compress)
-    
-    Args:
-        df: Input DataFrame
-        source_col: Source column name
-        target_col: Target column name for extracted code
-    
-    Returns:
-        DataFrame with extracted guarantee code
-    
-    Example:
-        >>> df = extract_guarantee_code(df)
+    Extrait le code de garantie du champ de garantie prospective.
+
+    Logique :
+    - Extrait les caractères 3 à 5 de cd_gar_prospctiv
+    - Supprime les espaces (compress)
+
+    Paramètres :
+        df : DataFrame en entrée
+        source_col : Nom de la colonne source
+        target_col : Nom de la colonne cible pour le code extrait
+
+    Retourne :
+        DataFrame avec le code de garantie extrait
     """
     df = df.withColumn(target_col,
         regexp_replace(
@@ -115,97 +104,94 @@ def apply_emissions_filters(
     logger: Optional[Any] = None
 ) -> DataFrame:
     """
-    Apply all Emissions business filters.
-    
-    Based on EMISSIONS_RUN.sas L159, L185-189, L198:
-    1. Construction market filter (cd_marche = '6')
-    2. Accounting date filter (dt_cpta_cts <= vision)
-    3. Excluded intermediaries
-    4. Product/guarantee exclusions
-    5. Category exclusions
-    
-    Args:
-        df: Input DataFrame
-        config: Emissions configuration dict
-        vision: Vision in YYYYMM format
-        logger: Optional logger instance
-    
-    Returns:
-        Filtered DataFrame
-    
-    Example:
-        >>> df = apply_emissions_filters(df, emissions_config, '202509')
+    Applique tous les filtres métier Émissions.
+
+    Filtres :
+    1. Filtre marché construction (cd_marche = '6')
+    2. Filtre date comptable (dt_cpta_cts <= vision)
+    3. Intermédiaires exclus
+    4. Exclusions produit/garantie
+    5. Exclusions catégories
+
+    Paramètres :
+        df : DataFrame en entrée
+        config : Dictionnaire de configuration Émissions
+        vision : Vision au format YYYYMM
+        logger : Instance de logger optionnelle
+
+    Retourne :
+        DataFrame filtré
     """
     initial_count = df.count() if logger else 0
-    
-    # Filter for construction market only (SAS: WHERE cd_marche='6')
+
+    # Filtre pour le marché construction uniquement (cd_marche='6')
     df = df.filter(col('cd_marche') == MARKET_CODE.MARKET)
     if logger:
-        logger.info(f"After market filter (cd_marche='6'): {df.count():,} records")
-    
-    # Filter 2: Accounting date <= vision
+        logger.info(f"Après filtre marché (cd_marche='6') : {df.count():,} enregistrements")
+
+    # Filtre 2 : Date comptable <= vision
     df = df.filter(col('dt_cpta_cts') <= lit(vision))
     if logger:
-        logger.info(f"After date filter (dt_cpta_cts <= {vision}): {df.count():,} records")
-    
-    # Filter 3: Excluded intermediaries
+        logger.info(f"Après filtre date (dt_cpta_cts <= {vision}) : {df.count():,} enregistrements")
+
+    # Filtre 3 : Intermédiaires exclus
     excluded_noint_config = config.get('excluded_intermediaries', {})
-    # Config structure: {"description": "...", "values": [...]}
+    # Structure config : {"description": "...", "values": [...]}
     excluded_noint = excluded_noint_config.get('values', []) if isinstance(excluded_noint_config, dict) else excluded_noint_config
     if excluded_noint:
         df = df.filter(~col('cd_int_stc').isin(excluded_noint))
         if logger:
-            logger.info(f"After intermediary filter ({len(excluded_noint)} excluded): {df.count():,} records")
-    
-    # Filter 4: Product/guarantee exclusions
+            logger.info(f"Après filtre intermédiaires ({len(excluded_noint)} exclus) : {df.count():,} enregistrements")
+
+    # Filtre 4 : Exclusions produit/garantie
     product_guarantee_config = config.get('product_guarantee_exclusions', {})
     product_guarantee_rules = product_guarantee_config.get('rules', []) if isinstance(product_guarantee_config, dict) else product_guarantee_config
     for exclusion in product_guarantee_rules:
         if 'product_prefix' in exclusion:
-            # Product prefix with guarantee
+            # Préfixe produit avec garantie
             df = df.filter(
                 ~((substring(col('cd_prd_prm'), 1, 2) == exclusion['product_prefix']) &
                   (col('cd_gar_prospctiv') == exclusion['guarantee']))
             )
         elif 'intermediary' in exclusion:
-            # Intermediary with product
+            # Intermédiaire avec produit
             df = df.filter(
                 ~((col('cd_int_stc') == exclusion['intermediary']) &
                   (col('cd_prd_prm') == exclusion['product']))
             )
-    
-    # Filter 5: Excluded guarantees
+
+    # Filtre 5 : Garanties exclues
     excluded_guarantees_config = config.get('excluded_guarantees', {})
     excluded_guarantees = excluded_guarantees_config.get('values', []) if isinstance(excluded_guarantees_config, dict) else excluded_guarantees_config
     if excluded_guarantees:
         df = df.filter(~col('cd_gar_prospctiv').isin(excluded_guarantees))
-    
-    # Filter 6: Excluded product
+
+    # Filtre 6 : Produit exclu
     excluded_product_config = config.get('excluded_product', {})
     excluded_product = excluded_product_config.get('value') if isinstance(excluded_product_config, dict) else excluded_product_config
     if excluded_product:
         df = df.filter(col('cd_prd_prm') != excluded_product)
-    
-    # Filter 7: Excluded categories and guarantee category
+
+    # Filtre 7 : Catégories exclues et catégorie de garantie
     excluded_categories_config = config.get('excluded_categories', {})
     excluded_categories = excluded_categories_config.get('values', []) if isinstance(excluded_categories_config, dict) else excluded_categories_config
     excluded_gar_cat_config = config.get('excluded_guarantee_category', {})
     excluded_gar_cat = excluded_gar_cat_config.get('value') if isinstance(excluded_gar_cat_config, dict) else excluded_gar_cat_config
-    
+
     if excluded_categories or excluded_gar_cat:
         filter_expr = lit(False)
         if excluded_categories:
             filter_expr = filter_expr | col('cd_cat_min').isin(excluded_categories)
         if excluded_gar_cat:
             filter_expr = filter_expr | (col('cd_gar_prospctiv') == excluded_gar_cat)
-        
+
         df = df.filter(~filter_expr)
-    
+
     if logger:
         final_count = df.count()
         filtered_out = initial_count - final_count
-        logger.success(f"Filters applied: {filtered_out:,} records filtered out, {final_count:,} remaining")
-    
+        logger.success(f"Filtres appliqués : {filtered_out:,} enregistrements filtrés, {final_count:,} restants")
+
     return df
 
 
@@ -214,30 +200,25 @@ def aggregate_by_policy_guarantee(
     group_cols: list
 ) -> DataFrame:
     """
-    Aggregate premiums and commissions by specified grouping columns.
-    
-    Based on EMISSIONS_RUN.sas L284-294:
-    - Group by vision, dircom, cdpole, nopol, cdprod, noint, cgarp, cmarch, cseg, cssseg, cd_cat_min
-    - Sum: primes_x, primes_n, mtcom_x
-    
-    Args:
-        df: Input DataFrame with premium data
-        group_cols: List of columns to group by
-    
-    Returns:
-        Aggregated DataFrame
-    
-    Example:
-        >>> group_cols = ['vision', 'dircom', 'cdpole', 'nopol', 'cdprod', 
-        ...               'noint', 'cgarp', 'cmarch', 'cseg', 'cssseg', 'cd_cat_min']
-        >>> df_agg = aggregate_by_policy_guarantee(df, group_cols)
+    Agrège les primes et commissions selon les colonnes de regroupement spécifiées.
+
+    Logique :
+    - Regroupe par vision, dircom, cdpole, nopol, cdprod, noint, cgarp, cmarch, cseg, cssseg, cd_cat_min
+    - Somme : primes_x, primes_n, mtcom_x
+
+    Paramètres :
+        df : DataFrame en entrée avec les données de primes
+        group_cols : Liste des colonnes de regroupement
+
+    Retourne :
+        DataFrame agrégé
     """
     from pyspark.sql.functions import sum as _sum
-    
+
     df_agg = df.groupBy(*group_cols).agg(
         _sum('mt_ht_cts').alias('primes_x'),
         _sum('primes_n').alias('primes_n'),
         _sum('mtcom').alias('mtcom_x')
     )
-    
+
     return df_agg

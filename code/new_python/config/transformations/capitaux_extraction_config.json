@@ -1,106 +1,102 @@
 {
-    "_comment": "Capitaux extraction configuration - Keywords for capital type identification",
-    "_based_on": "SAS CAPITAUX_AZ_MACRO.sas L134-193",
-    "smp_100": {
-        "keywords": [
-            "SMP GLOBAL DU CONTRAT",
-            "SMP RETENU",
-            "SINISTRE MAXIMUM POSSIBLE"
-        ],
-        "exclude_keywords": [],
-        "label_prefix": "lbcapi",
-        "amount_prefix": "mtcapi",
-        "num_indices": 14,
-        "comment": "SAS L160-165"
-    },
-    "lci_100": {
-        "keywords": [
-            "LCI GLOBAL DU CONTRAT",
-            "CAPITAL REFERENCE OU LCI",
-            "LCI IRD (DOM. DIRECTS+P.EXPLOIT)",
-            "LIMITE CONTRACTUELLE INDEMNITE"
-        ],
-        "exclude_keywords": [],
-        "label_prefix": "lbcapi",
-        "amount_prefix": "mtcapi",
-        "num_indices": 14,
-        "comment": "SAS L134-140"
-    },
-    "perte_exp_100": {
-        "keywords": [
-            "PERTE EXPLOITATION (MARGE BRUTE)",
-            "PERTE D EXPLOITATION",
-            "PERTE D'EXPLOITATION",
-            "CAPITAL PERTES EXPLOITATION",
-            "CAPITAUX TOTAUX P.E.",
-            "PERTE EXPLOITATION/AUT. DOM. MAT",
-            "PERTES D'EXPLOITATION",
-            "PERTES EXPLOITATION"
-        ],
-        "exclude_keywords": [],
-        "label_prefix": "lbcapi",
-        "amount_prefix": "mtcapi",
-        "num_indices": 14,
-        "comment": "SAS L173-183"
-    },
-    "risque_direct_100": {
-        "keywords": [
-            "RISQUE DIRECT",
-            "CAPITAUX DOMMAGES DIR"
-        ],
-        "exclude_keywords": [
-            "SINIS MAX POSSIBLE RISQUE DIRECT"
-        ],
-        "label_prefix": "lbcapi",
-        "amount_prefix": "mtcapi",
-        "num_indices": 14,
-        "comment": "SAS L167-171"
-    },
-    "limite_rc_100_par_sin": {
-        "_comment": "RC par sinistre - SAS L145-150",
-        "keywords": [
-            "DOMMAGES CORPORELS",
-            "DOMM. MAT/IMMAT CONSEC EN COURS",
-            "TOUS DOMMAGES CONFONDUS"
-        ],
-        "exclude_keywords": [],
-        "label_prefix": "lbcapi",
-        "amount_prefix": "mtcapi",
-        "num_indices": 14,
-        "comment": "SAS L145-150 - No explicit exclusions in SAS, but annual variants (AL, / ANN) are captured separately by limite_rc_100_par_an"
-    },
-    "limite_rc_100_par_an": {
-        "_comment": "RC par an - SAS L152-158",
-        "keywords": [
-            "TOUS DOMMAGES CONFONDUS (AL)",
-            "TOUS DOMMAGES CONFONDUS / ANN)",
-            "DOM MAT/IMMAT CONSEC (RC AL)",
-            "RCP TOUS DOM.CONFONDUS"
-        ],
-        "exclude_keywords": [],
-        "label_prefix": "lbcapi",
-        "amount_prefix": "mtcapi",
-        "num_indices": 14,
-        "comment": "SAS L152-158"
-    },
-    "smp_pe_100": {
-        "keywords": [
-            "LCI/SMP PERTE EXPLOITATION"
-        ],
-        "exclude_keywords": [],
-        "label_prefix": "lbcapi",
-        "amount_prefix": "mtcapi",
-        "num_indices": 14,
-        "comment": "SAS L185-188"
-    },
-    "smp_rd_100": {
-        "keywords": [
-            "SINIS MAX POSSIBLE RISQUE DIRECT"
-        ],
-        "exclude_keywords": [],
-        "label_prefix": "lbcapi",
-        "amount_prefix": "mtcapi",
-        "num_indices": 14,
-        "comment": "SAS L190-193"
-    }
+  "smp_100": {
+    "keywords": [
+      "SMP GLOBAL DU CONTRAT",
+      "SMP RETENU",
+      "SINISTRE MAXIMUM POSSIBLE"
+    ],
+    "exclude_keywords": [],
+    "label_prefix": "lbcapi",
+    "amount_prefix": "mtcapi",
+    "num_indices": 14,
+    "_description": "Sinistre Maximum Possible (SMP) - Capital global du contrat retenu"
+  },
+  "lci_100": {
+    "keywords": [
+      "LCI GLOBAL DU CONTRAT",
+      "CAPITAL REFERENCE OU LCI",
+      "LCI IRD (DOM. DIRECTS+P.EXPLOIT)",
+      "LIMITE CONTRACTUELLE INDEMNITE"
+    ],
+    "exclude_keywords": [],
+    "label_prefix": "lbcapi",
+    "amount_prefix": "mtcapi",
+    "num_indices": 14,
+    "_description": "Limite Contractuelle d'Indemnité (LCI) - Capital de référence global"
+  },
+  "perte_exp_100": {
+    "keywords": [
+      "PERTE EXPLOITATION (MARGE BRUTE)",
+      "PERTE D EXPLOITATION",
+      "PERTE D'EXPLOITATION",
+      "CAPITAL PERTES EXPLOITATION",
+      "CAPITAUX TOTAUX P.E.",
+      "PERTE EXPLOITATION/AUT. DOM. MAT",
+      "PERTES D'EXPLOITATION",
+      "PERTES EXPLOITATION"
+    ],
+    "exclude_keywords": [],
+    "label_prefix": "lbcapi",
+    "amount_prefix": "mtcapi",
+    "num_indices": 14,
+    "_description": "Perte d'Exploitation - Capitaux couvrant la marge brute en cas d'arrêt d'activité"
+  },
+  "risque_direct_100": {
+    "keywords": [
+      "RISQUE DIRECT",
+      "CAPITAUX DOMMAGES DIR"
+    ],
+    "exclude_keywords": [
+      "SINIS MAX POSSIBLE RISQUE DIRECT"
+    ],
+    "label_prefix": "lbcapi",
+    "amount_prefix": "mtcapi",
+    "num_indices": 14,
+    "_description": "Risque Direct - Capitaux dommages directs (bâtiments, équipements)"
+  },
+  "limite_rc_100_par_sin": {
+    "keywords": [
+      "DOMMAGES CORPORELS",
+      "DOMM. MAT/IMMAT CONSEC EN COURS",
+      "TOUS DOMMAGES CONFONDUS"
+    ],
+    "exclude_keywords": [],
+    "label_prefix": "lbcapi",
+    "amount_prefix": "mtcapi",
+    "num_indices": 14,
+    "_description": "Responsabilité Civile par sinistre - Limite d'indemnisation par événement"
+  },
+  "limite_rc_100_par_an": {
+    "keywords": [
+      "TOUS DOMMAGES CONFONDUS (AL)",
+      "TOUS DOMMAGES CONFONDUS / ANN)",
+      "DOM MAT/IMMAT CONSEC (RC AL)",
+      "RCP TOUS DOM.CONFONDUS"
+    ],
+    "exclude_keywords": [],
+    "label_prefix": "lbcapi",
+    "amount_prefix": "mtcapi",
+    "num_indices": 14,
+    "_description": "Responsabilité Civile annuelle - Limite d'indemnisation par année"
+  },
+  "smp_pe_100": {
+    "keywords": [
+      "LCI/SMP PERTE EXPLOITATION"
+    ],
+    "exclude_keywords": [],
+    "label_prefix": "lbcapi",
+    "amount_prefix": "mtcapi",
+    "num_indices": 14,
+    "_description": "SMP spécifique Perte d'Exploitation"
+  },
+  "smp_rd_100": {
+    "keywords": [
+      "SINIS MAX POSSIBLE RISQUE DIRECT"
+    ],
+    "exclude_keywords": [],
+    "label_prefix": "lbcapi",
+    "amount_prefix": "mtcapi",
+    "num_indices": 14,
+    "_description": "SMP spécifique Risque Direct"
+  }
 }

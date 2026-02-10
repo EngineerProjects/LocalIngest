@@ -1,10 +1,31 @@
+# -*- coding: utf-8 -*-
 """
-AZEC Processor - Portfolio Movements for AZEC (Construction AZEC).
+===============================================================================
+PROCESSEUR AZEC (Mouvements de Portefeuille - Construction)
+===============================================================================
 
-Processes POLIC_CU and CAPITXCU data from bronze layer,
-applies AZEC-specific transformations, and outputs to silver layer.
+Ce processeur gère le traitement des mouvements de portefeuille pour le périmètre "AZEC",
+qui correspond au marché spécifique de la Construction.
 
-Uses dictionary-driven configuration for maximum reusability.
+OBJECTIFS DU PROCESSEUR :
+------------------------
+1. Lire les données de base (Police et Capitaux) depuis la couche Bronze.
+2. Appliquer les règles de gestion spécifiques à la Construction (filtres, redressements).
+3. Enrichir les données avec les classifications NAF, le Chiffre d'Affaires, et la Segmentation.
+4. Calculer les indicateurs clés (Primes, Expositions, Capitaux SMP/LCI).
+5. Produire une vision consolidée "Silver" des mouvements AZEC.
+
+SOURCES DE DONNÉES :
+-------------------
+- POLIC_CU : Données principales des polices.
+- CAPITXCU : Données des capitaux (SMP, LCI).
+- Tables de référence : REF_MIG_AZEC_VS_IMS, INCENDCU, MPACU, RCENTCU, RISTECCU, MULPROCU.
+- Référentiels techniques : PTGST_STATIC, TABLE_SEGMENTATION_AZEC_MML, TABLE_PT_GEST.
+
+FLUX DE TRAITEMENT :
+-------------------
+Le traitement suit une séquence précise pour garantir l'intégrité des calculs,
+en particulier pour la gestion des capitaux et des expositions.
 """
 
 from config.variables import AZEC_CAPITAL_MAPPING
@@ -30,29 +51,57 @@ from src.reader import BronzeReader
 
 class AZECProcessor(BaseProcessor):
     """
-    Process AZEC (Construction AZEC) portfolio data.
+    =======================================================================
+    PROCESSEUR DE MOUVEMENTS AZEC (CONSTRUCTION)
+    =======================================================================
     
-    Reads POLIC_CU/CAPITXCU from bronze, applies transformations, writes to silver.
-    All columns are lowercase.
+    Transforme les données brutes AZEC (Bronze) en couche Silver.
+    
+    WORKFLOW DÉTAILLÉ :
+    ------------------
+    1. READ : Lecture du fichier POLIC_CU et calcul de la date d'échéance.
+    2. TRANSFORM :
+       - Sélection et renommage des colonnes.
+       - Filtres métier (exclusion des intermédiaires et polices spécifiques).
+       - Gestion de la migration (identification des polices non migrées).
+       - Mise à jour de la qualité des données (Dates, États des polices).
+       - Calcul des indicateurs de mouvement (NBPTF, NBAFN, NBRES).
+       - Gestion des périodes de suspension.
+       - Calcul des expositions (YTD / GLI).
+       - Enrichissement Segmentation et Primes.
+       - Enrichissement Codes NAF (Fusion de 4 sources).
+       - Enrichissement Formules de garanties.
+       - Enrichissement Chiffre d'Affaires (MULPROCU).
+       - Enrichissement Capitaux (INCENDCU et CAPITXCU).
+       - Redressements métier finaux.
+       - Enrichissement final (Données site et PT_GEST).
+    3. WRITE : Écriture en couche Silver.
     """
 
     def read(self, vision: str) -> DataFrame:
         """
-        Read POLIC_CU from bronze layer and calculate DTECHANM.
-
-        Args:
-            vision: Vision in YYYYMM format
-
-        Returns:
-            POLIC_CU DataFrame with DTECHANM calculated (lowercase columns)
+        Lit le fichier principal POLIC_CU depuis la couche Bronze.
+        
+        Calcul également la date d'échéance annuelle (DTECHANM) à partir
+        du jour et du mois d'échéance fournis.
+        
+        PARAMÈTRES :
+        -----------
+        vision : str
+            Vision (Période) à traiter au format YYYYMM
+            
+        RETOUR :
+        -------
+        DataFrame
+            Données POLIC_CU avec DTECHANM calculée.
         """
         reader = BronzeReader(self.spark, self.config)
 
-        self.logger.info("Reading POLIC_CU file")
+        self.logger.info("Lecture du fichier POLIC_CU")
         df = reader.read_file_group('polic_cu_azec', vision)
 
-        # Calculate DTECHANM from ECHEANMM and ECHEANJJ
-        # SAS: mdy(echeanmm, echeanjj, &annee.)
+        # Calcul de DTECHANM (Date Echéance Annuelle)
+        # Reconstitution d'une date à partir de l'année de vision, du mois et du jour d'échéance
         year_int, _ = extract_year_month_int(vision)
         df = df.withColumn(
             "dtechanm",
@@ -61,53 +110,54 @@ class AZECProcessor(BaseProcessor):
                 make_date(lit(year_int), col("echeanmm"), col("echeanjj"))
             ).otherwise(lit(None).cast(DateType()))
         )
-        # Dates are already cast by BronzeReader._safe_cast() using dateFormat from reading_config.json
-        # No need to re-cast here
-
+        
         return df
 
     def transform(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Apply AZEC business transformations following SAS L52-487 strict order.
-
-        Args:
-            df: POLIC_CU DataFrame from read() (lowercase columns)
-            vision: Vision in YYYYMM format
-
-        Returns:
-            Transformed DataFrame ready for silver layer (all lowercase)
+        Exécute la chaîne complète de transformations AZEC.
+        
+        Cette méthode orchestre l'ensemble des règles métier spécifiques
+        au marché de la Construction, en respectant l'ordre logique de dépendance des données.
+        
+        PARAMÈTRES :
+        -----------
+        df : DataFrame
+            Données POLIC_CU lues
+        vision : str
+            Vision (Période) à traiter
+            
+        RETOUR :
+        -------
+        DataFrame
+            Table de mouvements enrichie et consolidée.
         """
         # ------------------------------------------------------------
-        # Préparations vision / dates / config
+        # Préparation du contexte (Dates, Config)
         # ------------------------------------------------------------
         year_int, month_int = extract_year_month_int(vision)
-        dates = compute_date_ranges(vision)  # clés en lowercase (dtfin, dtdeb_an, dtfinmn, dtfinmm1, finmois, …)
+        dates = compute_date_ranges(vision)
 
         loader = get_default_loader()
         azec_config = loader.get_azec_config()
 
-        self.logger.info(f"[AZEC CFG] keys: {list(azec_config.keys())}")
-        try:
-            mapping = azec_config['capital_mapping']['mappings']
-            self.logger.info(f"[AZEC CFG] capital_mapping size = {len(mapping)} | first={mapping[0] if mapping else None}")
-        except Exception as e:
-            self.logger.error(f"[AZEC CFG] capital_mapping missing or invalid: {e}")
-
+        self.logger.info(f"Configuration AZEC chargée : {list(azec_config.keys())}")
+        
         # ============================================================
-        # STEP 01: Column Selection (SAS L52–85)
+        # ÉTAPE 1 : Sélection et Configuration des Colonnes
         # ============================================================
-        self.logger.step(1, "Applying column configuration")
+        self.logger.step(1, "Application de la configuration des colonnes")
         column_config = azec_config['column_selection']
         df = apply_column_config(df, column_config, vision, year_int, month_int)
 
-        # Add DIRCOM and CDPOLE constants (SAS CONSOLIDATION L74: "AZEC" AS DIRCOM, "3" AS CDPOLE)
+        # Ajout des constantes de structure (DIRCOM = AZEC, CDPOLE = 3 Courtage)
         df = df.withColumn('dircom', lit(DIRCOM.AZEC))
-        df = df.withColumn('cdpole', lit('3'))  # AZEC is always Courtage (pole 3)
+        df = df.withColumn('cdpole', lit('3'))  # AZEC est toujours considéré comme du Courtage
 
         # ============================================================
-        # STEP 1.1 — Initialize columns (safe defaults like AZ)
+        # ÉTAPE 1.1 : Initialisation des colonnes techniques
         # ============================================================
-        self.logger.step(1.1, "Initialize columns (safe defaults like AZ)")
+        self.logger.step(1.1, "Initialisation sécurisée des colonnes manquantes")
 
         init_double = [
             "primecua", "primeto", "primes_ptf", "primes_afn", "primes_res",
@@ -124,6 +174,7 @@ class AZECProcessor(BaseProcessor):
         init_date = ["dt_deb_expo", "dt_fin_expo"]
         init_str  = ["critere_revision", "cdgrev", "type_affaire"]
 
+        # Initialisation par type pour éviter les erreurs de schéma
         for c in init_double:
             if c not in df.columns:
                 df = df.withColumn(c, lit(0.0).cast(DoubleType()))
@@ -138,80 +189,87 @@ class AZECProcessor(BaseProcessor):
                 df = df.withColumn(c, lit(None).cast(StringType()))
 
         # ============================================================
-        # STEP 02: Business Filters (SAS WHERE)
+        # ÉTAPE 2 : Filtres Métier (Exclusions)
         # ============================================================
-        self.logger.step(2, "Applying business filters")
+        self.logger.step(2, "Application des filtres d'exclusion métier")
+        
+        # Exclusion de certains intermédiaires spécifiques
         df = df.filter(~col("intermed").isin("24050", "40490"))
+        
+        # Exclusion de police spécifique (Test/Anomalie connue)
         df = df.filter(~col("police").isin("012684940"))
+        
+        # Exclusion des durées "00" sauf pour certains produits
         df = df.filter(
             ~(
                 (col("duree") == "00") &
                 (~col("produit").isin("DO0", "TRC", "CTR", "CNR"))
             )
         )
+        
+        # Consistence des dates : Exclusion si Fin = Effet (Sauf si NULL)
         df = df.filter(
             col("datfin").isNull() |
             col("effetpol").isNull() |
             (col("datfin") != col("effetpol"))
         )
+        
+        # Gestion des cas de migration "MIGRAZ" : On ne garde que ceux résiliés ("R")
         df = df.filter(
             (~col("gestsit").isin("MIGRAZ")) |
             ((col("gestsit") == "MIGRAZ") & (col("etatpol") == "R"))
         )
 
-
         # ============================================================
-        # STEP 03: Migration Handling (SAS L94–106)
+        # ÉTAPE 3 : Gestion de la Migration
         # ============================================================
-        self.logger.step(3, "Handling AZEC migration")
+        self.logger.step(3, "Gestion de la migration AZEC vs IMS")
         df = self._handle_migration(df, vision, azec_config)
 
         # ============================================================
-        # STEP 04: Data Quality Updates (SAS L113–137)
+        # ÉTAPE 4 : Mise à jour Qualité des Données (Dates/États)
         # ============================================================
-        self.logger.step(4, "Updating dates and policy states")
+        self.logger.step(4, "Redressement des dates et états de police")
         df = self._update_dates_and_states(df, dates, year_int, month_int)
 
         # ============================================================
-        # STEP 05: Movement Indicators (SAS L144–182)
+        # ÉTAPE 5 : Indicateurs de Mouvement
         # ============================================================
-        self.logger.step(5, "Calculating movement indicators (NBPTF/NBAFN/NBRES)")
+        self.logger.step(5, "Calcul des indicateurs de mouvement (NBPTF/NBAFN/NBRES)")
         df = self._calculate_movements(df, dates, year_int, month_int)
 
         # ============================================================
-        # STEP 06: Suspension Days (SAS L189–194)
+        # ÉTAPE 6 : Gestion de la Suspension
         # ============================================================
-        self.logger.step(6, "Calculating suspension periods")
+        self.logger.step(6, "Calcul des périodes de suspension")
         from utils.transformations.operations.business_logic import calculate_azec_suspension
         df = calculate_azec_suspension(df, dates)
 
         # ============================================================
-        # STEP 07: Exposures (AZEC) (SAS L195–203)
+        # ÉTAPE 7 : Calcul des Expositions
         # ============================================================
-        self.logger.step(7, "Calculating exposures (AZEC)")
+        self.logger.step(7, "Calcul des expositions (Méthode AZEC)")
         from utils.transformations import calculate_exposures_azec
         df = calculate_exposures_azec(df, dates)
 
         # ============================================================
-        # STEP 08: Segmentation - Simplified (use pre-built TABLE_SEGMENTATION_AZEC_MML)
-        # SAS: LEFT JOIN REF.TABLE_SEGMENTATION_AZEC_MML t2 ON (t1.PRODUIT = t2.PRODUIT)
+        # ÉTAPE 8 : Segmentation Simplifiée
         # ============================================================
-        self.logger.step(8, "Enriching LOB segmentation (AZEC)")
+        self.logger.step(8, "Enrichissement Segmentation (via TABLE_SEGMENTATION_AZEC_MML)")
         
-        # Read pre-built segmentation reference (like SAS REF.TABLE_SEGMENTATION_AZEC_MML)
         reader = BronzeReader(self.spark, self.config)
         df_seg = reader.read_file_group('table_segmentation_azec_mml', 'ref')
         
         if df_seg is None or df_seg.count() == 0:
             raise RuntimeError(
-                "TABLE_SEGMENTATION_AZEC_MML is required for AZEC segmentation. "
-                "Ensure table_segmentation_azec_mml.csv exists in bronze/ref/"
+                "La table TABLE_SEGMENTATION_AZEC_MML est requise pour la segmentation AZEC. "
+                "Vérifiez sa présence dans le répertoire 'bronze/ref/'."
             )
         
-        # Dedup by PRODUIT (defensive, should already be unique)
+        # Sécurité : unicité par produit
         df_seg = df_seg.dropDuplicates(["produit"])
         
-        # LEFT JOIN on PRODUIT (SAS: LEFT JOIN t2 ON t1.PRODUIT = t2.PRODUIT)
+        # Jointure Gauche sur le Code Produit
         df = df.alias("a").join(
             broadcast(df_seg.alias("s")),
             col("a.produit") == col("s.produit"),
@@ -227,51 +285,49 @@ class AZECProcessor(BaseProcessor):
             col("s.lssseg")
         )
         
+        # Filtrage post-jointure : Uniquement Marché Construction (6)
         df = df.filter(
             (col("cmarch") == "6") &
             (col("gestsit") != "MIGRAZ")
         )
         
-        # No CONSTRCU cache needed (simplified flow)
+        # Pas de cache CONSTRCU nécessaire dans ce flux simplifié
         self._cached_constrcu_ref = None
 
         # ============================================================
-        # STEP 09: Premiums & Flags (SAS L210–265)
+        # ÉTAPE 9 : Calcul des Primes et Flags
         # ============================================================
-        self.logger.step(9, "Calculating premiums and flags")
+        self.logger.step(9, "Calcul des primes et indicateurs techniques")
         df = self._calculate_premiums(df)
 
-        # ISIC codification not used in AZEC baseline (only in AZ/CONSOLIDATION)
-        # Previously caused data explosion with 6 superfluous LEFT JOINs
-
         # ============================================================
-        # STEP 10: NAF Codes (SAS L272–302)
+        # ÉTAPE 10 : Codes NAF (Fusion Multi-Sources)
         # ============================================================
-        self.logger.step(10, "Enriching NAF codes (FULL OUTER JOIN)")
+        self.logger.step(10, "Enrichissement Codes NAF (Fusion 4 tables)")
         df = self._enrich_naf_codes(df, vision)
 
         # ============================================================
-        # STEP 11: Formulas (SAS L309–332)
+        # ÉTAPE 11 : Formules de Garantie
         # ============================================================
-        self.logger.step(11, "Enriching formulas")
+        self.logger.step(11, "Enrichissement Formules de garantie")
         df = self._enrich_formulas(df, vision)
 
         # ============================================================
-        # STEP 12: Turnover (MULPROCU) (SAS L339–357)
+        # ÉTAPE 12 : Chiffre d'Affaires (MULPROCU)
         # ============================================================
-        self.logger.step(12, "Enriching CA turnover")
+        self.logger.step(12, "Enrichissement Chiffre d'Affaires (MTCA)")
         df = self._enrich_ca(df, vision)
 
         # ============================================================
-        # STEP 13: PE/RD/VI Capitals (INCENDCU) (SAS L364–371)
+        # ÉTAPE 13 : Capitaux PE/RD (INCENDCU)
         # ============================================================
-        self.logger.step(13, "Enriching PE/RD/VI capitals")
+        self.logger.step(13, "Enrichissement Capitaux Perte Exp. & Risque Direct")
         df = self._enrich_pe_rd_vi(df, vision)
 
         # ============================================================
-        # STEP 14: Cleanup expo dates when expo_ytd=0 (SAS L374–380)
+        # ÉTAPE 14 : Nettoyage final des dates d'exposition
         # ============================================================
-        self.logger.step(14, "Cleaning exposure dates when expo_ytd = 0")
+        self.logger.step(14, "Nettoyage des dates d'exposition (si YTD = 0)")
         df = df.withColumn(
             'dt_deb_expo',
             when(col('expo_ytd') == 0, lit(None).cast(DateType())).otherwise(col('dt_deb_expo'))
@@ -281,36 +337,49 @@ class AZECProcessor(BaseProcessor):
         )
 
         # ============================================================
-        # STEP 15: SMP/LCI Capitals (CAPITXCU) (SAS L387–420)
+        # ÉTAPE 15 : Capitaux SMP/LCI (CAPITXCU)
         # ============================================================
-        self.logger.step(15, "Joining SMP/LCI capital data")
+        self.logger.step(15, "Jointure Capitaux SMP/LCI (CAPITXCU)")
         df = self._join_capitals(df, vision)
 
         # ============================================================
-        # STEP 16: Business Adjustments (SAS L449–466)
+        # ÉTAPE 16 : Redressements Métier
         # ============================================================
-        self.logger.step(16, "Applying business adjustments (NBRES/NBAFN/NBPTF)")
+        self.logger.step(16, "Application des redressements métier (NBRES/NBAFN)")
         df = self._adjust_nbres(df)
 
         # ============================================================
-        # STEP 17: Final Enrichment (CONSTRCU_AZEC + SITE + UPPER_MID) (SAS L484–487)
+        # ÉTAPE 17 : Enrichissement Final (Site, PT_GEST)
         # ============================================================
-        self.logger.step(17, "Final enrichment (segment2/type_produit_2, site data, UPPER_MID)")
+        self.logger.step(17, "Enrichissement final (Données Site, UPPER_MID)")
         df = self._enrich_final_constrcu_data(df, vision)
 
-        # ORDER BY police (SAS L487)
+        # Tri final par police pour une sortie déterministe
         df = df.orderBy('police')
 
-        self.logger.info("AZEC transformations completed successfully")
+        self.logger.success("Transformations AZEC terminées avec succès")
         return df
 
     def write(self, df: DataFrame, vision: str) -> None:
-        # Guard: pas de colonnes dupliquées (case-insensitive)
+        """
+        Écrit les données transformées en couche Silver.
+        
+        Effectue une vérification de non-duplication des colonnes avant écriture.
+        
+        PARAMÈTRES :
+        -----------
+        df : DataFrame
+            Données finales transformées
+        vision : str
+            Vision traitée
+        """
+        # Sécurité : Vérification des doublons de noms de colonnes (case-insensitive)
         cols = df.columns
         lower = list(map(str.lower, cols))
         dups = [c for c in set(lower) if lower.count(c) > 1]
+        
         if dups:
-            raise RuntimeError(f"Duplicate column names before write: {dups}")
+            raise RuntimeError(f"Noms de colonnes dupliqués avant écriture : {dups}")
 
         from utils.helpers import write_to_layer
         write_to_layer(
@@ -320,45 +389,45 @@ class AZECProcessor(BaseProcessor):
             filename=f'azec_ptf_{vision}',
             vision=vision,
             logger=self.logger,
-            optimize=True,
+            optimize=True, # Optimisation Z-ORDER pour lecture rapide
         )
 
     def _handle_migration(self, df: DataFrame, vision: str, azec_config: dict) -> DataFrame:
         """
-        Handle AZEC migration for visions > 202009.
+        Gère la migration AZEC vs IMS pour les visions récentes (> Sept 2020).
         
-        ref_mig_azec_vs_ims is REQUIRED for vision > 202009.
-        Processing will fail if table is missing (matching SAS behavior).
+        Identifie les polices qui n'ont pas encore migré vers le nouveau système.
         
-        Args:
-            df: POLIC_CU DataFrame
-            vision: Vision in YYYYMM format
-            azec_config: AZEC configuration dict
+        PARAMÈTRES :
+        -----------
+        df : DataFrame
+            Données en cours
+        vision : str
+            Vision traitée
+        azec_config : dict
+            Configuration AZEC
         
-        Returns:
-            DataFrame with nbptf_non_migres_azec column
-        
-        Raises:
-            RuntimeError: If required migration table is unavailable for vision > 202009
+        RETOUR :
+        -------
+        DataFrame
+            Avec colonne 'nbptf_non_migres_azec' ajoutée
         """
-        
         migration_config = azec_config['migration_handling']
+        
+        # La migration ne concerne que les données postérieures à Septembre 2020
         if int(vision) > migration_config['vision_threshold']:
             reader = BronzeReader(self.spark, self.config)
             
             try:
                 df_mig = reader.read_file_group('ref_mig_azec_vs_ims', vision='ref')
             except FileNotFoundError as e:
-                self.logger.error(f"ref_mig_azec_vs_ims is required for vision > {migration_config['vision_threshold']}")
-                self.logger.error(f"Cannot find migration table: {e}")
-                self.logger.error("This matches SAS behavior which would fail with 'File does not exist'")
-                raise RuntimeError(f"Missing required reference data: ref_mig_azec_vs_ims for vision {vision}") from e
+                self.logger.error(f"Table de migration ref_mig_azec_vs_ims requise pour vision > {migration_config['vision_threshold']}")
+                raise RuntimeError(f"Données de référence manquantes : ref_mig_azec_vs_ims") from e
             
             if df_mig is None:
-                self.logger.error("ref_mig_azec_vs_ims returned None")
-                raise RuntimeError("ref_mig_azec_vs_ims reference data is unavailable")
+                raise RuntimeError("La table de migration est vide.")
             
-            # Join with migration table
+            # Jointure pour identifier les polices migrées
             df_mig_select = df_mig.select(
                 col('nopol_azec').alias('_mig_nopol')
             ).dropDuplicates(['_mig_nopol'])
@@ -372,33 +441,37 @@ class AZECProcessor(BaseProcessor):
                 when(col('m._mig_nopol').isNull(), lit(1))
                 .otherwise(lit(0)).alias('nbptf_non_migres_azec')
             )
-            self.logger.info("Migration table joined - NBPTF_NON_MIGRES_AZEC calculated")
+            self.logger.info("Table de migration appliquée : Indicateur NBPTF_NON_MIGRES_AZEC calculé")
         else:
+            # Avant la migration, tout est considéré comme non migré (actif système actuel)
             df = df.withColumn('nbptf_non_migres_azec', lit(1))
         
         return df
 
     def _update_dates_and_states(self, df, dates, annee, mois):
         """
-        SAS-faithful reproduction of updates L113–137,
-        but refactored using a clean Python dictionary-driven pattern
-        (NOT config-driven, because SAS order must be preserved).
+        Corrige la qualité des données de dates et d'états de police.
         
-        Sequence implemented:
-        1) datexpir = datfin when datfin > datexpir and etatpol in ('X','R')
-        2) Anticipated flags for AFN/RES relative to FINMOIS
-        3) Tacit renewals not invoiced for > 1 year → mark as terminated at DATTERME
-        4) Temporaries → mark as terminated at FINPOL
+        LOGIQUE APPLIQUÉE :
+        ------------------
+        1. Correction DATEXPIR si incohérente avec DATFIN pour polices résiliées.
+        2. Détection des AFN/RES anticipés (futurs par rapport à fin de mois).
+        3. Gestion des Tacites Reconductions de > 1 an non facturées (Forçage RÉSILIATION).
+        4. Gestion des polices Temporaires expirées (Forçage RÉSILIATION).
+        
+        Cette méthode centralise la logique de nettoyage temporel complexe.
         """
         from pyspark.sql.functions import col, lit, when, to_date
         from datetime import datetime
 
         def apply_overwrites(df_, condition, updates: dict):
+            """Applique des mises à jour conditionnelles sur plusieurs colonnes."""
             for cname, expr in updates.items():
                 df_ = df_.withColumn(cname, when(condition, expr).otherwise(col(cname)))
             return df_
 
-        # (1) DATEEXPIR correction
+        # (1) Correction DATEEXPIR
+        # Si DATFIN > DATEXPIR pour une police résiliée/sans effet, on aligne DATEEXPIR
         cond_datexpir = (
             col("datfin").isNotNull()
             & col("datexpir").isNotNull()
@@ -407,12 +480,13 @@ class AZECProcessor(BaseProcessor):
         )
         df = apply_overwrites(df, cond_datexpir, {"datexpir": col("datfin")})
 
-        # (2) AFN/RES anticipés
+        # (2) Drapeaux Anticipés (Mouvements futurs)
         finmois = to_date(lit(dates["finmois"]))
         df = apply_overwrites(df, col("effetpol") > finmois, {"nbafn_anticipe": lit(1)})
         df = apply_overwrites(df, col("datfin") > finmois, {"nbres_anticipe": lit(1)})
 
-        # (3) Tacite reconduction > 1 an
+        # (3) Tacite reconduction > 1 an (Nettoyage vieilles polices)
+        # Si une police annuelle a dépassé son terme d'un an sans facturation, on la résilie
         python_boundary = datetime(annee - 1, mois, 1).strftime("%Y-%m-%d")
         boundary = to_date(lit(python_boundary))
 
@@ -429,7 +503,8 @@ class AZECProcessor(BaseProcessor):
             "datresil": col("datterme"),
         })
 
-        # (4) Temporaires
+        # (4) Polices Temporaires (Nettoyage)
+        # Si une temporaire a une date de fin prévue (FINPOL) mais pas de DATFIN réelle, on la clôture
         cond_temp = col("finpol").isNotNull() & col("datfin").isNull()
         df = apply_overwrites(df, cond_temp, {
             "etatpol": lit("R"),
@@ -447,36 +522,41 @@ class AZECProcessor(BaseProcessor):
         month: int
     ) -> DataFrame:
         """
-        Compute AZEC movement indicators (NBPTF, NBAFN, NBRES) exactly as SAS (L144–182).
-
-        Implementation notes:
-        - Delegates the core SAS logic to:
-            utils.transformations.operations.business_logic.calculate_azec_movements
-            which handles:
-            * Product list vs. out-of-list date windows (effetpol/datafn, datfin/datresil)
-            * ETATPOL='R' precondition for AFN/RES
-            * NBPTF_NON_MIGRES_AZEC=1 gating
-            * Exclusions for specific product codes (e.g., 'CNR','DO0','TRC','CTR')
-            * Current-month windows using dtfinmn and dtfinmn1
-        - Adds anticipated flags using the month-end boundary (FINMOIS).
-        - Ensures 0/1 integer outputs for flags to match SAS expectations.
-        - Creates missing critical columns as NULL defensively (prevents runtime errors in tests).
+        Calcule les indicateurs de mouvement AZEC (NBPTF, NBAFN, NBRES).
+        
+        Utilise la logique métier centralisée dans `utils.transformations`.
+        Gère également :
+        - La conversion des drapeaux en entiers (0/1)
+        - La création défensive des colonnes nécessaires
+        
+        PARAMÈTRES :
+        -----------
+        df : DataFrame
+            Données en cours
+        dates : dict
+            Dictionnaire des dates clés (finmois, etc.)
+            
+        RETOUR :
+        -------
+        DataFrame
+            Avec colonnes NBPTF, NBAFN, NBRES calculées.
         """
         from pyspark.sql.functions import col, lit
         from utils.transformations.operations.business_logic import calculate_azec_movements
 
-        # Ensure critical columns exist
+        # Sécurité : Création des colonnes si absentes
         for c in ["etatpol", "produit", "effetpol", "datafn", "datfin", "datresil"]:
             if c not in df.columns:
                 df = df.withColumn(c, lit(None))
 
-        # Default migration flag if missing (only happens in isolated tests)
+        # Drapeau de migration par défaut
         if "nbptf_non_migres_azec" not in df.columns:
             df = df.withColumn("nbptf_non_migres_azec", lit(1))
-        # SAS AFN/RES/PTF logic
+            
+        # Appel de la logique métier centrale
         df = calculate_azec_movements(df, dates, year, month)
 
-        # Cast flags to int as SAS does
+        # Transtypage explicite en entier (Standardisation)
         for flag in ["nbptf", "nbafn", "nbres", "nbafn_anticipe", "nbres_anticipe"]:
             if flag in df.columns:
                 df = df.withColumn(flag, col(flag).cast("int"))
@@ -487,77 +567,55 @@ class AZECProcessor(BaseProcessor):
 
     def _join_capitals(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Join capital data from CAPITXCU.
-
-        CAPITXCU is REQUIRED - capitals are critical for AZEC analysis.
-        Processing will fail if table is missing (matching SAS behavior).
-
-        Note: Numeric precision tolerance of 0.01€ is acceptable when comparing
-        PySpark results with SAS reference outputs due to floating-point arithmetic.
-
-        Args:
-            df: AZEC DataFrame
-            vision: Vision in YYYYMM format
-
-        Returns:
-            DataFrame with SMP/LCI capitals
-
-        Raises:
-            RuntimeError: If required CAPITXCU table is unavailable
+        Jointure avec les données de capitaux (CAPITXCU).
+        
+        CRITIQUE :
+        ---------
+        Les capitaux SMP/LCI sont essentiels pour l'analyse AZEC.
+        Le traitement échouera si la table ou le mapping est manquant.
+        
+        Gère la précision flottante et l'agrégation par police/produit.
         """
         from pyspark.sql.functions import col, lit, coalesce, sum as spark_sum, when
         reader = BronzeReader(self.spark, self.config)
 
-        # 0) Fail-fast mapping vide
+        # 0) Vérification de la configuration
         if not AZEC_CAPITAL_MAPPING:
             raise RuntimeError(
-                "AZEC_CAPITAL_MAPPING est vide. Vérifie config/transformations/azec_transformations.json "
-                "→ 'capital_mapping.mappings'."
+                "AZEC_CAPITAL_MAPPING est vide. Vérifiez la configuration des transformations AZEC."
             )
 
-        # 1) Lecture CAPITXCU
+        # 1) Lecture de la table des capitaux CAPITXCU
         try:
             df_cap = reader.read_file_group('capitxcu_azec', vision)
         except FileNotFoundError as e:
-            self.logger.error("CAPITXCU is required for AZEC processing")
-            raise RuntimeError("Missing required capital data: CAPITXCU") from e
+            self.logger.error("CAPITXCU requis pour le traitement AZEC")
+            raise RuntimeError("Données de capitaux manquantes : CAPITXCU") from e
 
         if df_cap is None or not df_cap.columns:
-            raise RuntimeError("CAPITXCU est vide ou introuvable (aucune colonne). Vérifie reading_config.json (capitxcu_azec).")
+            raise RuntimeError("CAPITXCU est vide ou introuvable.")
 
-        # 2) Colonnes clés attendues
+        # 2) Vérification des colonnes clés
         required_key_cols = {"police", "produit", "smp_sre", "brch_rea"}
         missing_keys = [c for c in required_key_cols if c not in df_cap.columns]
         if missing_keys:
-            self.logger.error("[CAPITXCU] Colonnes clés manquantes: %s", missing_keys)
-            self.logger.error("[CAPITXCU] Colonnes disponibles: %s", df_cap.columns)
-            try:
-                self.logger.error("[CAPITXCU] Sample(5): %s", df_cap.select(
-                    *[c for c in required_key_cols if c in df_cap.columns]
-                ).limit(5).toPandas().to_string(index=False))
-            except Exception:
-                pass
             raise RuntimeError(
-                f"CAPITXCU ne contient pas les colonnes clés requises: {missing_keys}. "
-                f"Vérifie le schéma de capitxcu_azec dans reading_config.json et le fichier source."
+                f"CAPITXCU ne contient pas les colonnes clés requises: {missing_keys}"
             )
 
-        # 3) Vérifier au moins une source mappée
+        # 3) Vérification de la présence des sources mappées
         mapped_sources = list({m["source"] for m in AZEC_CAPITAL_MAPPING})
         existing_sources = [s for s in mapped_sources if s in df_cap.columns]
         if not existing_sources:
-            self.logger.error("[CAPITXCU] Aucune colonne source mappée trouvée. Attendues (extrait): %s", mapped_sources)
-            self.logger.error("[CAPITXCU] Colonnes disponibles: %s", df_cap.columns)
             raise RuntimeError(
-                "Aucune colonne source de la mapping n'existe dans CAPITXCU (ex: capx_100, capx_cua). "
-                "Vérifie le schéma CAPITXCU."
+                "Aucune colonne source du mapping n'existe dans CAPITXCU. Vérifiez le schéma."
             )
 
-        # 4) Réduction du plan
+        # 4) Optimisation : Sélection uniquement des colonnes nécessaires
         needed_cols = set(required_key_cols) | set(existing_sources)
         df_cap = df_cap.select(*[c for c in needed_cols if c in df_cap.columns])
 
-        # 5) Créer les colonnes cibles (si source existe)
+        # 5) Création des colonnes cibles selon le mapping (Lignes -> Colonnes)
         created_targets = []
         for m in AZEC_CAPITAL_MAPPING:
             src = m["source"]
@@ -571,25 +629,18 @@ class AZECProcessor(BaseProcessor):
                     ).otherwise(lit(0))
                 )
                 created_targets.append(tgt)
-            else:
-                self.logger.debug(f"[CAPITXCU] Source absente, target ignorée: {tgt} (source={src})")
-
+        
         if not created_targets:
-            self.logger.error("[CAPITXCU] Aucune target créée. Sources existantes: %s", existing_sources)
-            self.logger.error("[CAPITXCU] Mapping: %s", AZEC_CAPITAL_MAPPING)
-            self.logger.error("[CAPITXCU] Colonnes: %s", df_cap.columns)
-            raise RuntimeError(
-                "Impossible de créer des colonnes cibles (targets) depuis CAPITXCU. "
-                "Vérifie que les sources (capx_100, capx_cua) et smp_sre/brch_rea correspondent."
-            )
+            raise RuntimeError("Impossible de créer des colonnes cibles depuis CAPITXCU.")
 
-        # 7) Agrégats par (police, produit)
+        # 7) Agrégation par (police, produit) : Somme des montants
         df_cap_agg = df_cap.groupBy("police", "produit").agg(
             *[spark_sum(c).alias(c) for c in created_targets]
         )
 
-        # 8) Totaux globaux
+        # 8) Calcul des Totaux (100% et Part Compagnie)
         def safe_add(df_, a, b, out):
+            """Addition sécurisée avec gestion de l'existence des colonnes."""
             a_col = col(a) if a in df_.columns else lit(0)
             b_col = col(b) if b in df_.columns else lit(0)
             return df_.withColumn(out, a_col + b_col)
@@ -599,7 +650,7 @@ class AZECProcessor(BaseProcessor):
         df_cap_agg = safe_add(df_cap_agg, "smp_pe_100", "smp_dd_100", "smp_100")
         df_cap_agg = safe_add(df_cap_agg, "smp_pe_cie", "smp_dd_cie", "smp_cie")
 
-        # 9) Join (police, produit) via helper — évite toute duplication
+        # 9) Jointure sécurisée ("Coalesce from right") pour éviter doublons et NULLs
         df = self.coalesce_from_right(
             df,
             df_cap_agg,
@@ -607,45 +658,41 @@ class AZECProcessor(BaseProcessor):
             cols=["smp_100", "smp_cie", "lci_100", "lci_cie"]
         )
 
-        self.logger.info("✓ Capital data joined successfully (fail-fast mode)")
+        self.logger.info("✓ Données de capitaux jointes avec succès")
         return df
 
     def _adjust_nbres(self, df: DataFrame) -> DataFrame:
         """
-        Apply AZEC-specific NBRES and NBAFN adjustments (SAS L448-466).
+        Applique les redressements métier finaux sur NBRES et NBAFN.
         
-        SAS L452-456: Sets NBPTF=0 and NBRES=0 for excluded products (DO0/TRC/CTR/CNR)
-        SAS L459: Exclude replacements from RES (RMPLCANT not empty AND MOTIFRES='RP')
-        SAS L462: Exclude specific termination reasons from RES (MOTIFRES in 'SE','SA')
-        SAS L465: Exclude CSSSEG='5' from AFN
-        
-        Args:
-            df: AZEC DataFrame
-        
-        Returns:
-            DataFrame with adjusted NBRES, NBAFN, and NBPTF
+        RÈGLES DE REDRESSEMENT :
+        -----------------------
+        1. Produits exclus (DO0, TRC...) : NBPTF et NBRES forcés à 0.
+        2. Remplacements : Si motif 'RP' et police remplaçante renseignée -> Ce n'est pas une vraie résiliation (NBRES=0).
+        3. Motifs spécifiques : 'SE' (Sans Effet) et 'SA' (Sans Avenant) ne sont pas des résiliations (NBRES=0).
+        4. Segment '5' (Prestations Accessoires) : Exclu des Affaires Nouvelles (NBAFN=0).
         """
         excluded_products = col("produit").isin(['DO0', 'TRC', 'CTR', 'CNR'])
 
-        # Adjust NBRES (SAS L452-456, L459, L462)
+        # Redressement NBRES
         nbres_adjusted = (
-            when(excluded_products, lit(0))  # SAS L452-456: Excluded products
+            when(excluded_products, lit(0))
             .when(
                 (col("nbres") == 1) &
                 (col("rmplcant").isNotNull()) &
                 (col("rmplcant") != "") &
                 col("motifres").isin(['RP']),
-                lit(0)  # SAS L459: Replacements
+                lit(0)  # C'est un Remplacement, pas une chute sèche
             )
             .when(
                 (col("nbres") == 1) &
                 col("motifres").isin(['SE', 'SA']),
-                lit(0)  # SAS L462: Specific termination reasons
+                lit(0)  # Sans Effet / Sans Avenant
             )
             .otherwise(col("nbres"))
         )
 
-        # Adjust NBAFN (SAS L465)
+        # Redressement NBAFN (Exclusion segment 5)
         if "cssseg" in df.columns:
             nbafn_adjusted = when(
                 (col("nbafn") == 1) & (col("cssseg") == "5"),
@@ -654,8 +701,7 @@ class AZECProcessor(BaseProcessor):
         else:
             nbafn_adjusted = col("nbafn")
 
-        # Adjust NBPTF (SAS L452-456 ONLY - no recalculation)
-        # SAS simply sets NBPTF=0 for excluded products, nothing else
+        # Redressement NBPTF (Uniquement sur produits exclus)
         nbptf_adjusted = when(excluded_products, lit(0)).otherwise(col("nbptf"))
 
         df = df.withColumn("nbres", nbres_adjusted)
@@ -666,13 +712,7 @@ class AZECProcessor(BaseProcessor):
 
     def _enrich_region(self, df: DataFrame) -> DataFrame:
         """
-        Enrich AZEC data with REGION and P_Num from PTGST_STATIC.
-        
-        Args:
-            df: AZEC DataFrame with poingest column
-        
-        Returns:
-            DataFrame enriched with region and p_num columns
+        Enrichit les données avec la RÉGION via PTGST_STATIC.
         """
         reader = BronzeReader(self.spark, self.config)
         
@@ -680,37 +720,35 @@ class AZECProcessor(BaseProcessor):
             df_ptgst = reader.read_file_group('ptgst_static', vision='ref')
             
             if df_ptgst is not None:
-                # Select needed columns and prepare for join
-                # Note: BronzeReader lowercases all columns
+                # Sélection et déduplication
                 df_ptgst_select = df_ptgst.select(
                     col("ptgst"),
                     col("region"),
                     col("p_num") if "p_num" in df_ptgst.columns else lit(None).cast(StringType()).alias("p_num")
                 ).dropDuplicates(["ptgst"])
                 
-                # Left join on poingest = ptgst
-                # Note: poingest in POLIC_CU maps to PTGST in reference table
+                # Jointure gauche sur point de gestion
                 df = df.alias("a").join(
                     df_ptgst_select.alias("p"),
                     col("a.poingest") == col("p.ptgst"),
                     how="left"
                 ).select(
                     "a.*",
-                    # If no match found, set REGION = 'Autres' (SAS L70)
+                    # Valeur par défaut 'Autres' si région inconnue
                     when(col("p.region").isNull(), lit("Autres"))
                     .otherwise(col("p.region")).alias("region"),
                     col("p.p_num")
                 )
                 
-                self.logger.info("PTGST_STATIC joined successfully - REGION and P_Num added")
+                self.logger.info("Enrichissement Région effectué")
             else:
-                self.logger.warning("PTGST_STATIC not available - setting REGION to 'Autres'")
+                self.logger.warning("PTGST_STATIC non disponible - Région définie à 'Autres'")
                 from utils.processor_helpers import add_null_columns
                 df = df.withColumn('region', lit('Autres'))
                 df = add_null_columns(df, {'p_num': StringType})
 
         except Exception as e:
-            self.logger.warning(f"PTGST_STATIC enrichment failed: {e} - setting REGION to 'Autres'")
+            self.logger.warning(f"Echec enrichissement PTGST: {e} - Région définie à 'Autres'")
             from utils.processor_helpers import add_null_columns
             df = df.withColumn('region', lit('Autres'))
             df = add_null_columns(df, {'p_num': StringType})
@@ -719,72 +757,47 @@ class AZECProcessor(BaseProcessor):
 
     def _enrich_naf_codes(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Enrich AZEC data with NAF codes using FULL OUTER JOIN strategy.
+        Enrichit les données avec les codes NAF et TRE en fusionnant 4 tables sources.
         
-        Reproduces SAS L272-302 exactly.
-        SAS uses FULL JOIN of 4 tables (INCENDCU, MPACU, RCENTCU, RISTECCU)
-        to ensure all policies from all tables are captured.
+        STRATÉGIE DE FUSION :
+        --------------------
+        On utilise un FULL OUTER JOIN sur 4 tables (INCENDCU, MPACU, RCENTCU, RISTECCU)
+        pour être sûr de capturer toutes les polices, même si elles ne sont présentes que
+        dans l'une des tables satellites.
         
-        Args:
-            df: AZEC DataFrame
-            vision: Vision in YYYYMM format
-        
-        Returns:
-            DataFrame enriched with NAF codes (cdnaf, cdtre)
+        C'est une opération coûteuse mais nécessaire pour l'exhaustivité.
         """
         reader = BronzeReader(self.spark, self.config)
         
-        # ================================================================
-        # STEP 1: FULL OUTER JOIN of 4 tables for NAF codes (SAS L272-279)
-        # ================================================================
-        # SAS: COALESCEC(t1.POLICE, t2.POLICE, t3.POLICE, t4.POLICE)
-        #      COALESCEC(t1.COD_NAF, t2.cod_naf, t3.COD_NAF, t4.COD_NAF)
-        
+        # --- ÉTAPE 1 : Chargement et préparation des 4 tables ---
         try:
-            # Read all 4 tables
             df_incend = reader.read_file_group('incendcu_azec', vision)
             df_mpacu = reader.read_file_group('mpacu_azec', vision)
             df_rcentcu = reader.read_file_group('rcentcu_azec', vision)
             df_risteccu = reader.read_file_group('risteccu_azec', vision)
             
-            # Prepare each table: select (police, cod_naf) and deduplicate
             tables = []
             
             if df_incend is not None:
-                tables.append(df_incend.select(
-                    col('police'), 
-                    col('cod_naf').alias('naf_incend')
-                ).dropDuplicates(['police']))
-            
+                tables.append(df_incend.select(col('police'), col('cod_naf').alias('naf_incend')).dropDuplicates(['police']))
             if df_mpacu is not None:
-                tables.append(df_mpacu.select(
-                    col('police'),
-                    col('cod_naf').alias('naf_mpacu')
-                ).dropDuplicates(['police']))
-            
+                tables.append(df_mpacu.select(col('police'), col('cod_naf').alias('naf_mpacu')).dropDuplicates(['police']))
             if df_rcentcu is not None:
-                tables.append(df_rcentcu.select(
-                    col('police'),
-                    col('cod_naf').alias('naf_rcentcu')
-                ).dropDuplicates(['police']))
-            
+                tables.append(df_rcentcu.select(col('police'), col('cod_naf').alias('naf_rcentcu')).dropDuplicates(['police']))
             if df_risteccu is not None:
-                tables.append(df_risteccu.select(
-                    col('police'),
-                    col('cod_naf').alias('naf_risteccu')
-                ).dropDuplicates(['police']))
+                tables.append(df_risteccu.select(col('police'), col('cod_naf').alias('naf_risteccu')).dropDuplicates(['police']))
             
             if not tables:
-                self.logger.warning("No NAF tables available - skipping NAF enrichment")
+                self.logger.warning("Aucune table NAF disponible - Enrichissement ignoré")
                 from utils.processor_helpers import add_null_columns
                 return add_null_columns(df, {'cdnaf': StringType, 'cdtre': StringType})
             
-            # FULL OUTER JOIN all tables (SAS L277-279)
+            # --- ÉTAPE 2 : FULL OUTER JOIN Cascadé ---
             df_naf_all = tables[0]
             for df_table in tables[1:]:
                 df_naf_all = df_naf_all.join(df_table, on='police', how='full_outer')
             
-            # COALESCEC: Take first non-null NAF code (SAS L275)
+            # --- ÉTAPE 3 : COALESCE (Priorité indifférente, on prend le premier non-null) ---
             df_naf_all = df_naf_all.withColumn(
                 'code_naf',
                 coalesce(
@@ -793,54 +806,33 @@ class AZECProcessor(BaseProcessor):
                     col('naf_rcentcu') if 'naf_rcentcu' in df_naf_all.columns else lit(None),
                     col('naf_risteccu') if 'naf_risteccu' in df_naf_all.columns else lit(None)
                 )
-            )
+            ).select('police', 'code_naf')
             
-            # Keep only (police, code_naf)
-            df_naf_all = df_naf_all.select('police', 'code_naf')
-            
-            # GROUP BY + MIN to deduplicate (SAS L281-284)
+            # Déduplication finale par sécurité (devrait être inutile grâce au dropDuplicates plus haut)
             from pyspark.sql.functions import min as spark_min
-            df_code_naf = df_naf_all.groupBy('police').agg(
-                spark_min('code_naf').alias('code_naf')
-            )
-            
-            self.logger.info(f"NAF codes consolidated from {len(tables)} tables using FULL OUTER JOIN")
+            df_code_naf = df_naf_all.groupBy('police').agg(spark_min('code_naf').alias('code_naf'))
             
         except Exception as e:
-            self.logger.warning(f"NAF FULL JOIN failed: {e} - using empty NAF")
+            self.logger.warning(f"Echec de la fusion NAF: {e}")
             df_code_naf = self.spark.createDataFrame([], schema="police string, code_naf string")
         
-        # ================================================================
-        # STEP 2: COD_TRE from INCENDCU only (SAS L286-289)
-        # ================================================================
+        # --- ÉTAPE 4 : Extraction COD_TRE (Uniquement depuis INCENDCU) ---
         try:
             if df_incend is not None:
                 df_code_tre = df_incend.select('police', 'cod_tre').dropDuplicates(['police'])
-                
-                # GROUP BY + MIN (SAS L287-289)
-                from pyspark.sql.functions import min as spark_min
-                df_code_tre = df_code_tre.groupBy('police').agg(
-                    spark_min('cod_tre').alias('code_tre')
-                )
-                
-                self.logger.info("COD_TRE extracted from INCENDCU")
+                df_code_tre = df_code_tre.groupBy('police').agg(spark_min('cod_tre').alias('code_tre'))
             else:
                 df_code_tre = self.spark.createDataFrame([], schema="police string, code_tre string")
         except Exception as e:
-            self.logger.warning(f"COD_TRE extraction failed: {e}")
+            self.logger.warning(f"Echec extraction COD_TRE: {e}")
             df_code_tre = self.spark.createDataFrame([], schema="police string, code_tre string")
         
-        # ================================================================
-        # STEP 3: FULL OUTER JOIN CODE_TRE + CODE_NAF (SAS L291-297)
-        # ================================================================
+        # --- ÉTAPE 5 : Fusion Finale et Jointure au Flux Principal ---
         df_naf_final = df_code_tre.join(df_code_naf, on='police', how='full_outer')
         
-        # ================================================================
-        # STEP 4: LEFT JOIN to main DataFrame (SAS L300-302)
-        # ================================================================
         df = df.join(df_naf_final, on='police', how='left')
         
-        # Rename to match expected columns
+        # Renommage final
         if 'code_naf' in df.columns:
             df = df.withColumn('cdnaf', col('code_naf')).drop('code_naf')
         else:
@@ -851,39 +843,31 @@ class AZECProcessor(BaseProcessor):
         else:
             df = df.withColumn('cdtre', lit(None).cast(StringType()))
         
-        self.logger.info("✓ NAF codes enriched with FULL OUTER JOIN (SAS-compliant)")
+        self.logger.info("✓ Codes NAF/TRE enrichis")
         return df
-
-
 
     def _calculate_premiums(self, df: DataFrame) -> DataFrame:
         """
-        Calculate premiums and related fields AFTER segmentation (SAS L217-248).
-        
-        This method must be called after _enrich_segmentation() to ensure CSSSEG is available.
-        
-        Args:
-            df: AZEC DataFrame with segmentation (CSSSEG column)
-        
-        Returns:
-            DataFrame with premiums and flags calculated
+        Calcule les montants de primes et les indicateurs associés.
         """
-        # SAS L62: partcie = partbrut / 100
+        # Part Compagnie = Part Brut / 100
         df = df.withColumn('partcie', col('partbrut') / 100.0)
         
-        # SAS L217: primecua = (prime * partbrut / 100 + cpcua)
-        # SAS L227: primeto = (prime * partbrut / 100 + cpcua)  [Same formula]
+        # Prime Totale et Prime CUA (même formule)
+        # Prime * Part + CPCUA
         primeto_expr = (col('prime') * col('partbrut') / 100.0) + col('cpcua')
         df = df.withColumn('primeto', primeto_expr)
-        df = df.withColumn('primecua', primeto_expr)  # Alias
+        df = df.withColumn('primecua', primeto_expr)
         
-        # SAS L229: cotis_100 = CASE WHEN partbrut=0 THEN prime ELSE (prime + (cpcua/partcie)) END
+        # Cotisation à 100%
+        # Si part brute = 0 -> Prime brute
+        # Sinon -> Prime + (CPCUA / PartCie)
         df = df.withColumn('cotis_100',
             when(col('partbrut') == 0, col('prime'))
             .otherwise(col('prime') + (col('cpcua') / col('partcie')))
         )
         
-        # SAS L231-238: COASS logic
+        # Libellé Coassurance
         df = df.withColumn('coass',
             when(col('codecoas') == '0', lit('SANS COASSURANCE'))
             .when(col('codecoas') == 'A', lit('APERITION'))
@@ -892,7 +876,8 @@ class AZECProcessor(BaseProcessor):
             .otherwise(lit(None))
         )
         
-        # SAS L240-245: CDNATP logic
+        # Type Nature Police (CDNATP)
+        # T = Temporaire, R = Révisable/Abonnement, C = Chantier Unique
         df = df.withColumn('cdnatp',
             when((col('duree') == '00') & col('produit').isin(['CNR', 'CTR', 'DO0']), lit('C'))
             .when((col('duree') == '00') & (col('produit') == 'TRC'), lit('T'))
@@ -900,17 +885,15 @@ class AZECProcessor(BaseProcessor):
             .otherwise(lit(''))
         )
         
-        # SAS L247: TOP_COASS
+        # Indicateurs binaires
         df = df.withColumn('top_coass',
             when(col('codecoas') == '0', lit(0)).otherwise(lit(1))
         )
         
-        # SAS L76: TOP_LTA
         df = df.withColumn('top_lta',
             when(~col('duree').isin(['00', '01', '', ' ']), lit(1)).otherwise(lit(0))
         )
         
-        # SAS L77: TOP_REVISABLE
         if 'indregul' in df.columns:
             df = df.withColumn('top_revisable',
                 when(col('indregul') == 'O', lit(1)).otherwise(lit(0))
@@ -918,15 +901,13 @@ class AZECProcessor(BaseProcessor):
         else:
             df = df.withColumn('top_revisable', lit(0))
         
-        # Initialize empty critere_revision and cdgrev
+        # Initialisation champs texte vides
         df = df.withColumn('critere_revision', lit(''))
         df = df.withColumn('cdgrev', lit(''))
-        
-        # SAS L248: TYPE_AFFAIRE = TYPCONTR
         df = df.withColumn('type_affaire', col('typcontr'))
         
-        # SAS L223-225: PRIMES_AFN, PRIMES_RES, PRIMES_PTF
-        # CSSSEG filtering for PRIMES_AFN and PRIMES_RES
+        # Primes ventilées par mouvement (AFN / RES / PTF)
+        # Exclusion du segment 5 (Accessoires) pour AFN/RES
         cssseg_filter = (col("cssseg") != "5") if "cssseg" in df.columns else lit(True)
 
         df = df.withColumn('primes_afn',
@@ -939,30 +920,24 @@ class AZECProcessor(BaseProcessor):
             when(col("nbptf") == 1, col("primecua")).otherwise(lit(0))
         )
         
-        self.logger.info("✓ Premiums and flags calculated (primeto, cotis_100, coass, cdnatp, top_*, primes_*)")
+        self.logger.info("✓ Primes et indicateurs calculés")
         return df
 
     def _enrich_formulas(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Enrich with product formulas from RCENTCU and RISTECCU (SAS L309-332).
-        
-        Args:
-            df: AZEC DataFrame
-            vision: Vision in YYYYMM format
-        
-        Returns:
-            DataFrame enriched with formulas (formule, formule2, formule3, formule4)
+        Enrichit avec les formules produits depuis RCENTCU et RISTECCU.
+        Tentative sur RCENTCU puis fallback sur RISTECCU.
         """
         reader = BronzeReader(self.spark, self.config)
         
-        # Initialize formula columns if not present
+        # Initialisation
         from utils.processor_helpers import add_null_columns
         existing_cols = set(df.columns)
         for col_name in ['formule', 'formule2', 'formule3', 'formule4']:
             if col_name not in existing_cols:
                 df = df.withColumn(col_name, lit(None).cast(StringType()))
         
-        # RCENTCU formulas (SAS L310 line 1)
+        # 1. RCENTCU
         try:
             df_rcentcu = reader.read_file_group('rcentcu_azec', vision)
             if df_rcentcu is not None:
@@ -976,18 +951,16 @@ class AZECProcessor(BaseProcessor):
                 
                 df = df.join(df_rcentcu_select, on='police', how='left')
                 
-                # Coalesce with RC fallback
+                # Coalesce avec priorité RCENTCU
                 df = df.withColumn('formule', coalesce(col('formule'), col('formule_rc')))
                 df = df.withColumn('formule2', coalesce(col('formule2'), col('formule2_rc')))
                 df = df.withColumn('formule3', coalesce(col('formule3'), col('formule3_rc')))
                 df = df.withColumn('formule4', coalesce(col('formule4'), col('formule4_rc')))
                 df = df.drop('formule_rc', 'formule2_rc', 'formule3_rc', 'formule4_rc')
-                
-                self.logger.info("RCENTCU formulas joined")
-        except Exception as e:
-            self.logger.debug(f"RCENTCU not available: {e}")
+        except Exception:
+            pass
         
-        # RISTECCU formulas (SAS L311 line 2 - UNION)
+        # 2. RISTECCU (Fallback)
         try:
             df_risteccu = reader.read_file_group('risteccu_azec', vision)
             if df_risteccu is not None:
@@ -1001,103 +974,82 @@ class AZECProcessor(BaseProcessor):
                 
                 df = df.join(df_risteccu_select, on='police', how='left')
                 
-                # Coalesce with RISTECCU fallback
+                # Coalesce avec priorité existant (RCENTCU) puis RISTECCU
                 df = df.withColumn('formule', coalesce(col('formule'), col('formule_ris')))
                 df = df.withColumn('formule2', coalesce(col('formule2'), col('formule2_ris')))
                 df = df.withColumn('formule3', coalesce(col('formule3'), col('formule3_ris')))
                 df = df.withColumn('formule4', coalesce(col('formule4'), col('formule4_ris')))
                 df = df.drop('formule_ris', 'formule2_ris', 'formule3_ris', 'formule4_ris')
-                
-                self.logger.info("RISTECCU formulas joined")
-        except Exception as e:
-            self.logger.debug(f"RISTECCU not available: {e}")
+        except Exception:
+            pass
         
-        self.logger.info("✓ Formulas enriched (formule × 4)")
         return df
 
     def _enrich_ca(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Enrich with CA turnover from MULPROCU (SAS L339-357).
-
-        Args:
-            df: AZEC DataFrame
-            vision: Vision in YYYYMM format
-
-        Returns:
-            DataFrame enriched with MTCA (turnover)
+        Enrichit avec le chiffre d'affaires (MTCA) agrégé depuis MULPROCU.
         """
         reader = BronzeReader(self.spark, self.config)
 
         try:
             df_mulprocu = reader.read_file_group('mulprocu_azec', vision)
             if df_mulprocu is not None:
-                # SAS L340: SELECT POLICE, SUM(CHIFFAFF) AS MTCA GROUP BY POLICE
                 from pyspark.sql.functions import sum as spark_sum
                 df_mulprocu_agg = df_mulprocu.groupBy('police').agg(
                     spark_sum('chiffaff').alias('mtca')
                 )
 
-                # ⬇️ Coalesce depuis la droite sans dupliquer la colonne 'mtca'
                 df = self.coalesce_from_right(
-                    df,                  # left: AZEC DF courant
-                    df_mulprocu_agg,     # right: CA agrégé par police
+                    df,
+                    df_mulprocu_agg,
                     keys=["police"],
                     cols=["mtca"]
                 )
-                self.logger.info("MULPROCU CA data joined")
-        except Exception as e:
-            self.logger.warning(f"MULPROCU not available: {e}")
+        except Exception:
             if 'mtca' not in df.columns:
                 df = df.withColumn('mtca', lit(None).cast(DoubleType()))
 
-        self.logger.info("✓ CA turnover enriched (mtca)")
         return df 
 
     def coalesce_from_right(self, df, right_df, keys, cols):
         """
-        Join df with right_df on `keys` and coalesce target `cols` from right to left,
-        without ever referencing the left side by alias (prevents ambiguous `l.key`).
-        - Right columns are temporarily renamed with a __r_ prefix,
-        then coalesced into left columns and dropped.
+        Utilitaire de jointure "Upsert" logique.
+        
+        Joint deux DataFrames et met à jour les colonnes de gauche avec les valeurs de droite
+        si elles existent (Coalesce right -> left).
+        Évite les duplications de colonnes et les ambiguïtés d'alias.
         """
         import pyspark.sql.functions as F
 
-        # 1) Renommer les colonnes cibles du RIGHT pour éviter tout écrasement de nom
+        # 1) Renommer les colonnes cibles du RIGHT (préfixe __r_)
         r = right_df
         for c in cols:
             if c in r.columns:
                 r = r.withColumnRenamed(c, f"__r_{c}")
 
-        # 2) Join sur les clés (using join). Les colonnes de clé restent au niveau racine.
+        # 2) Jointure Gauche
         out = df.join(r, on=keys, how="left")
 
-        # 3) Coalesce: priorité à la valeur right (__r_col) si présente, sinon left (col)
+        # 3) Coalesce : Valeur droite si existe, sinon gauche
         for c in cols:
             rc = f"__r_{c}"
-            out = out.withColumn(c, F.coalesce(F.col(rc), F.col(c)))
-
-        # 4) Nettoyage: drop des colonnes temporaires du RIGHT
-        out = out.drop(*[f"__r_{c}" for c in cols])
+            # Si __r_c existe dans le résultat de la jointure
+            if rc in out.columns:
+                out = out.withColumn(c, F.coalesce(F.col(rc), F.col(c)))
+                out = out.drop(rc)
 
         return out
 
     def _enrich_pe_rd_vi(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Enrich with PE/RD/VI capitals from INCENDCU (SAS L364-371).
-
-        Args:
-            df: AZEC DataFrame
-            vision: Vision in YYYYMM format
-
-        Returns:
-            DataFrame enriched with PERTE_EXP, RISQUE_DIRECT, VALUE_INSURED
+        Enrichit avec les capitaux Perte Exploitation et Risque Direct (INCENDCU).
+        Calcul également la Valeur Assurée Totale (Value Insured).
         """
         reader = BronzeReader(self.spark, self.config)
 
         try:
             df_incendcu = reader.read_file_group('incendcu_azec', vision)
             if df_incendcu is not None:
-                # SAS L365-370: Aggregate by (POLICE, PRODUIT)
                 from pyspark.sql.functions import sum as spark_sum, col, lit, coalesce
                 df_pe_rd = (df_incendcu
                     .groupBy('police', 'produit')
@@ -1111,17 +1063,13 @@ class AZECProcessor(BaseProcessor):
                     )
                 )
 
-                # ⬇️ Coalesce depuis la droite sur (police, produit)
                 df = self.coalesce_from_right(
                     df,
                     df_pe_rd,
                     keys=["police", "produit"],
                     cols=["perte_exp", "risque_direct", "value_insured"]
                 )
-
-                self.logger.info("PE/RD/VI capitals joined")
-        except Exception as e:
-            self.logger.warning(f"INCENDCU not available: {e}")
+        except Exception:
             from utils.processor_helpers import add_null_columns
             df = add_null_columns(df, {
                 'perte_exp': DoubleType,
@@ -1129,36 +1077,22 @@ class AZECProcessor(BaseProcessor):
                 'value_insured': DoubleType
             })
 
-        self.logger.info("✓ PE/RD/VI capitals enriched")
         return df
 
     def _enrich_final_constrcu_data(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        SAS L484-486: Final enrichment with triple LEFT JOIN:
-          1. CONSTRCU_AZEC → segment2, type_produit_2
-          2. CONSTRCU.CONSTRCU raw → site data (datouvch, ldestloc, etc.)
-          3. PT_GEST → upper_mid
+        Enrichissement final complexe (Triple Jointure).
         
-        Uses cached CONSTRCU reference from step 08 to avoid recomputation.
-        
-        Args:
-            df: Main AZEC DataFrame
-            vision: Vision in YYYYMM format
-            
-        Returns:
-            DataFrame with segment2, type_produit_2, site data, and upper_mid
+        1. CONSTRCU_AZEC : Pour récupérer les segmentations fines (Segment 2, Type Produit 2).
+        2. CONSTRCU (Raw) : Pour les données de site (Date ouverture chantier, destination...).
+        3. PT_GEST : Pour le regroupement commercial UPPER_MID.
         """
         from pyspark.sql.functions import col
         from src.reader import BronzeReader
         
         reader = BronzeReader(self.spark, self.config)
         
-        # ============================================================
-        # 1. CONSTRCU_AZEC join (segment2/type_produit_2)
-        # ============================================================
-        # Build CONSTRCU_AZEC (SAS REF_segmentation_azec.sas L341-344)
-        # SAS creates CONSTRCU_AZEC with: KEEP POLICE CDPROD SEGMENT TYPE_PRODUIT
-        # We use load_constrcu_reference() to compute SEGMENT/TYPE_PRODUIT
+        # --- 1. CONSTRCU_AZEC (Segmentation fine) ---
         try:
             from utils.transformations.enrichment.segmentation_enrichment import load_constrcu_reference
             
@@ -1171,28 +1105,13 @@ class AZECProcessor(BaseProcessor):
                 lob_ref=lob_ref,
                 logger=self.logger
             )
-            
-            if df_constrcu_azec is not None:
-                self.logger.debug(f"[CONSTRCU_AZEC] Built reference: {df_constrcu_azec.count():,} rows")
-            else:
-                raise RuntimeError("load_constrcu_reference returned None")
-                
         except Exception as e:
-            self.logger.warning(f"[CONSTRCU_AZEC] Failed to build reference: {e}")
-            from utils.processor_helpers import add_null_columns
-            from pyspark.sql.types import StringType
-            df = add_null_columns(df, {
-                'segment2': StringType,
-                'type_produit_2': StringType
-            })
+            self.logger.warning(f"Calcul référentiel CONSTRCU_AZEC échoué: {e}")
             df_constrcu_azec = None
         
-        # If CONSTRCU_AZEC loaded, join on (police, produit)
+        # Préparation du DF de jointure (avec colonnes vides si échec)
         if df_constrcu_azec is not None:
-            # CSV contains 'produit' (renamed from SAS CDPROD), need to alias to cdprod for join
             available_cols = df_constrcu_azec.columns
-            
-            # Check if segment/type_produit exist (may be missing if file is raw CONSTRCU, not CONSTRCU_AZEC)
             if "segment" in available_cols and "type_produit" in available_cols:
                 df_constrcu_azec_small = df_constrcu_azec.select(
                     col("police"),
@@ -1201,8 +1120,6 @@ class AZECProcessor(BaseProcessor):
                     col("type_produit").alias("type_produit_2")
                 ).dropDuplicates(["police", "cdprod"])
             else:
-                self.logger.warning(f"[CONSTRCU_AZEC] Missing segment/type_produit columns. Available: {available_cols}")
-                # Create empty DataFrame if columns missing
                 from pyspark.sql.types import StructType, StructField, StringType
                 schema = StructType([
                     StructField("police", StringType(), True),
@@ -1212,7 +1129,6 @@ class AZECProcessor(BaseProcessor):
                 ])
                 df_constrcu_azec_small = self.spark.createDataFrame([], schema)
         else:
-            # Create empty DataFrame with correct schema if CONSTRCU_AZEC not available
             from pyspark.sql.types import StructType, StructField, StringType
             schema = StructType([
                 StructField("police", StringType(), True),
@@ -1221,12 +1137,8 @@ class AZECProcessor(BaseProcessor):
                 StructField("type_produit_2", StringType(), True)
             ])
             df_constrcu_azec_small = self.spark.createDataFrame([], schema)
-            self.logger.debug("[CONSTRCU_AZEC] Using empty DataFrame (reference unavailable)")
         
-        # ============================================================
-        # 2. CONSTRCU.CONSTRCU raw join (site data)
-        # ============================================================
-        # SAS L485: CONSTRCU.CONSTRCU (permanent library, static reference)
+        # --- 2. CONSTRCU Raw (Données Site) ---
         df_const = reader.read_file_group("constrcu", "ref")
         
         df_const = df_const.select(
@@ -1241,10 +1153,7 @@ class AZECProcessor(BaseProcessor):
             col("lqualite")
         ).dropDuplicates(["police", "produit"])
         
-        # ============================================================
-        # 3. PT_GEST join (UPPER_MID)
-        # ============================================================
-        # SAS L486: TABLE_PT_GEST (versioned table with Upper_Mid)
+        # --- 3. PT_GEST (UPPER_MID) ---
         df_ptgest = reader.read_file_group("table_pt_gest", vision)
         
         df_ptgest = df_ptgest.select(
@@ -1252,9 +1161,7 @@ class AZECProcessor(BaseProcessor):
             col("upper_mid")
         ).dropDuplicates(["_ptgst_key"])
         
-        # ============================================================
-        # 4. Triple LEFT JOIN (SAS L484-486)
-        # ============================================================
+        # --- 4. TRIPLE JOINTURE (Optimisée) ---
         df = (
             df.alias("a")
             .join(
@@ -1274,7 +1181,7 @@ class AZECProcessor(BaseProcessor):
             )
         )
         
-        # Select all 'a' columns + new enrichment columns
+        # Sélection finale
         df = df.select(
             "a.*",
             col("b.segment2"),
@@ -1289,27 +1196,14 @@ class AZECProcessor(BaseProcessor):
             col("d.upper_mid")
         )
         
-        # ============================================================
-        # 5. Cleanup: Drop LOB columns not in AZEC schema
-        # ============================================================
-        # SAS consolidation (L75): PRODUIT AS CDPROD (AZEC keeps 'produit')
-        # SAS AZEC SELECT (L55-79): Uses CMARCH, CSEG, CSSSEG but NOT other LOB fields
-        # Drop LOB enrichment columns added by enrich_segmentation_sas that are NOT in AZEC schema
+        # Nettoyage des colonnes temporaires ou inutiles
         lob_cols_to_drop = [
-            "cdprod",    # AZEC uses 'produit', not 'cdprod'
-            "cprod",     # Internal LOB code, not in AZEC
-            "lmarch",    # Label, not needed
-            "lmarch2",   # Derived label, not needed
-            "lseg",      # Segment label, not in AZEC (only cseg)
-            "lssseg",    # Sub-segment label, not in AZEC (only cssseg)  
-            "lprod",     # Product label, not in AZEC
-            "activite"   # Only used for type_produit mapping, not in final AZEC
+            "cdprod", "cprod", "lmarch", "lmarch2", "lseg", "lssseg", "lprod", "activite"
         ]
         cols_to_drop = [c for c in lob_cols_to_drop if c in df.columns]
         if cols_to_drop:
             df = df.drop(*cols_to_drop)
-            self.logger.debug(f"Dropped LOB columns not in AZEC schema: {cols_to_drop}")
         
-        self.logger.info("✓ Final CONSTRCU_AZEC + site data + UPPER_MID enrichment completed")
+        self.logger.info("✓ Enrichissement final terminé")
         
         return df

@@ -26,7 +26,7 @@
 ## AZ Processor File Groups
 
 ### Read in `read()` method:
-- `ipf_az` (vision) - Main IPF data
+- `ipf` (vision) - Main IPF data
 
 ### Read in `transform()` method:
 1. `segmprdt_prdpfa1` (ref) - Segmentation
@@ -78,7 +78,7 @@ FILE_GROUPS_TO_AUDIT = [
     "table_pt_gest",
     
     # AZ (5)
-    "ipf_az",
+    "ipf",
     "segmprdt_prdpfa1",
     "segmprdt_prdpfa3",
     "cproduit",
@@ -110,7 +110,7 @@ Based on schemas, these file groups likely have date columns:
 
 **High Priority** (many date columns):
 1. `polic_cu_azec` - ✅ **FIXED**
-2. `ipf_az` - DTCREPOL, DTEFFAN, DTTRAAN, DTRESILP, DTECHANN, etc. (14+ date cols)
+2. `ipf` - DTCREPOL, DTEFFAN, DTTRAAN, DTRESILP, DTECHANN, etc. (14+ date cols)
 3. `constrcu` - DATOUVCH, DATFINCH, DATRECEP
 4. `capitxcu_azec` - Unknown
 5. `incendcu_azec` - Unknown
@@ -136,7 +136,7 @@ Update `FILE_GROUPS_TO_AUDIT` in `scripts/date_format_audit.py` to:
 FILE_GROUPS_TO_AUDIT = [
     # High priority (many dates)
     "polic_cu_azec",       # AZEC - ✅ FIXED
-    "ipf_az",              # AZ
+    "ipf",              # AZ
     "constrcu",            # AZEC
     "capitxcu_azec",       # AZEC
     "incendcu_azec",       # AZEC

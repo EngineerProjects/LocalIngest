@@ -1,14 +1,12 @@
 {
-    "_comment": "Bronze layer file group configurations - Reorganized with Monthly first, then Reference",
-    "_note": "Columns must match exactly what exists in CSV files (case-sensitive)",
-    "_vision_template": "Use {vision} in file_patterns for monthly tables (e.g., 'ird_risk_q45_{vision}.csv' → 'ird_risk_q45_202509.csv')",
-    "_structure": "MONTHLY TABLES first → REFERENCE TABLES second",
+    "_comment": "Configuration des sources de données brutes - Définit quels fichiers lire et comment les interpréter",
+    "_note": "Les noms de colonnes doivent correspondre exactement à ceux présents dans les fichiers CSV (sensible à la casse)",
+    "_vision_template": "Pour les fichiers mensuels, utiliser {vision} dans le nom permet de cibler automatiquement le mois (ex: 'risque_q45_{vision}.csv' devient 'risque_q45_202512.csv')",
+    "_structure": "Organisation : Fichiers mensuels d'abord (dépendent de la période), puis fichiers de référence (stables)",
     "file_groups": {
-        "_comment_monthly_section": "═══════════════════════════════════════════════════════════════",
-        "_comment_monthly_start": "MONTHLY TABLES (Vision-Dependent - stored in bronze/YYYY/MM/)",
-        "_comment_monthly_divider": "═══════════════════════════════════════════════════════════════",
-        "ipf_az": {
-            "description": "IMS AZ portfolio files - IPF16 (Agent Pole 1) and IPF36 (Courtage Pole 3)",
+        "_comment_monthly": "FICHIERS MENSUELS : Données qui changent chaque mois (stockées dans bronze/AAAA/MM/)",
+        "ipf": {
+            "description": "Fichiers de portefeuille : contiennent les informations sur les polices d'assurance (agents Pôle 1 et courtiers Pôle 3)",
             "file_patterns": [
                 "ipf16.csv",
                 "ipf36.csv"
@@ -27,9 +25,8 @@
                     }
                 }
             ],
-            "schema": "ipf_az",
+            "schema": "ipf",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9",
@@ -38,8 +35,8 @@
             "filters": [],
             "location_type": "monthly"
         },
-        "ipfm99_az": {
-            "description": "IMS AZ IPFM99 - Product 01099 CA amounts for Pole 1 and Pole 3",
+        "ipfm99": {
+            "description": "Montants de chiffre d'affaires pour le produit spécifique 01099 (répartis par pôle commercial)",
             "file_patterns": [
                 "ipfm199.csv",
                 "ipfm399.csv"
@@ -58,9 +55,8 @@
                     }
                 }
             ],
-            "schema": "ipfm99_az",
+            "schema": "ipfm99",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -69,7 +65,7 @@
             "location_type": "monthly"
         },
         "ipfm0024_1": {
-            "description": "IPFM0024 - Product activities (Pole 1 Agent)",
+            "description": "Activités par produit pour les agents du Pôle 1",
             "file_patterns": [
                 "ipfm0024_1.csv"
             ],
@@ -83,7 +79,6 @@
             ],
             "schema": "ipfspe_ipfm0024",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -92,7 +87,7 @@
             "location_type": "monthly"
         },
         "ipfm0024_3": {
-            "description": "IPFM0024 - Product activities (Pole 3 Courtage)",
+            "description": "Activités par produit pour les courtiers du Pôle 3",
             "file_patterns": [
                 "ipfm0024_3.csv"
             ],
@@ -106,7 +101,6 @@
             ],
             "schema": "ipfspe_ipfm0024",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -129,7 +123,6 @@
             ],
             "schema": "ipfspe_ipfm63",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -152,7 +145,6 @@
             ],
             "schema": "ipfspe_ipfm63",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -175,7 +167,6 @@
             ],
             "schema": "ipfspe_ipfm99",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -198,7 +189,6 @@
             ],
             "schema": "ipfspe_ipfm99",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -213,14 +203,12 @@
             ],
             "schema": "ird_risk_q45",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
             },
             "filters": [],
-            "location_type": "monthly",
-            "_comment": "SAS DATETIME format (14MAY1991:00:00:00) requires manual datepart() parsing in processor"
+            "location_type": "monthly"
         },
         "ird_risk_q46": {
             "description": "IRD Risk Q46 - Risk data with vision {vision}",
@@ -229,14 +217,12 @@
             ],
             "schema": "ird_risk_q46",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
             },
             "filters": [],
-            "location_type": "monthly",
-            "_comment": "SAS DATETIME format (04MAR2012:00:00:00) requires manual datepart() parsing in processor"
+            "location_type": "monthly"
         },
         "ird_risk_qan": {
             "description": "IRD Risk QAN - For visions < 202210 with vision {vision}",
@@ -245,14 +231,12 @@
             ],
             "schema": "ird_risk_qan",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
             },
             "filters": [],
-            "location_type": "monthly",
-            "_comment": "SAS DATETIME format (12JAN2008:00:00:00) requires manual datepart() parsing in processor"
+            "location_type": "monthly"
         },
         "ird_suivi_engagements": {
             "description": "IRD Suivi Engagements - NAF 2008 tracking with vision {vision}",
@@ -261,7 +245,6 @@
             ],
             "schema": "ird_suivi_engagements",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -276,7 +259,6 @@
             ],
             "schema": "segmentprdt",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -284,17 +266,14 @@
             "filters": [],
             "location_type": "monthly"
         },
-        "_comment_ref_section": "═══════════════════════════════════════════════════════════════",
-        "_comment_ref_start": "REFERENCE TABLES (Static or Versioned - stored in bronze/ref/)",
-        "_comment_ref_divider": "═══════════════════════════════════════════════════════════════",
+        "_comment_ref": "FICHIERS DE RÉFÉRENCE : Données stables ou versionnées (stockées dans bronze/ref/)",
         "w6_basecli_inv": {
-            "description": "W6 BASECLI_INV - Client base cumulative data",
+            "description": "Base client cumulative : répertoire des clients et leurs informations",
             "file_patterns": [
                 "basecli_inv.csv"
             ],
             "schema": "w6_basecli_inv",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -307,9 +286,8 @@
             "file_patterns": [
                 "capitxcu.csv"
             ],
-            "schema": "capitxcu_azec",
+            "schema": "capitxcu",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -324,7 +302,6 @@
             ],
             "schema": "client1",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -339,7 +316,6 @@
             ],
             "schema": "client3",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -354,7 +330,6 @@
             ],
             "schema": "constrcu",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9",
@@ -370,7 +345,6 @@
             ],
             "schema": "cproduit",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -385,7 +359,6 @@
             ],
             "schema": "do_dest",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -400,7 +373,6 @@
             ],
             "schema": "garantcu",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -415,7 +387,6 @@
             ],
             "schema": "binsee_histo_note_risque",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9",
@@ -431,7 +402,6 @@
             ],
             "schema": "catmin",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -444,9 +414,8 @@
             "file_patterns": [
                 "incendcu.csv"
             ],
-            "schema": "incendcu_azec",
+            "schema": "incendcu",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -461,7 +430,6 @@
             ],
             "schema": "isic_lg",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -476,7 +444,6 @@
             ],
             "schema": "lob",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -491,7 +458,6 @@
             ],
             "schema": "mapping_cdnaf2003_isic",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -506,7 +472,6 @@
             ],
             "schema": "mapping_cdnaf2008_isic",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -521,7 +486,6 @@
             ],
             "schema": "mapping_isic_const_act",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -536,7 +500,6 @@
             ],
             "schema": "mapping_isic_const_cht",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -549,9 +512,8 @@
             "file_patterns": [
                 "mpacu.csv"
             ],
-            "schema": "mpacu_azec",
+            "schema": "mpacu",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -564,9 +526,8 @@
             "file_patterns": [
                 "mulprocu.csv"
             ],
-            "schema": "mulprocu_azec",
+            "schema": "mulprocu",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -579,9 +540,8 @@
             "file_patterns": [
                 "polic_cu.csv"
             ],
-            "schema": "polic_cu_azec",
+            "schema": "polic_cu",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9",
@@ -597,7 +557,6 @@
             ],
             "schema": "prdcap",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -612,7 +571,6 @@
             ],
             "schema": "segmprdt_prdpfa1",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -627,7 +585,6 @@
             ],
             "schema": "segmprdt_prdpfa3",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -642,7 +599,6 @@
             ],
             "schema": "table_pt_gest",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -657,7 +613,6 @@
             ],
             "schema": "ptgst_static",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -670,9 +625,8 @@
             "file_patterns": [
                 "rcentcu.csv"
             ],
-            "schema": "rcentcu_azec",
+            "schema": "rcentcu",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -687,7 +641,6 @@
             ],
             "schema": "ref_mig_azec_vs_ims",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -702,7 +655,6 @@
             ],
             "schema": "rf_fr1_prm_dtl_midcorp_m",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9",
@@ -716,9 +668,8 @@
             "file_patterns": [
                 "risteccu.csv"
             ],
-            "schema": "risteccu_azec",
+            "schema": "risteccu",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -733,7 +684,6 @@
             ],
             "schema": "table_isic_tre_naf",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -748,7 +698,6 @@
             ],
             "schema": "table_segmentation_azec_mml",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -763,7 +712,6 @@
             ],
             "schema": "typrd_2",
             "read_options": {
-                "format": "csv",
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
@@ -776,8 +724,8 @@
         "ptf_mvt": {
             "description": "Portfolio Movements domain",
             "required_file_groups": [
-                "ipf_az",
-                "ipfm99_az",
+                "ipf",
+                "ipfm99",
                 "ird_risk_q45",
                 "ird_risk_q46",
                 "ird_risk_qan"
@@ -786,9 +734,9 @@
         "capitaux": {
             "description": "Capitaux domain",
             "required_file_groups": [
-                "ipf_az",
-                "capitxcu_azec",
-                "incendcu_azec"
+                "ipf",
+                "capitxcu",
+                "incendcu"
             ]
         },
         "emissions": {

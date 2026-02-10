@@ -1,6 +1,8 @@
 """
-Logging utilities for Construction Data Pipeline.
-Provides simple, clean logging to file and console with section markers.
+Utilitaires de Journalisation (Logging) pour le Pipeline de Construction.
+
+Fournit un système de journalisation simple et propre, avec affichage
+simultané dans la console et dans un fichier, incluant des marqueurs de section.
 """
 
 import logging
@@ -11,7 +13,10 @@ from typing import Optional
 
 
 class PipelineLogger:
-    """Logger for pipeline operations with enhanced formatting."""
+    """
+    Logger pour les opérations du pipeline avec un formatage amélioré.
+    Facilite le suivi de l'exécution et le débogage.
+    """
 
     def __init__(
         self,
@@ -20,34 +25,40 @@ class PipelineLogger:
         level: str = "INFO"
     ):
         """
-        Initialize pipeline logger.
+        Initialise le logger du pipeline.
 
-        Args:
-            name: Logger name (usually module name)
-            log_file: Path to log file (optional)
-            level: Logging level (DEBUG, INFO, WARNING, ERROR)
+        PARAMÈTRES :
+        -----------
+        name : str
+            Nom du logger (généralement le nom du module)
+        log_file : str, optionnel
+            Chemin vers le fichier de log
+        level : str
+            Niveau de journalisation (DEBUG, INFO, WARNING, ERROR) - Par défaut: INFO
         """
         self.logger = logging.getLogger(name)
         self.logger.setLevel(getattr(logging, level.upper()))
 
-        # Avoid duplicate handlers
+        # Éviter la duplication des handlers si le logger existe déjà
         if self.logger.handlers:
             return
 
-        # Create formatter
+        # Création du formatteur
+        # Format: Date Heure - Nom - Niveau - Message
         formatter = logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
 
-        # Console handler
+        # Handler pour la console (Sortie standard)
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setFormatter(formatter)
         self.logger.addHandler(console_handler)
 
-        # File handler (if log_file provided)
+        # Handler pour le fichier (si un chemin est fourni)
         if log_file:
             log_path = Path(log_file)
+            # Création automatique du dossier parent s'il n'existe pas
             log_path.parent.mkdir(parents=True, exist_ok=True)
 
             file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
@@ -55,79 +66,91 @@ class PipelineLogger:
             self.logger.addHandler(file_handler)
 
     def debug(self, message: str) -> None:
-        """Log debug message."""
+        """Enregistre un message de débogage (DEBUG)."""
         self.logger.debug(message)
 
     def info(self, message: str) -> None:
-        """Log info message."""
+        """Enregistre un message d'information (INFO)."""
         self.logger.info(message)
 
     def warning(self, message: str) -> None:
-        """Log warning message."""
+        """Enregistre un avertissement (WARNING)."""
         self.logger.warning(message)
 
     def error(self, message: str) -> None:
-        """Log error message."""
+        """Enregistre une erreur (ERROR)."""
         self.logger.error(message)
 
     def critical(self, message: str) -> None:
-        """Log critical message."""
+        """Enregistre une erreur critique (CRITICAL)."""
         self.logger.critical(message)
 
     def section(self, title: str) -> None:
         """
-        Log a section separator for better readability.
+        Affiche un séparateur de section pour améliorer la lisibilité des logs.
 
-        Args:
-            title: Section title
+        PARAMÈTRES :
+        -----------
+        title : str
+            Titre de la section
         """
         separator = "=" * 80
         self.logger.info(separator)
         self.logger.info(f"  {title}")
         self.logger.info(separator)
 
-    def step(self, step_number: int, description: str) -> None:
+    def step(self, step_number: float, description: str) -> None:
         """
-        Log a numbered step in the pipeline.
+        Enregistre une étape numérotée dans le pipeline.
 
-        Args:
-            step_number: Step number
-            description: Step description
+        PARAMÈTRES :
+        -----------
+        step_number : float
+            Numéro de l'étape (peut être un décimal, ex: 1.1)
+        description : str
+            Description de l'action en cours
         """
-        self.logger.info(f"STEP {step_number}: {description}")
+        self.logger.info(f"ÉTAPE {step_number}: {description}")
 
     def success(self, message: str) -> None:
-        """Log success message with special prefix."""
-        self.logger.info(f"✓ SUCCESS: {message}")
+        """Enregistre un message de succès avec un préfixe visuel."""
+        self.logger.info(f"✓ SUCCÈS : {message}")
 
     def failure(self, message: str) -> None:
-        """Log failure message with special prefix."""
-        self.logger.error(f"✗ FAILURE: {message}")
+        """Enregistre un message d'échec avec un préfixe visuel."""
+        self.logger.error(f"✗ ÉCHEC : {message}")
 
     def timer_start(self, operation: str) -> datetime:
         """
-        Start timing an operation.
+        Démarre le chronométrage d'une opération.
 
-        Args:
-            operation: Operation name
+        PARAMÈTRES :
+        -----------
+        operation : str
+            Nom de l'opération à chronométrer
 
-        Returns:
-            Start timestamp
+        RETOUR :
+        -------
+        datetime
+            Horodatage de début
         """
         start_time = datetime.now()
-        self.logger.info(f"Starting: {operation}")
+        self.logger.info(f"Début : {operation}")
         return start_time
 
     def timer_end(self, operation: str, start_time: datetime) -> None:
         """
-        End timing an operation and log duration.
+        Arrête le chronométrage et enregistre la durée écoulée.
 
-        Args:
-            operation: Operation name
-            start_time: Start timestamp from timer_start
+        PARAMÈTRES :
+        -----------
+        operation : str
+            Nom de l'opération terminée
+        start_time : datetime
+            Horodatage de début (retourné par timer_start)
         """
         duration = (datetime.now() - start_time).total_seconds()
-        self.logger.info(f"Completed: {operation} (Duration: {duration:.2f}s)")
+        self.logger.info(f"Terminé : {operation} (Durée : {duration:.2f}s)")
 
 
 def get_logger(
@@ -136,20 +159,26 @@ def get_logger(
     level: str = "INFO"
 ) -> PipelineLogger:
     """
-    Get a logger instance.
+    Fonction utilitaire pour obtenir une instance de logger configurée.
 
-    Args:
-        name: Logger name
-        log_file: Path to log file (optional)
-        level: Logging level
+    PARAMÈTRES :
+    -----------
+    name : str
+        Nom du logger
+    log_file : str, optionnel
+        Chemin vers le fichier de log
+    level : str
+        Niveau de logging
 
-    Returns:
-        PipelineLogger instance
+    RETOUR :
+    -------
+    PipelineLogger
+        Instance du logger prête à l'emploi
 
-    Example:
-        >>> logger = get_logger(__name__, 'logs/pipeline_202509.log')
-        >>> logger.info('Pipeline started')
-        >>> logger.success('Data loaded successfully')
+    EXEMPLE :
+    --------
+    >>> logger = get_logger(__name__, 'logs/pipeline.log')
+    >>> logger.info('Démarrage du pipeline')
+    >>> logger.success('Données chargées')
     """
     return PipelineLogger(name, log_file, level)
-

@@ -1,22 +1,33 @@
+# -*- coding: utf-8 -*-
 """
-Emissions Processor.
+===============================================================================
+PROCESSEUR DES ÉMISSIONS (Calcul des Primes)
+===============================================================================
 
-Processes One BI premium emissions data (rf_fr1_prm_dtl_midcorp_m):
-- Applies business filters (intermediaries, products, guarantees, categories)
-- Assigns distribution channel (CDPOLE) from CD_NIV_2_STC
-- Calculates current/prior year split (EXERCICE)
-- Extracts guarantee code (CGARP)
-- Enriches with segmentation
-- Creates two outputs:
-  1. PRIMES_EMISES_{vision}_POL_GARP (by guarantee)
-  2. PRIMES_EMISES_{vision}_POL (aggregated by policy)
+Ce processeur gère le calcul des primes d'assurance (émissions) à partir des
+données détaillées de facturation.
 
-Based on: EMISSIONS_RUN.sas (308 lines)
+OBJECTIFS DU PROCESSEUR :
+------------------------
+1. Lire les données brutes de facturation (One BI)
+2. Filtrer pour ne garder que le marché Construction
+3. Calculer les montants de primes et de commissions
+4. Enrichir les données avec la segmentation commerciale
+5. Produire deux vues consolidées pour le reporting
+
+SOURCES DE DONNÉES :
+-------------------
+- rf_fr1_prm_dtl_midcorp_m : Données détaillées de primes (Bronze)
+- Tables de référence pour la segmentation (Bronze)
+
+SORTIES (GOLD) :
+---------------
+1. primes_emises_{vision}_pol_garp : Vue détaillée par police et garantie
+2. primes_emises_{vision}_pol : Vue agrégée par police (somme des garanties)
 """
 
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, lit, sum as _sum, coalesce, broadcast, when
-from pyspark.sql.types import StringType
+from pyspark.sql.functions import col, lit, sum as _sum, coalesce
 from config.constants import MARKET_CODE
 from src.processors.base_processor import BaseProcessor
 from utils.helpers import extract_year_month_int
@@ -26,99 +37,126 @@ from utils.processor_helpers import enrich_segmentation
 
 class EmissionsProcessor(BaseProcessor):
     """
-    Process One BI emissions data: Bronze → Silver → Gold.
+    =======================================================================
+    PROCESSEUR ÉMISSIONS
+    =======================================================================
     
-    Workflow:
-    1. Read: rf_fr1_prm_dtl_midcorp_m from bronze
-    2. Transform:
-       - Apply business filters
-       - Assign CDPOLE, calculate EXERCICE, extract CGARP
-       - Calculate premiums (primes_x, primes_n)
-       - Enrich segmentation
-    3. Write: 
-       - primes_emises_{vision}_pol_garp.parquet to gold (by guarantee)
-       - primes_emises_{vision}_pol.parquet to gold (aggregated)
+    Implémente la logique de transformation des primes d'arrurance.
+    
+    FLUX DE TRAITEMENT (WORKFLOW) :
+    ------------------------------
+    1. READ : Lecture du fichier One BI depuis la couche Bronze
+    2. TRANSFORM :
+       - Standardisation des colonnes
+       - Application des filtres métier (produits, garanties, etc.)
+       - Détermination du canal de distribution (CDPOLE)
+       - Calcul de l'exercice (courant vs antérieur)
+       - Extraction du code garantie (CGARP)
+       - Calcul des montants (Primes HT, Commissions)
+       - Enrichissement avec la segmentation
+       - Agrégation selon deux niveaux de détail
+    3. WRITE : Écriture des deux fichiers résultants en couche Gold
     """
     
     def __init__(self, spark, config: ConfigLoader, logger):
         """
-        Initialize Emissions Processor.
+        Initialise le processeur des émissions.
         
-        Args:
-            spark: SparkSession
-            config: ConfigLoader instance
-            logger: Logger instance
+        PARAMÈTRES :
+        -----------
+        spark : SparkSession
+            Session Spark active
+        config : ConfigLoader
+            Configuration du pipeline
+        logger : PipelineLogger
+            Système de journalisation
         """
         super().__init__(spark, config, logger)
-        self.logger.info("Emissions Processor initialized")
+        self.logger.info("Initialisation du Processeur Émissions")
     
     def read(self, vision: str) -> DataFrame:
         """
-        Read One BI premium data from bronze layer.
+        Lit les données de primes depuis la couche Bronze.
         
-        Args:
-            vision: Vision in YYYYMM format
+        SOURCE :
+        -------
+        Fichier 'rf_fr1_prm_dtl_midcorp_m' défini dans reading_config.json.
+        Ce fichier contient le détail des mouvements financiers (quittances).
         
-        Returns:
-            DataFrame from rf_fr1_prm_dtl_midcorp_m
+        PARAMÈTRES :
+        -----------
+        vision : str
+            La période à traiter (YYYYMM)
+            
+        RETOUR :
+        -------
+        DataFrame
+            Les données brutes de facturation
         """
-        self.logger.info(f"Reading One BI emissions data for vision {vision}")
+        self.logger.info(f"Lecture des données One BI pour la vision {vision}")
         
         from src.reader import BronzeReader
         from pathlib import Path
         
+        # Récupérer le chemin de la config de lecture
         reading_config_path = self.config.get('config_files.reading_config', 'config/reading_config.json')
         
-        # Convert to absolute path if relative
+        # Convertir en chemin absolu si nécessaire
         if not Path(reading_config_path).is_absolute():
             reading_config_path = str(self.get_project_root() / reading_config_path)
         
+        # Instancier le lecteur Bronze
         reader = BronzeReader(self.spark, self.config, reading_config_path)
         
-        # Read One BI premium data
+        # Lire le groupe de fichiers correspondant aux primes
         df = reader.read_file_group('rf_fr1_prm_dtl_midcorp_m', vision)
         
-        self.logger.success(f"Read {df.count():,} records from One BI (bronze)")
+        self.logger.success(f"Lecture terminée : {df.count():,} enregistrements chargés")
         return df
     
     def transform(self, df: DataFrame, vision: str) -> tuple:
         """
-        Apply Emissions transformations.
+        Applique les règles de gestion pour calculer les primes.
         
-        Steps:
-        1. Lowercase columns
-        2. Apply emissions business filters
-        3. Assign CDPOLE from CD_NIV_2_STC
-        4. Calculate EXERCICE (current/prior year split)
-        5. Extract guarantee code (CGARP)
-        6. Calculate premiums (primes_x for all, primes_n for current year)
-        7. Enrich with segmentation
-        8. Create two aggregated outputs
+        ÉTAPES DE TRANSFORMATION :
+        -------------------------
+        1. Mise en minuscules des colonnes
+        2. Filtrage des données (périmètre métier)
+        3. Calcul des attributs dérivés (Pôle, Exercice, Garantie)
+        4. Calcul des montants (Primes, Commissions)
+        5. Enrichissement (Segmentation)
+        6. Agrégation finale
         
-        Args:
-            df: Input DataFrame from read()
-            vision: Vision in YYYYMM format
-        
-        Returns:
-            Tuple of (df_pol_garp, df_pol) - two aggregated DataFrames
+        PARAMÈTRES :
+        -----------
+        df : DataFrame
+            Données brutes lues par read()
+        vision : str
+            Période traitée
+            
+        RETOUR :
+        -------
+        tuple (DataFrame, DataFrame)
+            - df_pol_garp : Données agrégées par Police + Garantie
+            - df_pol : Données agrégées par Police uniquement
         """
-        self.logger.info("Starting Emissions transformations")
+        self.logger.info("Démarrage des transformations Émissions")
         
         year_int, month_int = extract_year_month_int(vision)
         
-        # Step 1: Lowercase columns
-        self.logger.step(1, "Lowercasing all columns")
+        # --- Étape 1 : Standardisation ---
+        self.logger.step(1, "Mise en minuscules des colonnes")
         from utils.transformations import lowercase_all_columns
         df = lowercase_all_columns(df)
         
-        # Step 2: Apply emissions business filters
-        self.logger.step(2, "Applying business filters")
+        # --- Étape 2 : Filtrage métier ---
+        self.logger.step(2, "Application des filtres métier")
         import json
         from pathlib import Path
         
+        # Charger les règles de filtrage depuis le fichier JSON externe
         emissions_config_path = Path('config/transformations/emissions_config.json')
         
-        # Convert to absolute path if relative
         if not emissions_config_path.is_absolute():
             emissions_config_path = self.get_project_root() / emissions_config_path
         
@@ -128,95 +166,98 @@ class EmissionsProcessor(BaseProcessor):
         from utils.transformations import apply_emissions_filters
         df = apply_emissions_filters(df, emissions_config, vision, self.logger)
         
-        # Step 3: Assign CDPOLE from CD_NIV_2_STC
-        self.logger.step(3, "Assigning distribution channel (CDPOLE)")
+        # --- Étape 3 : Détermination du pôle de distribution ---
+        self.logger.step(3, "Calcul du code Pôle (CDPOLE)")
         from utils.transformations import assign_distribution_channel
+        # Le pôle est déduit du canal de distribution (CD_NIV_2_STC)
+        # 1 = Agents (DCAG, DCPS, DIGITAL), 3 = Courtage (BROKDIV)
         df = assign_distribution_channel(df)
-        self.logger.info("CDPOLE assigned: '1' (Agent) for DCAG/DCPS/DIGITAL, '3' (Courtage) for BROKDIV")
         
-        # Step 4: Calculate EXERCICE (current/prior year split)
-        self.logger.step(4, "Calculating EXERCICE (current/prior year split)")
+        # --- Étape 4 : Calcul de l'exercice (Courant vs Antérieur) ---
+        self.logger.step(4, "Calcul de l'exercice (Courant / Antérieur)")
         from utils.transformations import calculate_exercice_split
+        # Compare l'année de rattachement comptable avec l'année de vision
         df = calculate_exercice_split(df, vision)
-        self.logger.info("EXERCICE calculated: 'cou' (current) if nu_ex_ratt_cts >= year, else 'ant' (prior)")
         
-        # Step 5: Extract guarantee code (CGARP)
-        self.logger.step(5, "Extracting guarantee code (CGARP)")
+        # --- Étape 5 : Extraction du code garantie ---
+        self.logger.step(5, "Extraction du code garantie (CGARP)")
         from utils.transformations import extract_guarantee_code
+        # Extrait les caractères 3 à 5 du code garantie prospectif
         df = extract_guarantee_code(df)
-        self.logger.info("CGARP extracted from cd_gar_prospctiv (chars 3-5)")
         
-        # Step 6: Transform columns and calculate premiums
-        self.logger.step(6, "Transforming columns and calculating premiums")
+        # --- Étape 6 : Calcul des montants ---
+        self.logger.step(6, "Renommage et calcul des montants")
         
-        # Rename columns to match output schema
-        df = df.withColumnRenamed('nu_cnt_prm', 'nopol')
-        df = df.withColumnRenamed('cd_prd_prm', 'cdprod')
-        df = df.withColumnRenamed('cd_int_stc', 'noint')
-        df = df.withColumnRenamed('mt_cms_cts', 'mtcom')
+        # Renommage vers le modèle de données cible
+        df = df.withColumnRenamed('nu_cnt_prm', 'nopol')     # Numéro de police
+        df = df.withColumnRenamed('cd_prd_prm', 'cdprod')    # Code produit
+        df = df.withColumnRenamed('cd_int_stc', 'noint')     # Numéro intermédiaire
+        df = df.withColumnRenamed('mt_cms_cts', 'mtcom')     # Montant commission
         
-        # Add DIRCOM
-        df = df.withColumn('dircom', lit('AZ '))
-        
-        # Add VISION
+        # Ajout de constantes
+        df = df.withColumn('dircom', lit('AZ '))  # Direction commerciale (fixe)
         df = df.withColumn('vision', lit(vision))
         
-        # Calculate primes_n (current year premiums) using intermediate column
-        # SAS L214-221: Inner query filters WHERE EXERCICE='cou'
+        # Calcul des primes de l'exercice courant (primes_n)
+        # Logique : On isole les lignes de l'exercice courant ('cou'), on somme,
+        # puis on rejoint avec le dataset principal.
+        
+        # 1. Isoler les mouvements de l'exercice courant
         df_current = df.filter(col('exercice') == 'cou')
         
+        # 2. Agréger les montants HT pour l'exercice courant
         df_current_agg = df_current.groupBy(
-            'cdpole', 'cdprod', 'nopol', 'noint', 'cd_gar_princ', 'cd_gar_prospctiv', 'cd_cat_min', 'dircom'
+            'cdpole', 'cdprod', 'nopol', 'noint', 'cd_gar_princ', 
+            'cd_gar_prospctiv', 'cd_cat_min', 'dircom'
         ).agg(
             _sum('mt_ht_cts').alias('primes_n_temp')
         )
         
-        # Join primes_n back to main df
+        # 3. Réintégrer ce montant dans le dataset principal via jointure gauche
         df = df.join(
             df_current_agg,
-            on=['cdpole', 'cdprod', 'nopol', 'noint', 'cd_gar_princ', 'cd_gar_prospctiv', 'cd_cat_min', 'dircom'],
+            on=['cdpole', 'cdprod', 'nopol', 'noint', 'cd_gar_princ', 
+                'cd_gar_prospctiv', 'cd_cat_min', 'dircom'],
             how='left'
         )
         
-        # Rename and handle nulls
+        # 4. Remplacer les NULL par 0 (pour les lignes sans prime exercice courant)
         df = df.withColumn('primes_n', coalesce(col('primes_n_temp'), lit(0.0)))
         df = df.drop('primes_n_temp')
         
-        self.logger.info("Premiums calculated: primes_x (all years), primes_n (current year only)")
+        self.logger.info("Primes calculées : primes_x (total) et primes_n (exercice courant)")
         
-        # Step 7: Enrich with segmentation (using helper)
-        self.logger.step(7, "Enriching with segmentation")
+        # --- Étape 7 : Enrichissement Segmentation ---
+        self.logger.step(7, "Enrichissement avec la segmentation")
         from src.reader import BronzeReader
         from pathlib import Path
         
+        # Recharger la config de lecture pour accéder aux fichiers référentiels
         reading_config_path = self.config.get('config_files.reading_config', 'config/reading_config.json')
-        
-        # Convert to absolute path if relative
         if not Path(reading_config_path).is_absolute():
             reading_config_path = str(self.get_project_root() / reading_config_path)
         
         reader = BronzeReader(self.spark, self.config, reading_config_path)
         
-        # Use enrich_segmentation helper to replace 21 lines of duplicate code
-        # Emissions requires join on both cdprod AND cdpole (SAS L264-265)
+        # Ajouter les segments commerciaux via jointure
+        # Note : Émissions nécessite une jointure sur cdprod ET cdpole spécifique
         df = enrich_segmentation(df, reader, vision, include_cdpole=True, logger=self.logger)
         
-        # Filter for construction market
+        # Filtrer pour ne garder que le marché Construction (Code 6)
         if 'cmarch' in df.columns:
             df = df.filter(col('cmarch') == MARKET_CODE.MARKET)
-            self.logger.info(f"After cmarch='6' filter: {df.count():,} records")
+            self.logger.info(f"Filtre marché Construction appliqué : reste {df.count():,} lignes")
         
-        # Step 8: Create aggregated outputs
-        self.logger.step(8, "Creating aggregated outputs")
+        # --- Étape 8 : Agrégations finales ---
+        self.logger.step(8, "Création des fichiers de sortie agrégés")
         
-        # Keep necessary columns
+        # Sélectionner uniquement les colonnes utiles
         df = df.select(
             'nopol', 'cdprod', 'noint', 'cgarp', 'cmarch', 'cseg', 'cssseg',
             'cdpole', 'vision', 'dircom', 'cd_cat_min', 'mt_ht_cts', 'primes_n', 'mtcom'
         )
         
-        # Output 1: Aggregate by policy + guarantee (POL_GARP)
-        # Using helper function to avoid code duplication
+        # SORTIE 1 : Agrégation par Police + Garantie (POL_GARP)
         from utils.transformations import aggregate_by_policy_guarantee
         
         group_cols_garp = [
@@ -224,49 +265,62 @@ class EmissionsProcessor(BaseProcessor):
             'cmarch', 'cseg', 'cssseg', 'cd_cat_min'
         ]
         
+        # Somme les montants par clé de regroupement
         df_pol_garp = aggregate_by_policy_guarantee(df, group_cols_garp)
         
-        self.logger.info(f"POL_GARP aggregation: {df_pol_garp.count():,} records")
+        self.logger.info(f"Agrégation POL_GARP terminée : {df_pol_garp.count():,} lignes")
         
-        # Output 2: Aggregate by policy only (POL) - from POL_GARP
+        # SORTIE 2 : Agrégation par Police uniquement (POL)
+        # On repart de POL_GARP pour éviter de tout recalculer (optimisation)
         group_cols_pol = [
             'vision', 'dircom', 'nopol', 'noint', 'cdpole', 'cdprod',
             'cmarch', 'cseg', 'cssseg'
         ]
         
         df_pol = df_pol_garp.groupBy(*group_cols_pol).agg(
-            _sum('primes_x').alias('primes_x'),
-            _sum('primes_n').alias('primes_n'),
-            _sum('mtcom_x').alias('mtcom_x')
+            _sum('primes_x').alias('primes_x'),   # Somme totale
+            _sum('primes_n').alias('primes_n'),   # Somme exercice courant
+            _sum('mtcom_x').alias('mtcom_x')      # Somme commissions
         )
         
-        self.logger.info(f"POL aggregation: {df_pol.count():,} records")
+        self.logger.info(f"Agrégation POL terminée : {df_pol.count():,} lignes")
         
-        self.logger.success("Emissions transformations completed")
+        self.logger.success("Transformations Émissions terminées avec succès")
+        
         return df_pol_garp, df_pol
     
     def write(self, dfs: tuple, vision: str) -> None:
         """
-        Write transformed data to gold layer.
+        Écrit les résultats en couche Gold.
         
-        Args:
-            dfs: Tuple of (df_pol_garp, df_pol)
-            vision: Vision in YYYYMM format
+        FICHIERS PRODUITS :
+        ------------------
+        1. primes_emises_{vision}_pol_garp.parquet
+        2. primes_emises_{vision}_pol.parquet
+        
+        PARAMÈTRES :
+        -----------
+        dfs : tuple
+            Paire de DataFrames (df_pol_garp, df_pol) issue de transform()
+        vision : str
+            Période traitée
         """
-        from config.constants import GOLD_COLUMNS_EMISSIONS_POL_GARP, GOLD_COLUMNS_EMISSIONS_POL
-        
-        df_pol_garp, df_pol = dfs
-        
+        from config.column_definitions import GOLD_COLUMNS_EMISSIONS_POL_GARP, GOLD_COLUMNS_EMISSIONS_POL
         from utils.helpers import write_to_layer
         
-        # Write POL_GARP (by guarantee) - 14 columns
-        self.logger.info(f"Writing POL_GARP to gold for vision {vision}")
+        # Déballer le tuple
+        df_pol_garp, df_pol = dfs
         
-        # Select only gold columns in correct order
+        # --- Écriture Fichier 1 : POL_GARP ---
+        self.logger.info(f"Écriture du fichier POL_GARP pour vision {vision}")
+        
+        # Vérifier et sélectionner les colonnes attendues en Gold
         existing_cols_garp = [c for c in GOLD_COLUMNS_EMISSIONS_POL_GARP if c in df_pol_garp.columns]
+        
+        # Vérification de sécurité pour les colonnes manquantes
         missing_cols_garp = set(GOLD_COLUMNS_EMISSIONS_POL_GARP) - set(df_pol_garp.columns)
         if missing_cols_garp:
-            self.logger.warning(f"POL_GARP: Missing columns {sorted(missing_cols_garp)}")
+            self.logger.warning(f"POL_GARP : Colonnes manquantes {sorted(missing_cols_garp)}")
         
         df_pol_garp_final = df_pol_garp.select(existing_cols_garp)
         
@@ -274,16 +328,17 @@ class EmissionsProcessor(BaseProcessor):
         write_to_layer(
             df_pol_garp_final, self.config, 'gold', output_name_garp, vision, self.logger
         )
-        self.logger.success(f"Wrote {df_pol_garp_final.count():,} records (14 columns) to gold: {output_name_garp}.parquet")
+        self.logger.success(f"Fichier écrit : {output_name_garp}.parquet ({df_pol_garp_final.count():,} lignes)")
         
-        # Write POL (aggregated) - 12 columns
-        self.logger.info(f"Writing POL to gold for vision {vision}")
+        # --- Écriture Fichier 2 : POL ---
+        self.logger.info(f"Écriture du fichier POL pour vision {vision}")
         
-        # Select only gold columns in correct order
+        # Sélection des colonnes
         existing_cols_pol = [c for c in GOLD_COLUMNS_EMISSIONS_POL if c in df_pol.columns]
+        
         missing_cols_pol = set(GOLD_COLUMNS_EMISSIONS_POL) - set(df_pol.columns)
         if missing_cols_pol:
-            self.logger.warning(f"POL: Missing columns {sorted(missing_cols_pol)}")
+            self.logger.warning(f"POL : Colonnes manquantes {sorted(missing_cols_pol)}")
         
         df_pol_final = df_pol.select(existing_cols_pol)
         
@@ -291,4 +346,4 @@ class EmissionsProcessor(BaseProcessor):
         write_to_layer(
             df_pol_final, self.config, 'gold', output_name_pol, vision, self.logger
         )
-        self.logger.success(f"Wrote {df_pol_final.count():,} records (12 columns) to gold: {output_name_pol}.parquet")
+        self.logger.success(f"Fichier écrit : {output_name_pol}.parquet ({df_pol_final.count():,} lignes)")

@@ -1,8 +1,7 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "description": "AZ transformation configurations - Corrected to match SAS PTF_MVTS_AZ_MACRO.sas",
+  "description": "Règles de transformation pour les données AZ (agents et courtiers)",
   "column_selection": {
-    "description": "Columns to select from AZ bronze data - SAS: PTF_MVTS_AZ_MACRO.sas L54-115",
+    "description": "Sélection et renommage des colonnes depuis les données brutes",
     "drop": [],
     "rename": {
       "posacta": "posacta_ri",
@@ -18,12 +17,14 @@
       "tx": {
         "type": "coalesce_default",
         "source_col": "txcede",
-        "default": 0
+        "default": 0,
+        "_description": "Taux de cession : utilise la valeur de txcede, ou 0 si absent"
       },
       "top_coass": {
         "type": "flag_equality",
         "source_col": "cdpolqpl",
-        "value": "1"
+        "value": "1",
+        "_description": "Indicateur coassurance : vaut 1 si le code qualité police est '1', sinon 0"
       }
     },
     "metadata": {
@@ -33,11 +34,11 @@
     }
   },
   "computed_fields": {
-    "description": "Computed fields to apply after column selection - SAS: PTF_MVTS_AZ_MACRO.sas L238-243, L290 (NOTE: TOP_AOP moved to STEP 11 to match SAS L339-341 order)",
+    "description": "Computed fields to apply after column selection",
     "primeto": {
       "type": "expression",
       "formula": "mtprprto * (1 - tx / 100)",
-      "description": "Total premium = Gross premium * (1 - Ceding rate %) - SAS L239"
+      "description": "Total premium = Gross premium * (1 - Ceding rate %)"
     },
     "top_lta": {
       "type": "conditional",
@@ -48,23 +49,23 @@
         }
       ],
       "default": 0,
-      "description": "Long Term Agreement flag - SAS L242-243. Contracts with duration > 1 year and specific risk types."
+      "description": "Long Term Agreement flag"
     },
     "top_temp": {
       "type": "flag_equality",
       "source_col": "cdnatp",
       "value": "T",
-      "description": "Temporary contract flag - SAS L290. Identifies temporary nature contracts."
+      "description": "Temporary contract flag"
     },
     "top_revisable": {
       "type": "flag_equality",
       "source_col": "cdpolrvi",
       "value": "1",
-      "description": "Revisable policy flag - SAS L77. Policies with revision clause (cdpolrvi='1')."
+      "description": "Revisable policy flag"
     }
   },
   "capital_extraction": {
-    "description": "Extract capital amounts from lbcapi/mtcapi fields (SAS: PTF_MVTS_AZ_MACRO.sas L195-231)",
+    "description": "Extract capital amounts from lbcapi/mtcapi fields",
     "smp_100": {
       "keywords": [
         "SMP GLOBAL DU CONTRAT",
@@ -115,7 +116,7 @@
     }
   },
   "coassurance": {
-    "description": "Coassurance type and part company calculation - SAS L64-74",
+    "description": "Coassurance type and part company calculation",
     "column": "coass",
     "conditions": [
       {
@@ -146,7 +147,7 @@
     }
   },
   "revision_criteria": {
-    "description": "Revision criteria mapping from CDGREV - SAS L78-96",
+    "description": "Revision criteria mapping from CDGREV",
     "source_col": "cdgrev",
     "mapping": {
       "20": "20_SANS_PROV_MANUEL ",
@@ -169,7 +170,7 @@
     "default": null
   },
   "movements": {
-    "description": "Movement calculations (AFN, RES, RPT, RPC, NBPTF) - SAS L249-292",
+    "description": "Movement calculations (AFN, RES, RPT, RPC, NBPTF)",
     "column_mapping": {
       "creation_date": "dtcrepol",
       "effective_date": "dteffan",
@@ -185,7 +186,7 @@
     }
   },
   "exposures": {
-    "description": "Exposure calculations (expo_ytd, expo_gli) - SAS L298-311",
+    "description": "Exposure calculations (expo_ytd, expo_gli)",
     "column_mapping": {
       "creation_date": "dtcrepol",
       "termination_date": "dtresilp"

@@ -1,12 +1,10 @@
 """
-Processor Helpers - Consolidated Reference Data & Deduplication Utilities.
+Assistants pour les processeurs - Données de référence consolidées & Utilitaires de déduplication.
 
-Provides reusable patterns for:
-1. Safe reference data joins with automatic NULL fallback
-2. Bulk NULL column addition
-3. Segmentation enrichment
-
-Eliminates 250+ lines of duplicate code across processors.
+Fournit des modèles réutilisables pour :
+1. Jointures sûres de données de référence avec repli automatique sur NULL
+2. Ajout en masse de colonnes NULL
+3. Enrichissement de la segmentation
 """
 
 from pyspark.sql import DataFrame
@@ -16,32 +14,31 @@ from typing import Union, List, Dict, Optional
 
 
 # ============================================================================
-# BronzeReader Factory
+# Fabrique BronzeReader
 # ============================================================================
 
 def get_bronze_reader(processor):
     """
-    Factory function to create BronzeReader instance from processor context.
+    Fonction fabrique pour créer une instance BronzeReader à partir du contexte du processeur.
     
-    Eliminates repeated pattern: reader = BronzeReader(self.spark, self.config)
-    Found in 17 locations across 5 processor files.
+    Élimine le motif répété : reader = BronzeReader(self.spark, self.config)
     
     Args:
-        processor: Processor instance (BaseProcessor subclass)
+        processor: Instance de processeur (sous-classe de BaseProcessor)
     
     Returns:
-        BronzeReader instance initialized with processor's spark and config
+        Instance BronzeReader initialisée avec le spark et la config du processeur
     
-    Example:
+    Exemple:
         reader = get_bronze_reader(self)
-        df = reader.read_file_group('ipf_az', vision)
+        df = reader.read_file_group('ipf', vision)
     """
     from src.reader import BronzeReader
     return BronzeReader(processor.spark, processor.config)
 
 
 # ============================================================================
-# Reference Data Join Helpers
+# Assistants de Jointure de Données de Référence
 # ============================================================================
 
 def safe_reference_join(
@@ -59,85 +56,85 @@ def safe_reference_join(
     required: bool = False
 ) -> DataFrame:
     """
-    Safely join reference data with configurable error handling.
+    Jointure sûre de données de référence avec gestion d'erreurs configurable.
     
     Args:
-        df: Input DataFrame
-        reader: BronzeReader instance
-        file_group: Name of file group to read
-        vision: Vision string or 'ref' for reference data
-        join_keys: Column name(s) to join on
-        select_columns: Columns to select from reference table
-        null_columns: Dict of {column: type} for NULL fallback (if None, infers from select_columns)
-        filter_condition: Optional filter to apply on reference table (e.g., "cmarch == '6'")
-        use_broadcast: Whether to broadcast the reference table
-        how: Join type (default: 'left')
-        logger: Logger instance for info/warning messages
-        required: If True, raise error when reference data missing (fail-fast).
-                  If False, add NULL columns as fallback (default: False)
+        df: DataFrame en entrée
+        reader: Instance BronzeReader
+        file_group: Nom du groupe de fichiers à lire
+        vision: Chaîne vision ou 'ref' pour les données de référence
+        join_keys: Nom(s) de colonne(s) pour la jointure
+        select_columns: Colonnes à sélectionner de la table de référence
+        null_columns: Dict de {colonne: type} pour le repli NULL (si None, déduit de select_columns)
+        filter_condition: Filtre optionnel à appliquer sur la table de référence (ex: "cmarch == '6'")
+        use_broadcast: Si True, broadcast la table de référence
+        how: Type de jointure (défaut : 'left')
+        logger: Instance logger pour les messages info/warning
+        required: Si True, lève une erreur quand les données de référence manquent (fail-fast).
+                  Si False, ajoute des colonnes NULL en repli (défaut : False)
     
     Returns:
-        DataFrame with reference columns joined or NULL columns if unavailable (when required=False)
+        DataFrame avec les colonnes de référence jointes ou colonnes NULL si indisponible (quand required=False)
     
     Raises:
-        RuntimeError: When required=True and reference data is unavailable
+        RuntimeError: Quand required=True et que les données de référence sont indisponibles
     """
     if logger:
-        logger.debug(f"Attempting to join reference data: {file_group} (required={required})")
+        logger.debug(f"Tentative de jointure des données de référence : {file_group} (required={required})")
     
     try:
-        # Read reference data
+        # Lire les données de référence
         df_ref = reader.read_file_group(file_group, vision)
         
         if df_ref is None:
             if required:
-                error_msg = f"Required reference data '{file_group}' is unavailable (returned None)"
+                error_msg = f"Les données de référence requises '{file_group}' sont indisponibles (retourné None)"
                 if logger:
                     logger.error(error_msg)
                 raise RuntimeError(error_msg)
             else:
                 if logger:
-                    logger.warning(f"Optional reference data '{file_group}' returned None - adding NULL columns")
+                    logger.warning(f"Les données de référence optionnelles '{file_group}' ont retourné None - ajout de colonnes NULL")
                 return _add_null_columns(df, null_columns or _infer_null_columns(select_columns))
         
-        # Apply filter if provided
+        # Appliquer le filtre si fourni
         if filter_condition:
             df_ref = df_ref.filter(filter_condition)
         
-        # Normalize join keys to list
+        # Normaliser les clés de jointure en liste
         if isinstance(join_keys, str):
             join_keys = [join_keys]
         
-        # Select only needed columns (+ join keys)
+        # Sélectionner uniquement les colonnes nécessaires (+ clés de jointure)
         needed_cols = list(set(join_keys + select_columns))
         df_ref = df_ref.select(*[col(c) for c in needed_cols if c in df_ref.columns])
         
-        # Apply broadcast if requested
+        # Appliquer broadcast si demandé
         if use_broadcast:
             df_ref = broadcast(df_ref)
         
-        # Perform join
+        # Effectuer la jointure
         df_result = df.join(df_ref, on=join_keys, how=how)
         
         if logger:
-            logger.info(f"Successfully joined reference data: {file_group}")
+            logger.info(f"Données de référence jointes avec succès : {file_group}")
         
         return df_result
         
     except FileNotFoundError as e:
         if required:
-            error_msg = f"Required reference file '{file_group}' not found"
+            error_msg = f"Fichier de référence requis '{file_group}' non trouvé"
             if logger:
-                logger.error(f"{error_msg}: {e}")
+                logger.error(f"{error_msg} : {e}")
             raise RuntimeError(error_msg) from e
         else:
             if logger:
-                logger.warning(f"Optional reference '{file_group}' not found: {e} - adding NULL columns")
+                logger.warning(f"Référence optionnelle '{file_group}' non trouvée : {e} - ajout de colonnes NULL")
             return _add_null_columns(df, null_columns or _infer_null_columns(select_columns))
     
     except Exception as e:
-        # Always raise on unexpected errors (not just missing files)
-        error_msg = f"Unexpected error joining reference data '{file_group}': {e}"
+        # Toujours lever une erreur sur les erreurs inattendues (pas seulement les fichiers manquants)
+        error_msg = f"Erreur inattendue lors de la jointure des données de référence '{file_group}' : {e}"
         if logger:
             logger.error(error_msg)
         raise RuntimeError(error_msg) from e
@@ -150,41 +147,23 @@ def safe_multi_reference_join(
     logger=None
 ) -> DataFrame:
     """
-    Perform multiple safe reference joins in sequence.
+    Effectue plusieurs jointures de référence sûres en séquence.
     
     Args:
-        df: Input DataFrame
-        reader: BronzeReader instance
-        joins: List of join specifications, each a dict with:
+        df: DataFrame en entrée
+        reader: Instance BronzeReader
+        joins: Liste des spécifications de jointure, chacune étant un dictionnaire avec :
             - file_group: str
             - vision: str
-            - join_keys: str or List[str]
+            - join_keys: str ou List[str]
             - select_columns: List[str]
             - null_columns: Optional[Dict[str, type]]
             - filter_condition: Optional[str]
-            - use_broadcast: bool (default True)
-        logger: Logger instance
+            - use_broadcast: bool (défaut True)
+        logger: Instance logger
     
     Returns:
-        DataFrame with all reference joins applied
-        
-    Example:
-        df = safe_multi_reference_join(df, reader, [
-            {
-                'file_group': 'cproduit',
-                'vision': 'ref',
-                'join_keys': 'cdprod',
-                'select_columns': ['type_produit_2', 'segment2'],
-                'null_columns': {'type_produit_2': StringType, 'segment2': StringType}
-            },
-            {
-                'file_group': 'table_pt_gest',
-                'vision': 'ref',
-                'join_keys': 'ptgst',
-                'select_columns': ['upper_mid'],
-                'null_columns': {'upper_mid': StringType}
-            }
-        ], logger=self.logger)
+        DataFrame avec toutes les jointures de référence appliquées
     """
     for join_spec in joins:
         df = safe_reference_join(
@@ -204,38 +183,29 @@ def safe_multi_reference_join(
 
 
 # ============================================================================
-# NULL Column Helpers
+# Assistants Colonnes NULL
 # ============================================================================
 
 def add_null_columns(df: DataFrame, column_specs: Dict[str, type]) -> DataFrame:
     """
-    Add multiple NULL columns at once (bulk operation).
+    Ajoute plusieurs colonnes NULL en une seule fois (opération en masse).
     
-    Consolidates patterns like:
+    Consolide les motifs comme :
         df = df.withColumn('col1', lit(None).cast(StringType()))
         df = df.withColumn('col2', lit(None).cast(StringType()))
-        df = df.withColumn('col3', lit(None).cast(DoubleType()))
     
-    Into:
+    En :
         df = add_null_columns(df, {
             'col1': StringType,
-            'col2': StringType,
-            'col3': DoubleType
+            'col2': StringType
         })
     
     Args:
-        df: Input DataFrame
-        column_specs: Dict mapping column names to PySpark types
+        df: DataFrame en entrée
+        column_specs: Dict mappant les noms de colonnes aux types PySpark
     
     Returns:
-        DataFrame with NULL columns added
-        
-    Example:
-        df = add_null_columns(df, {
-            'mtcaenp': DoubleType,
-            'mtcasst': DoubleType,
-            'mtcavnt': DoubleType
-        })
+        DataFrame avec les colonnes NULL ajoutées
     """
     for col_name, col_type in column_specs.items():
         df = df.withColumn(col_name, lit(None).cast(col_type()))
@@ -243,47 +213,37 @@ def add_null_columns(df: DataFrame, column_specs: Dict[str, type]) -> DataFrame:
 
 
 # ============================================================================
-# Segmentation Helper
+# Assistant Segmentation
 # ============================================================================
 
 def enrich_segmentation(
     df: DataFrame,
     reader,
     vision: str,
-    market_filter: str = None,  # Will default to MARKET_CODE.MARKET if None
+    market_filter: str = None,  # Défaut à MARKET_CODE.MARKET si None
     join_key: str = "cdprod",
     include_cdpole: bool = False,
     logger=None
 ) -> DataFrame:
     """
-    Enrich DataFrame with segmentation data from SEGMENTPRDT.
-    
-    Consolidates the pattern used in:
-    - az_capitaux_processor.py L209-223
-    - azec_capitaux_processor.py L122-143
-    - emissions_processor.py L179-200
+    Enrichit le DataFrame avec les données de segmentation de SEGMENTPRDT.
     
     Args:
-        df: Input DataFrame
-        reader: BronzeReader instance
-        vision: Vision string
-        market_filter: Market code filter (default: '6' for construction)
-        join_key: Column to join on (default: 'cdprod')
-        include_cdpole: If True, join on BOTH cdprod AND cdpole (SAS emissions logic)
-        logger: Logger instance
+        df: DataFrame en entrée
+        reader: Instance BronzeReader
+        vision: Chaîne vision
+        market_filter: Filtre code marché (défaut : '6' pour construction)
+        join_key: Colonne sur laquelle faire la jointure (défaut : 'cdprod')
+        include_cdpole: Si True, jointure sur cdprod ET cdpole (logique émissions)
+        logger: Instance logger
     
     Returns:
-        DataFrame with segmentation columns (cmarch, cseg, cssseg) or NULL fallback
-        
-    Example:
-        df = enrich_segmentation(df, reader, vision, logger=self.logger)
-        # For emissions (requires cdpole join):
-        df = enrich_segmentation(df, reader, vision, include_cdpole=True, logger=self.logger)
+        DataFrame avec les colonnes de segmentation (cmarch, cseg, cssseg) ou repli NULL
     """
     if logger:
-        logger.debug("Enriching with segmentation data (SEGMENTPRDT)")
+        logger.debug("Enrichissement avec les données de segmentation (SEGMENTPRDT)")
     
-    # Default to construction market if not specified
+    # Défaut au marché construction si non spécifié
     if market_filter is None:
         from config.constants import MARKET_CODE
         market_filter = MARKET_CODE.MARKET
@@ -293,30 +253,30 @@ def enrich_segmentation(
         
         if df_seg is None:
             if logger:
-                logger.warning("SEGMENTPRDT not available - using NULL values")
+                logger.warning("SEGMENTPRDT non disponible - utilisation de valeurs NULL")
             return _add_seg_null_columns(df)
         
-        # Filter for construction market
+        # Filtrer pour le marché construction
         df_seg = df_seg.filter(col("cmarch") == market_filter)
         
-        # Rename cprod to cdprod if needed (segmentation file uses 'cprod')
+        # Renommer cprod en cdprod si nécessaire (le fichier segmentation utilise 'cprod')
         if 'cprod' in df_seg.columns and join_key == 'cdprod':
             df_seg = df_seg.withColumnRenamed('cprod', 'cdprod')
         
-        # Prepare join columns based on SAS logic
+        # Préparer les colonnes de jointure selon la logique métier
         if include_cdpole:
-            # EMISSIONS logic (SAS L264-265): Join on BOTH cdprod AND cdpole
-            # This ensures correct segmentation for each product+channel combination
+            # Logique EMISSIONS : Jointure sur cdprod ET cdpole
+            # Cela assure une segmentation correcte pour chaque combinaison produit+canal
             if 'cdpole' not in df.columns:
                 if logger:
-                    logger.error("cdpole column required for emissions segmentation join!")
+                    logger.error("Colonne cdpole requise pour la jointure segmentation émissions !")
                 return _add_seg_null_columns(df)
             
-            # Select needed columns including cdpole
+            # Sélectionner les colonnes nécessaires incluant cdpole
             df_seg = df_seg.select(join_key, 'cdpole', 'cmarch', 'cseg', 'cssseg') \
                            .dropDuplicates([join_key, 'cdpole'])
             
-            # Join on BOTH cdprod AND cdpole
+            # Jointure sur cdprod ET cdpole
             df_result = df.join(
                 broadcast(df_seg),
                 on=[join_key, 'cdpole'],
@@ -324,13 +284,13 @@ def enrich_segmentation(
             )
             
             if logger:
-                logger.info("Segmentation enrichment successful (joined on cdprod + cdpole)")
+                logger.info("Enrichissement segmentation réussi (jointure sur cdprod + cdpole)")
         else:
-            # CAPITAUX logic: Join on cdprod only
+            # Logique CAPITAUX : Jointure sur cdprod uniquement
             df_seg = df_seg.select(join_key, 'cmarch', 'cseg', 'cssseg') \
                            .dropDuplicates([join_key])
             
-            # Join with broadcast
+            # Jointure avec broadcast
             df_result = df.join(
                 broadcast(df_seg),
                 on=join_key,
@@ -338,38 +298,38 @@ def enrich_segmentation(
             )
             
             if logger:
-                logger.info("Segmentation enrichment successful (joined on cdprod only)")
+                logger.info("Enrichissement segmentation réussi (jointure sur cdprod uniquement)")
         
         return df_result
         
     except Exception as e:
         if logger:
-            logger.warning(f"Segmentation enrichment failed: {e}. Using NULL values.")
+            logger.warning(f"Échec de l'enrichissement segmentation : {e}. Utilisation de valeurs NULL.")
         return _add_seg_null_columns(df)
 
 
 
 # ============================================================================
-# Internal Helpers
+# Helpers Internes
 # ============================================================================
 
 def _add_null_columns(df: DataFrame, column_specs: Dict[str, type]) -> DataFrame:
-    """Internal helper for adding NULL columns (same as public version)."""
+    """Helper interne pour ajouter des colonnes NULL (identique à la version publique)."""
     return add_null_columns(df, column_specs)
 
 
 def _infer_null_columns(select_columns: List[str]) -> Dict[str, type]:
     """
-    Infer NULL column types (defaults to StringType).
+    Déduit les types de colonnes NULL (défaut à StringType).
     
-    This is a fallback when null_columns not provided.
-    For better type safety, always provide explicit null_columns.
+    Ceci est un repli quand null_columns n'est pas fourni.
+    Pour une meilleure sécurité de type, toujours fournir null_columns explicitement.
     """
     return {col_name: StringType for col_name in select_columns}
 
 
 def _add_seg_null_columns(df: DataFrame) -> DataFrame:
-    """Add NULL segmentation columns as fallback."""
+    """Ajoute les colonnes de segmentation NULL comme repli."""
     return (df
             .withColumn('cmarch', lit(None).cast(StringType()))
             .withColumn('cseg', lit(None).cast(StringType()))

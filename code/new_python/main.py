@@ -24,9 +24,15 @@ def main():
     Main entry point for Construction Data Pipeline.
 
     CLI Usage:
-        python main.py --vision 202509
-        python main.py --vision 202509 --config path/to/config.yml
+        # Run specific component (ignores config.yml enabled/disabled)
         python main.py --component ptf_mvt --vision 202509
+        python main.py --component capitaux --vision 202509
+        
+        # Run all enabled components from config.yml
+        python main.py --vision 202509
+        
+        # Use custom config file
+        python main.py --vision 202509 --config path/to/config.yml
 
     Environment Variables:
         PIPELINE_VISION: Default vision if --vision not provided
@@ -37,7 +43,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Run PTF_MVT for vision 202509
+  # Run specific component (ignores config.yml)
+  python main.py --component ptf_mvt --vision 202509
+  python main.py --component capitaux --vision 202509
+
+  # Run all enabled components from config.yml
   python main.py --vision 202509
 
   # Use custom config file
@@ -66,8 +76,8 @@ Examples:
         '--component',
         type=str,
         choices=['ptf_mvt', 'capitaux', 'emissions'],
-        default=None,  # None = auto-detect all enabled components
-        help='Component to run (default: all enabled components)'
+        default=None,
+        help='Component to run (ignores config.yml enabled state; default: run all enabled from config)'
     )
 
     args = parser.parse_args()
@@ -130,25 +140,19 @@ Examples:
     # Determine Components to Run
     # =========================================================================
     # Logic:
-    # - If --component specified: run that component (if enabled)
-    # - If --component NOT specified: run ALL enabled components
+    # - If --component specified: run ONLY that component (ignore config.yml enabled/disabled)
+    # - If --component NOT specified: run ALL enabled components from config.yml
     # =========================================================================
 
     components_to_run = []
 
     if args.component:
-        # Explicit component specified
+        # Explicit component specified - RUN IT directly (ignore config.yml enabled state)
         component = args.component
-        enabled = config.get(f'components.{component}.enabled', False)
-
-        if not enabled:
-            print(f"ERROR: Component '{component}' is disabled in configuration")
-            print(f"Enable it in config.yml: components.{component}.enabled = true")
-            sys.exit(1)
-
         components_to_run = [component]
+        print(f"Running single component (config.yml ignored): {component}")
     else:
-        # No component specified - run ALL enabled components
+        # No component specified - run ALL enabled components from config.yml
         components = config.get('components', {})
         enabled_components = [
             name for name, settings in components.items()
@@ -158,6 +162,7 @@ Examples:
         if not enabled_components:
             print("ERROR: No components are enabled in config.yml")
             print("Enable at least one component: components.<name>.enabled = true")
+            print("Or use --component to run a specific component directly")
             sys.exit(1)
 
         components_to_run = enabled_components
@@ -357,13 +362,13 @@ Examples:
     if success:
         print("\n" + "=" * 80)
         print("✓ Pipeline completed successfully!")
-        print(f"⏱️  Total execution time: {duration_display}")
+        print(f"Total execution time: {duration_display}")
         print("=" * 80)
         sys.exit(0)
     else:
         print("\n" + "=" * 80)
         print("✗ Pipeline failed!")
-        print(f"⏱️  Total execution time: {duration_display}")
+        print(f"Total execution time: {duration_display}")
         print("=" * 80)
         sys.exit(1)
 

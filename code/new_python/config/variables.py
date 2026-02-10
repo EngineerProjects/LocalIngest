@@ -1,17 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-- Most configurations have been migrated to JSON files in config/transformations/.
-- This module now ONLY exposes constants for backward compatibility, loaded safely.
-- Missing OPTIONAL keys DO NOT cascade; only the missing key is defaulted.
-- Missing MANDATORY keys RAISE a clear RuntimeError (fail-fast, by design).
+Module de configuration centralisée pour le pipeline Construction.
 
-JSON files:
-- config/transformations/az_transformations.json       → AZ transformation configs
-- config/transformations/azec_transformations.json     → AZEC transformation configs
-- config/transformations/consolidation_mappings.json   → Consolidation harmonization
-- config/transformations/business_rules.json           → (legacy) business filters
+Ce module charge les configurations depuis les fichiers JSON et expose
+des constantes pour garantir la rétrocompatibilité. Les clés obligatoires
+génèrent une erreur si absentes (fail-fast), les clés optionnelles utilisent
+des valeurs par défaut.
 
-Usage:
+Fichiers JSON utilisés :
+- config/transformations/az_transformations.json
+- config/transformations/azec_transformations.json  
+- config/transformations/consolidation_mappings.json
+- config/transformations/business_rules.json
+
+Utilisation :
     from utils.loaders import get_default_loader
     loader = get_default_loader()
     az_config = loader.get_az_config()
@@ -20,9 +22,9 @@ Usage:
 from typing import Any, Dict, List, Optional
 import warnings
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Helpers (granular, safe loading)
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
+# Fonctions utilitaires
+# =============================================================================
 
 def _safe_get(cfg: Dict[str, Any],
               path: List[str],
@@ -32,21 +34,21 @@ def _safe_get(cfg: Dict[str, Any],
               cfg_name: str = "config",
               warn_if_default: bool = True) -> Any:
     """
-    Safely traverse a nested dict to fetch a value with optional fail-fast.
-
+    Récupère une valeur dans un dictionnaire imbriqué de façon sécurisée.
+    
     Args:
-        cfg: The configuration dictionary.
-        path: List of nested keys, e.g., ["capital_mapping","mappings"].
-        default: Value to return if the key is missing (and required=False).
-        required: If True, raise RuntimeError when the key is missing.
-        cfg_name: Human-readable name for better error messages.
-        warn_if_default: If True, emit a warning when default is used.
-
+        cfg: Dictionnaire de configuration
+        path: Chemin vers la clé (ex: ["capital_mapping", "mappings"])
+        default: Valeur par défaut si clé absente (et required=False)
+        required: Si True, lève une erreur si la clé est absente
+        cfg_name: Nom du fichier de config (pour messages d'erreur)
+        warn_if_default: Émettre un avertissement si valeur par défaut utilisée
+        
     Returns:
-        The value found at path, or default.
-
+        La valeur trouvée ou la valeur par défaut
+        
     Raises:
-        RuntimeError if required=True and the path is missing.
+        RuntimeError si required=True et la clé est absente
     """
     d = cfg
     walked = []
@@ -55,29 +57,27 @@ def _safe_get(cfg: Dict[str, Any],
         if not isinstance(d, dict) or key not in d:
             if required:
                 raise RuntimeError(
-                    f"[CONFIG] Missing mandatory key '{'.'.join(path)}' in {cfg_name}."
+                    f"[CONFIG] Clé obligatoire manquante '{'.'.join(path)}' dans {cfg_name}."
                 )
             if warn_if_default:
                 warnings.warn(
-                    f"[CONFIG] Missing optional key '{'.'.join(path)}' in {cfg_name} "
-                    f"→ using default: {default!r}"
+                    f"[CONFIG] Clé optionnelle manquante '{'.'.join(path)}' dans {cfg_name} "
+                    f"→ valeur par défaut utilisée: {default!r}"
                 )
             return default
         d = d[key]
     return d
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Load all configs (granularly)
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
+# Chargement des configurations
+# =============================================================================
 
 try:
     from utils.loaders import get_default_loader
     _loader = get_default_loader()
 
-    # ----------------------------
-    # AZ configuration (optional)
-    # ----------------------------
+    # Configuration AZ (agents et courtiers)
     _az_cfg = _loader.get_az_config()
 
     AZ_COLUMN_CONFIG = _safe_get(
@@ -94,7 +94,6 @@ try:
         required=False
     )
 
-    # COASSURANCE_CONFIG is deprecated → use computed fields in JSON; keep placeholder:
     REVISION_CRITERIA_CONFIG = {
         'critere_revision': _safe_get(
             _az_cfg, ["revision_criteria"],
@@ -104,17 +103,17 @@ try:
         )
     }
 
-    # Business filters JSON n'est plus utilisé pour AZ/AZEC dans les processors.
-    # On expose un placeholder vide pour rétro-compatibilité.
+    # Filtres métier (conservé pour rétrocompatibilité)
     try:
         _br = _loader.get_business_rules()
-        BUSINESS_FILTERS_CONFIG = _br.get('business_filters', {'az': {'filters': []}, 'azec': {'filters': []}})
-    except Exception as _:
+        BUSINESS_FILTERS_CONFIG = _br.get('business_filters', {
+            'az': {'filters': []}, 
+            'azec': {'filters': []}
+        })
+    except Exception:
         BUSINESS_FILTERS_CONFIG = {'az': {'filters': []}, 'azec': {'filters': []}}
 
-    # ----------------------------
-    # AZEC configuration (MANDATORY keys fail-fast)
-    # ----------------------------
+    # Configuration AZEC (construction)
     _azec_cfg = _loader.get_azec_config()
 
     AZEC_COLUMN_CONFIG = _safe_get(
@@ -124,7 +123,7 @@ try:
         required=False
     )
 
-    # MANDATORY: capital_mapping.mappings → fail-fast if missing/empty
+    # OBLIGATOIRE : Mappages capitaux (SMP/LCI)
     AZEC_CAPITAL_MAPPING = _safe_get(
         _azec_cfg, ["capital_mapping", "mappings"],
         default=None,
@@ -132,13 +131,11 @@ try:
         required=True
     )
     if not AZEC_CAPITAL_MAPPING:
-        # Double-protection: empty list is also invalid (stop pipeline)
         raise RuntimeError(
-            "[CONFIG] 'capital_mapping.mappings' is present but empty in azec_transformations.json. "
-            "This mapping is mandatory for SMP/LCI; please fix the JSON."
+            "[CONFIG] 'capital_mapping.mappings' présent mais vide dans azec_transformations.json. "
+            "Ce mappage est obligatoire pour SMP/LCI."
         )
 
-    # Optional lists (safe defaults)
     AZEC_PRODUIT_LIST = _safe_get(
         _azec_cfg, ["product_list", "products"],
         default=[],
@@ -146,7 +143,6 @@ try:
         required=False
     )
 
-    # Migration threshold (optional with sensible default)
     AZEC_MIGRATION_CONFIG = _safe_get(
         _azec_cfg, ["migration_handling"],
         default={'vision_threshold': 202009},
@@ -154,9 +150,7 @@ try:
         required=False
     )
 
-    # ----------------------------
-    # CONSOLIDATION configuration (optional, per-key safe)
-    # ----------------------------
+    # Configuration consolidation
     _cons_cfg = _loader.get_consolidation_config()
 
     CONSOLIDATION_AZ_HARMONIZATION = _safe_get(
@@ -174,21 +168,18 @@ try:
     )
 
 except Exception as e:
-    # Loader completely unavailable (e.g., unit tests without JSON files):
-    warnings.warn(f"[CONFIG] Could not initialize loader or load configs: {e}. Using fallback defaults.")
+    # Loader indisponible (ex: tests unitaires) → valeurs par défaut
+    warnings.warn(f"[CONFIG] Impossible de charger les configs: {e}. Utilisation valeurs par défaut.")
 
-    # ---- AZ fallbacks ----
     AZ_COLUMN_CONFIG = {'passthrough': [], 'rename': {}, 'computed': {}, 'metadata': {}}
     CAPITAL_EXTRACTION_CONFIG = []
     REVISION_CRITERIA_CONFIG = {'critere_revision': {}}
     BUSINESS_FILTERS_CONFIG = {'az': {'filters': []}, 'azec': {'filters': []}}
 
-    # ---- AZEC fallbacks (note: CAPITAL_MAPPING kept empty to fail earlier in join if used) ----
     AZEC_COLUMN_CONFIG = {'passthrough': [], 'rename': {}, 'computed': {}, 'metadata': {}}
-    AZEC_CAPITAL_MAPPING = []   # Intentionally empty; processors should fail-fast if they rely on it.
+    AZEC_CAPITAL_MAPPING = []  # Vide intentionnellement pour fail-fast si utilisé
     AZEC_PRODUIT_LIST = []
     AZEC_MIGRATION_CONFIG = {'vision_threshold': 202009}
 
-    # ---- Consolidation fallbacks ----
     CONSOLIDATION_AZ_HARMONIZATION = {'rename': {}, 'computed': {}}
     CONSOLIDATION_AZEC_HARMONIZATION = {'rename': {}, 'computed': {}}

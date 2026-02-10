@@ -14,16 +14,16 @@ This directory contains Jupyter notebooks for testing each component of the PTF_
 
 ## Notebook Structure
 
-| # | Notebook | Purpose | Dependencies |
-|---|----------|---------|--------------|
-| 01 | `01_bronze_file_reading.ipynb` | Bronze file reading, schema application, data quality | None (data only) |
-| 02 | `02_business_filters_testing.ipynb` | Business filters (AZ/AZEC), exclusions, market/segment filtering | Notebook 01 |
-| 03 | `03_helper_functions_testing.ipynb` | Date calculations, vision parsing, path building | None (standalone) |
-| 04 | `04_capital_extraction_testing.ipynb` | Capital extraction (SMP, LCI, PERTE_EXP, RISQUE_DIRECT) | Notebooks 01-02 |
-| 05 | `05_movement_calculations_testing.ipynb` | Movement indicators (NBAFN, NBRES, NBRPT, NBRPC, NBPTF) | Notebooks 01-03 |
-| 06 | `06_column_transformations_testing.ipynb` | Column operations, computed columns, conditional transforms | Notebooks 01-02 |
-| 07 | `07_coassurance_az_transforms_testing.ipynb` | Coassurance logic, revision criteria, AZ transform steps | Notebooks 01-06 |
-| 08 | `08_full_az_processor_testing.ipynb` | Complete AZ processor end-to-end (read→transform→write) | All previous |
+| #   | Notebook                                     | Purpose                                                          | Dependencies      |
+| --- | -------------------------------------------- | ---------------------------------------------------------------- | ----------------- |
+| 01  | `01_bronze_file_reading.ipynb`               | Bronze file reading, schema application, data quality            | None (data only)  |
+| 02  | `02_business_filters_testing.ipynb`          | Business filters (AZ/AZEC), exclusions, market/segment filtering | Notebook 01       |
+| 03  | `03_helper_functions_testing.ipynb`          | Date calculations, vision parsing, path building                 | None (standalone) |
+| 04  | `04_capital_extraction_testing.ipynb`        | Capital extraction (SMP, LCI, PERTE_EXP, RISQUE_DIRECT)          | Notebooks 01-02   |
+| 05  | `05_movement_calculations_testing.ipynb`     | Movement indicators (NBAFN, NBRES, NBRPT, NBRPC, NBPTF)          | Notebooks 01-03   |
+| 06  | `06_column_transformations_testing.ipynb`    | Column operations, computed columns, conditional transforms      | Notebooks 01-02   |
+| 07  | `07_coassurance_az_transforms_testing.ipynb` | Coassurance logic, revision criteria, AZ transform steps         | Notebooks 01-06   |
+| 08  | `08_full_az_processor_testing.ipynb`         | Complete AZ processor end-to-end (read→transform→write)          | All previous      |
 
 ## Execution Order
 
@@ -52,7 +52,7 @@ jupyter notebook 08_full_az_processor_testing.ipynb
 ## Key Components Tested
 
 ### Bronze Layer
-- File reading (ipf_az, ipfm99_az, polic_cu, capitxcu, reference data)
+- File reading (ipf, ipfm99_az, polic_cu, capitxcu, reference data)
 - Schema enforcement
 - Column lowercase conversion
 - Read filters

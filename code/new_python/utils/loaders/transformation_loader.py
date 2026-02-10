@@ -1,8 +1,8 @@
 """
-Transformation Configuration Loader.
+Chargeur de Configuration des Transformations.
 
-Loads and validates JSON transformation configurations for AZ, AZEC, and Consolidation processors.
-Provides a unified interface for accessing transformation rules.
+Charge et valide les configurations de transformation JSON pour les processeurs AZ, AZEC et Consolidation.
+Fournit une interface unifiée pour accéder aux règles de transformation.
 """
 
 import json
@@ -12,12 +12,12 @@ from typing import Dict, Any, Optional, List
 
 class TransformationLoader:
     """
-    Load and validate transformation configurations from JSON files.
+    Charge et valide les configurations de transformation depuis des fichiers JSON.
 
-    This class provides a centralized way to load transformation configs
-    that were previously hardcoded in variables.py.
+    Cette classe fournit un moyen centralisé de charger les configurations de transformation
+    qui étaient auparavant codées en dur dans variables.py.
 
-    Example:
+    Exemple:
         >>> loader = TransformationLoader()
         >>> az_config = loader.get_az_config()
         >>> capital_extraction = az_config['capital_extraction']
@@ -25,35 +25,35 @@ class TransformationLoader:
 
     def __init__(self, config_dir: Optional[Path] = None):
         """
-        Initialize the transformation loader.
+        Initialise le chargeur de transformation.
 
         Args:
-            config_dir: Path to config/transformations directory.
-                       If None, uses default location relative to this file.
+            config_dir: Chemin vers le répertoire config/transformations.
+                       Si None, utilise l'emplacement par défaut relatif à ce fichier.
         """
         if config_dir is None:
-            # Default: /home/amiche/Downloads/code/new_python/config/transformations
-            # From utils/loaders/transformation_loader.py: need 3 .parent calls
+            # Défaut : /home/amiche/Downloads/code/new_python/config/transformations
+            # Depuis utils/loaders/transformation_loader.py : besoin de 3 appels .parent
             self.config_dir = Path(__file__).parent.parent.parent / "config" / "transformations"
         else:
             self.config_dir = Path(config_dir)
 
-        # Cache for loaded configs
+        # Cache pour les configurations chargées
         self._cache: Dict[str, Dict[str, Any]] = {}
 
     def _load_json(self, filename: str) -> Dict[str, Any]:
         """
-        Load a JSON configuration file.
+        Charge un fichier de configuration JSON.
 
         Args:
-            filename: Name of JSON file (e.g., 'az_transformations.json')
+            filename: Nom du fichier JSON (ex: 'az_transformations.json')
 
         Returns:
-            Dictionary containing the configuration
+            Dictionnaire contenant la configuration
 
         Raises:
-            FileNotFoundError: If config file doesn't exist
-            json.JSONDecodeError: If file is not valid JSON
+            FileNotFoundError: Si le fichier de configuration n'existe pas
+            json.JSONDecodeError: Si le fichier n'est pas un JSON valide
         """
         if filename in self._cache:
             return self._cache[filename]
@@ -62,68 +62,68 @@ class TransformationLoader:
 
         if not file_path.exists():
             raise FileNotFoundError(
-                f"Configuration file not found: {file_path}\n"
-                f"Expected location: {self.config_dir}"
+                f"Fichier de configuration non trouvé : {file_path}\n"
+                f"Emplacement attendu : {self.config_dir}"
             )
 
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
 
-            # Cache the loaded config
+            # Mettre en cache la configuration chargée
             self._cache[filename] = config
             return config
 
         except json.JSONDecodeError as e:
             raise json.JSONDecodeError(
-                f"Invalid JSON in {filename}: {e.msg}",
+                f"JSON invalide dans {filename} : {e.msg}",
                 e.doc,
                 e.pos
             )
 
     def get_az_config(self) -> Dict[str, Any]:
         """
-        Get AZ transformation configuration.
+        Obtient la configuration de transformation AZ.
 
         Returns:
-            Dictionary with keys:
+            Dictionnaire avec les clés :
             - column_selection: passthrough, rename, computed, metadata
             - capital_extraction: defaults, targets
             - business_filters: filters
-            - coassurance: conditions for top_coass, coass, partcie
-            - revision_criteria: mapping from cdgrev codes
+            - coassurance: conditions pour top_coass, coass, partcie
+            - revision_criteria: mappage des codes cdgrev
             - movements: column_mapping
             - exposures: column_mapping
-            - initialization: default column values
+            - initialization: valeurs de colonne par défaut
         """
         return self._load_json('az_transformations.json')
 
     def get_azec_config(self) -> Dict[str, Any]:
         """
-        Get AZEC transformation configuration.
+        Obtient la configuration de transformation AZEC.
 
         Returns:
-            Dictionary with keys:
+            Dictionnaire avec les clés :
             - column_selection: passthrough, rename, computed, metadata
-            - date_state_updates: conditional updates for dates/states
+            - date_state_updates: mises à jour conditionnelles pour dates/états
             - migration_handling: vision_threshold, transformations
-            - capital_mapping: branch-specific capital extraction
-            - product_list: AZEC-specific product codes
-            - movement_calculation: nbafn, nbres, nbptf logic
-            - suspension_calculation: nbj_susp_ytd logic
-            - business_filters: filters
-            - initialization: default column values
+            - capital_mapping: extraction de capitaux spécifique à la branche
+            - product_list: codes produits spécifiques AZEC
+            - movement_calculation: logique nbafn, nbres, nbptf
+            - suspension_calculation: logique nbj_susp_ytd
+            - business_filters: filtres
+            - initialization: valeurs de colonne par défaut
         """
         return self._load_json('azec_transformations.json')
 
     def get_consolidation_config(self) -> Dict[str, Any]:
         """
-        Get consolidation mapping configuration.
+        Obtient la configuration de mappage de consolidation.
 
         Returns:
-            Dictionary with keys:
+            Dictionnaire avec les clés :
             - az_harmonization: rename, computed
-            - azec_harmonization: rename, computed (extensive mappings)
+            - azec_harmonization: rename, computed (mappages étendus)
             - common_transformations: cdtre_cleanup, partnership_flag
             - movement_column_mapping: az, azec
             - exposure_column_mapping: az, azec
@@ -132,62 +132,62 @@ class TransformationLoader:
 
     def get_business_rules(self) -> Dict[str, Any]:
         """
-        Get business rules configuration.
+        Obtient la configuration des règles métier.
 
         Returns:
-            Dictionary with keys:
+            Dictionnaire avec les clés :
             - business_filters: az, azec
-            - lta_types: long term agreement types
+            - lta_types: types d'accords à long terme
             
         Note:
-            coassurance_config removed - now in az/azec_transformations.json computed_fields
+            coassurance_config supprimé - maintenant dans az/azec_transformations.json computed_fields
         """
         return self._load_json('business_rules.json')
 
     def get_column_selection(self, source: str) -> Dict[str, Any]:
         """
-        Get column selection configuration for a specific source.
+        Obtient la configuration de sélection de colonnes pour une source spécifique.
 
         Args:
-            source: 'az' or 'azec'
+            source: 'az' ou 'azec'
 
         Returns:
-            Dictionary with passthrough, rename, computed, init/metadata
+            Dictionnaire avec passthrough, rename, computed, init/metadata
         """
         if source.lower() == 'az':
             return self.get_az_config()['column_selection']
         elif source.lower() == 'azec':
             return self.get_azec_config()['column_selection']
         else:
-            raise ValueError(f"Unknown source: {source}. Must be 'az' or 'azec'")
+            raise ValueError(f"Source inconnue : {source}. Doit être 'az' ou 'azec'")
 
     def get_capital_extraction(self, source: str) -> Dict[str, Any]:
         """
-        Get capital extraction configuration.
+        Obtient la configuration d'extraction de capitaux.
 
         Args:
-            source: 'az' or 'azec'
+            source: 'az' ou 'azec'
 
         Returns:
-            For AZ: capital_extraction config
-            For AZEC: capital_mapping config
+            Pour AZ : config capital_extraction
+            Pour AZEC : config capital_mapping
         """
         if source.lower() == 'az':
             return self.get_az_config()['capital_extraction']
         elif source.lower() == 'azec':
             return self.get_azec_config()['capital_mapping']
         else:
-            raise ValueError(f"Unknown source: {source}")
+            raise ValueError(f"Source inconnue : {source}")
 
     def get_business_filters(self, source: str) -> List[Dict[str, Any]]:
         """
-        Get business filters for a specific source.
+        Obtient les filtres métier pour une source spécifique.
 
         Args:
-            source: 'az' or 'azec'
+            source: 'az' ou 'azec'
 
         Returns:
-            List of filter configurations
+            Liste des configurations de filtres
         """
         if source.lower() == 'az':
             az_config = self.get_az_config()
@@ -196,20 +196,20 @@ class TransformationLoader:
             azec_config = self.get_azec_config()
             return azec_config.get('business_filters', {}).get('filters', [])
         else:
-            # Try business_rules.json
+            # Essayer business_rules.json
             business_rules = self.get_business_rules()
             filters = business_rules.get('business_filters', {}).get(source.lower(), {})
             return filters.get('filters', [])
 
     def get_harmonization_mapping(self, source: str) -> Dict[str, Any]:
         """
-        Get schema harmonization mapping for consolidation.
+        Obtient le mappage d'harmonisation de schéma pour la consolidation.
 
         Args:
-            source: 'az' or 'azec'
+            source: 'az' ou 'azec'
 
         Returns:
-            Dictionary with rename and computed mappings
+            Dictionnaire avec mappages rename et computed
         """
         consolidation = self.get_consolidation_config()
 
@@ -218,17 +218,17 @@ class TransformationLoader:
         elif source.lower() == 'azec':
             return consolidation['azec_harmonization']
         else:
-            raise ValueError(f"Unknown source: {source}")
+            raise ValueError(f"Source inconnue : {source}")
 
     def get_movement_columns(self, source: str) -> Dict[str, str]:
         """
-        Get movement column mapping for a specific source.
+        Obtient le mappage de colonnes de mouvement pour une source spécifique.
 
         Args:
-            source: 'az' or 'azec'
+            source: 'az' ou 'azec'
 
         Returns:
-            Dictionary mapping logical column names to actual column names
+            Dictionnaire mappant les noms de colonnes logiques aux noms réels
         """
         consolidation = self.get_consolidation_config()
         mapping = consolidation['movement_column_mapping']
@@ -236,17 +236,17 @@ class TransformationLoader:
         if source.lower() in mapping:
             return mapping[source.lower()]
         else:
-            raise ValueError(f"Unknown source: {source}")
+            raise ValueError(f"Source inconnue : {source}")
 
     def get_exposure_columns(self, source: str) -> Dict[str, str]:
         """
-        Get exposure column mapping for a specific source.
+        Obtient le mappage de colonnes d'exposition pour une source spécifique.
 
         Args:
-            source: 'az' or 'azec'
+            source: 'az' ou 'azec'
 
         Returns:
-            Dictionary mapping logical column names to actual column names
+            Dictionnaire mappant les noms de colonnes logiques aux noms réels
         """
         consolidation = self.get_consolidation_config()
         mapping = consolidation['exposure_column_mapping']
@@ -254,18 +254,18 @@ class TransformationLoader:
         if source.lower() in mapping:
             return mapping[source.lower()]
         else:
-            raise ValueError(f"Unknown source: {source}")
+            raise ValueError(f"Source inconnue : {source}")
 
     def get_constants(self, constant_name: Optional[str] = None) -> Any:
         """
-        Get business constants.
+        Obtient les constantes métier.
 
         Args:
-            constant_name: Specific constant to retrieve (e.g., 'excluded_noint')
-                          If None, returns all constants
+            constant_name: Constant spécifique à récupérer (ex: 'excluded_noint')
+                          Si None, retourne toutes les constantes
 
         Returns:
-            Constant value or dictionary of all constants
+            Valeur de la constante ou dictionnaire de toutes les constantes
         """
         business_rules = self.get_business_rules()
         constants = business_rules.get('constants', {})
@@ -274,28 +274,28 @@ class TransformationLoader:
             return constants
 
         if constant_name not in constants:
-            raise KeyError(f"Constant '{constant_name}' not found")
+            raise KeyError(f"Constante '{constant_name}' non trouvée")
 
         return constants[constant_name]
 
     def reload(self):
         """
-        Clear cache and force reload of all configurations.
+        Vide le cache et force le rechargement de toutes les configurations.
 
-        Useful during development when JSON files are being modified.
+        Utile pendant le développement lorsque les fichiers JSON sont modifiés.
         """
         self._cache.clear()
 
     def validate_all(self) -> bool:
         """
-        Validate that all required configuration files exist and are valid JSON.
+        Valide que tous les fichiers de configuration requis existent et sont des JSON valides.
 
         Returns:
-            True if all configs are valid, raises exception otherwise
+            True si toutes les configs sont valides, lève une exception sinon
 
         Raises:
-            FileNotFoundError: If any config file is missing
-            json.JSONDecodeError: If any file has invalid JSON
+            FileNotFoundError: Si un fichier de config manque
+            json.JSONDecodeError: Si un fichier contient du JSON invalide
         """
         required_files = [
             'az_transformations.json',
@@ -311,20 +311,20 @@ class TransformationLoader:
 
 
 # =========================================================================
-# Convenience Functions
+# Fonctions de commodité
 # =========================================================================
 
 def get_loader(config_dir: Optional[Path] = None) -> TransformationLoader:
     """
-    Get a TransformationLoader instance.
+    Obtient une instance de TransformationLoader.
 
     Args:
-        config_dir: Optional custom config directory
+        config_dir: Répertoire de configuration personnalisé optionnel
 
     Returns:
-        TransformationLoader instance
+        Instance TransformationLoader
 
-    Example:
+    Exemple:
         >>> from config.loaders.transformation_loader import get_loader
         >>> loader = get_loader()
         >>> az_config = loader.get_az_config()
@@ -332,17 +332,17 @@ def get_loader(config_dir: Optional[Path] = None) -> TransformationLoader:
     return TransformationLoader(config_dir)
 
 
-# Singleton instance for convenient access
+# Instance singleton pour accès pratique
 _default_loader: Optional[TransformationLoader] = None
 
 def get_default_loader() -> TransformationLoader:
     """
-    Get the default singleton TransformationLoader instance.
+    Obtient l'instance singleton par défaut de TransformationLoader.
 
     Returns:
-        Singleton TransformationLoader instance
+        Instance singleton TransformationLoader
 
-    Example:
+    Exemple:
         >>> from config.loaders.transformation_loader import get_default_loader
         >>> loader = get_default_loader()
         >>> filters = loader.get_business_filters('az')

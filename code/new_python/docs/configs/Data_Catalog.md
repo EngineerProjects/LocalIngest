@@ -59,7 +59,7 @@
 
 | File Group  | Pattern                                    | Used By           |
 | ----------- | ------------------------------------------ | ----------------- |
-| `ipf_az`    | *IPFE16_IPF_*.csv.gz, *IPFE36_IPF_*.csv.gz | PTF_MVT, Capitaux |
+| `ipf`       | *IPFE16_IPF_*.csv.gz, *IPFE36_IPF_*.csv.gz | PTF_MVT, Capitaux |
 | `ipfm99_az` | *SPEIPFM99_IPF_*.csv.gz                    | PTF_MVT           |
 
 ### OneBI Files (Monthly)

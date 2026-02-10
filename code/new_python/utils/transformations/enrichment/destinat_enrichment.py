@@ -1,8 +1,8 @@
 """
-DESTINAT (Destination) calculation for construction sites.
+Calcul de DESTINAT (Destination) pour les chantiers.
 
-Parses DSTCSC field to categorize construction site destinations.
-Based on PTF_MVTS_CONSOLIDATION_MACRO.sas L416-437.
+Parse le champ DSTCSC pour catégoriser les destinations des chantiers.
+Basé sur la logique de consolidation.
 """
 
 from pyspark.sql import DataFrame # type: ignore
@@ -10,46 +10,44 @@ from pyspark.sql.functions import col, when, lit, upper, regexp_extract, coalesc
 from typing import Optional, Any
 
 # =========================================================================
-# DESTINAT CONSOLIDATION LOGIC
+# LOGIQUE DE CONSOLIDATION DESTINAT
 # =========================================================================
 
 def apply_destinat_consolidation_logic(df: DataFrame) -> DataFrame:
     """
-    Apply DESTINAT business logic for construction sites (Chantiers).
-    
-    This applies consolidation-specific logic that fills missing DESTINAT
-    values after the detailed calculation.
-    
-    Based on: PTF_MVTS_CONSOLIDATION_MACRO.sas L423-437
-    
-    Logic:
-    1. Only applies to segment2="Chantiers" where DESTINAT is missing
-    2. Checks DSTCSC and LBNATTRV for housing keywords
-    3. Checks DSTCSC numeric codes for residential classification
-    4. Default to "Autres" if no match
-    
+    Applique la logique métier DESTINAT pour les chantiers.
+
+    Cette fonction applique une logique spécifique à la consolidation pour remplir
+    les valeurs DESTINAT manquantes après le calcul détaillé.
+
+    Logique :
+    1. S'applique uniquement au segment2="Chantiers" où DESTINAT est manquant
+    2. Vérifie DSTCSC et LBNATTRV pour des mots-clés de logement
+    3. Vérifie les codes numériques DSTCSC pour la classification résidentielle
+    4. Défaut à "Autres" si aucune correspondance
+
     Args:
-        df: Consolidated DataFrame
-        
+        df: DataFrame consolidé
+
     Returns:
-        DataFrame with DESTINAT filled for Chantiers
-        
-    Example:
+        DataFrame avec DESTINAT rempli pour les Chantiers
+
+    Exemple:
         >>> from utils.transformations.destinat_calculation import apply_destinat_consolidation_logic
         >>> df = apply_destinat_consolidation_logic(df)
     """
     if "segment2" not in df.columns or "destinat" not in df.columns:
         return df
-    
-    # Only process Chantiers with missing DESTINAT
+
+    # Traiter uniquement les Chantiers avec DESTINAT manquant
     is_chantier_missing = (col("segment2") == "Chantiers") & col("destinat").isNull()
-    
-    # Prepare uppercase columns for pattern matching
+
+    # Préparer les colonnes en majuscules pour la correspondance de motifs
     dstcsc_upper = upper(col("dstcsc")) if "dstcsc" in df.columns else lit(None)
     lbnattrv_upper = upper(col("lbnattrv")) if "lbnattrv" in df.columns else lit(None)
-    
-    # Pattern matching for "Habitation" (SAS L427-434)
-    # Keywords: HABIT, LOG, LGT, MAIS, APPA, VILLA, INDIV
+
+    # Correspondance de motifs pour "Habitation"
+    # Mots-clés : HABIT, LOG, LGT, MAIS, APPA, VILLA, INDIV
     is_habitation = (
         dstcsc_upper.contains("HABIT") | lbnattrv_upper.contains("HABIT") |
         dstcsc_upper.contains("LOG") | lbnattrv_upper.contains("LOG") |
@@ -59,12 +57,12 @@ def apply_destinat_consolidation_logic(df: DataFrame) -> DataFrame:
         dstcsc_upper.contains("VILLA") | lbnattrv_upper.contains("VILLA") |
         dstcsc_upper.contains("INDIV") | lbnattrv_upper.contains("INDIV")
     )
-    
-    # Numeric codes for "Habitation" (SAS L436)
+
+    # Codes numériques pour "Habitation"
     if "dstcsc" in df.columns:
         is_habitation = is_habitation | col("dstcsc").isin(["01", "02", "03", "04", "1", "2", "3", "4", "22"])
-    
-    # Apply logic (SAS L426-437)
+
+    # Appliquer la logique
     df = df.withColumn(
         "destinat",
         when(
@@ -73,5 +71,5 @@ def apply_destinat_consolidation_logic(df: DataFrame) -> DataFrame:
             .otherwise(lit("Autres"))
         ).otherwise(col("destinat"))
     )
-    
+
     return df

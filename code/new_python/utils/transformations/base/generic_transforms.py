@@ -1,8 +1,8 @@
 """
-Generic transformation utilities.
+Utilitaires de transformation génériques.
 
-Provides reusable, configuration-driven transformation functions that work
-across all domains and processors.
+Fournit des fonctions de transformation réutilisables, pilotées par la configuration,
+qui fonctionnent pour tous les domaines et processeurs.
 """
 
 from pyspark.sql import DataFrame # type: ignore
@@ -18,19 +18,19 @@ def apply_conditional_transform(
     config: Dict[str, Any]
 ) -> DataFrame:
     """
-    Apply conditional transformation using when/otherwise logic.
+    Applique une transformation conditionnelle utilisant la logique when/otherwise.
 
-    Builds when().when().otherwise() chains from configuration dictionaries.
+    Construit des chaînes when().when().otherwise() à partir de dictionnaires de configuration.
 
-    Args:
-        df: Input DataFrame
-        target_col: Column to create
-        config: Condition configuration with 'conditions' and 'default' keys
+    Paramètres :
+        df : DataFrame en entrée
+        target_col : Colonne à créer
+        config : Configuration de condition avec les clés 'conditions' et 'default'
 
-    Returns:
-        DataFrame with new column
+    Retourne :
+        DataFrame avec la nouvelle colonne
 
-    Example:
+    Exemple :
         >>> config = {
         ...     'conditions': [
         ...         {'col': 'cdpolgp1', 'op': '==', 'value': '1', 'result': 1}
@@ -46,7 +46,7 @@ def apply_conditional_transform(
     for cond in conditions:
         cond_expr = build_condition(df, cond)
 
-        # Determine result value
+        # Déterminer la valeur du résultat
         if 'result' in cond:
             result_expr = lit(cond['result'])
         elif 'result_value' in cond:
@@ -78,22 +78,22 @@ def apply_conditional_transform(
 
 def build_condition(df: DataFrame, cond: Dict[str, Any]):
     """
-    Build PySpark condition from configuration dictionary.
+    Construit une condition PySpark à partir d'un dictionnaire de configuration.
 
-    Supports:
-      - Comparison operators: ==, !=, >, <, >=, <=
-      - Membership: in, not_in
-      - Null checks: is_null, is_not_null
-      - Multi-column AND conditions
+    Supporte :
+      - Opérateurs de comparaison : ==, !=, >, <, >=, <=
+      - Appartenance : in, not_in
+      - Vérification de nullité : is_null, is_not_null
+      - Conditions ET multi-colonnes
 
-    Args:
-        df: DataFrame (for column existence checks)
-        cond: Condition configuration
+    Paramètres :
+        df : DataFrame (pour vérifier l'existence des colonnes)
+        cond : Configuration de la condition
 
-    Returns:
-        PySpark Column condition
+    Retourne :
+        Condition de colonne PySpark
 
-    Example:
+    Exemple :
         >>> cond = {'col': 'price', 'op': '>', 'value': 100}
         >>> condition = build_condition(df, cond)
     """
@@ -101,7 +101,7 @@ def build_condition(df: DataFrame, cond: Dict[str, Any]):
     op = cond.get('op', '==')
     value = cond.get('value')
 
-    # Base condition
+    # Condition de base
     base_cond = None
     if op == '==':
         base_cond = col(col_name) == value
@@ -126,7 +126,7 @@ def build_condition(df: DataFrame, cond: Dict[str, Any]):
     else:
         base_cond = lit(True)
 
-    # AND condition (multi-column)
+    # Condition ET (multi-colonnes)
     if 'and_col' in cond:
         and_col = cond['and_col'].lower()
         if 'and_in' in cond:
@@ -148,23 +148,23 @@ def _build_expression_from_string(
     context: dict
 ) -> Any:
     """
-    Build PySpark expression from string with column and context substitution.
+    Construit une expression PySpark à partir d'une chaîne avec substitution de colonnes et de contexte.
 
-    Handles:
-    - Column names → col("column_name")
-    - Context variables → their values
-    - Operators: ==, !=, >, <, >=, <=, and, or, in, not
-    - Functions: is null, is not null, contains
+    Gère :
+    - Noms de colonnes -> col("nom_colonne")
+    - Variables de contexte -> leurs valeurs
+    - Opérateurs : ==, !=, >, <, >=, <=, and, or, in, not
+    - Fonctions : is null, is not null, contains
 
-    Args:
-        expr_str: Expression string
-        columns: List of DataFrame column names
-        context: Context dictionary with variables
+    Paramètres :
+        expr_str : Chaîne d'expression
+        columns : Liste des noms de colonnes du DataFrame
+        context : Dictionnaire de contexte avec variables
 
-    Returns:
-        PySpark Column expression
+    Retourne :
+        Expression de colonne PySpark
 
-    Example:
+    Exemple :
         >>> expr = _build_expression_from_string(
         ...     "price > 100 and category in VALID_CATS",
         ...     ['price', 'category'],
@@ -173,35 +173,35 @@ def _build_expression_from_string(
     """
     expr_work = expr_str.lower()
 
-    # Replace context variables first
+    # Remplacer les variables de contexte d'abord
     for key, value in context.items():
         pattern = re.compile(re.escape(key), re.IGNORECASE)
         expr_work = pattern.sub(repr(value), expr_work)
 
-    # Replace column names with col() calls
+    # Remplacer les noms de colonnes par des appels col()
     sorted_cols = sorted(columns, key=len, reverse=True)
     for c in sorted_cols:
-        pattern = rf'\b{re.escape(c)}\b'
+        pattern = rf'\\b{re.escape(c)}\\b'
         expr_work = re.sub(pattern, f'col("{c}")', expr_work)
 
-    # Replace null checks BEFORE logical operators
-    # Otherwise 'is not null' becomes 'is ~ null' due to ' not ' → ' ~ ' replacement
-    expr_work = re.sub(r'(col\(["\'][^"\']+["\']\))\s+is\s+not\s+null', r'\1.isNotNull()', expr_work, flags=re.IGNORECASE)
-    expr_work = re.sub(r'(col\(["\'][^"\']+["\']\))\s+is\s+null', r'\1.isNull()', expr_work, flags=re.IGNORECASE)
+    # Remplacer les vérifications de null AVANT les opérateurs logiques
+    # Sinon 'is not null' devient 'is ~ null' à cause du remplacement ' not ' -> ' ~ '
+    expr_work = re.sub(r'(col\\(["\'][^"\']+["\']\\))\\s+is\\s+not\\s+null', r'\\1.isNotNull()', expr_work, flags=re.IGNORECASE)
+    expr_work = re.sub(r'(col\\(["\'][^"\']+["\']\\))\\s+is\\s+null', r'\\1.isNull()', expr_work, flags=re.IGNORECASE)
 
-    # Replace logical operators AFTER null checks
+    # Remplacer les opérateurs logiques APRÈS les vérifications de null
     expr_work = expr_work.replace(' and ', ' & ')
     expr_work = expr_work.replace(' or ', ' | ')
     expr_work = expr_work.replace(' not ', ' ~ ')
 
-    # Replace contains
-    expr_work = re.sub(r'\.contains\s*\(\s*["\']([^"\']+)["\']\s*\)', r'.contains("\1")', expr_work)
+    # Remplacer contains
+    expr_work = re.sub(r'\\.contains\\s*\\(\\s*["\']([^"\']+)["\']\\s*\\)', r'.contains("\\1")', expr_work)
 
-    # Evaluate and return
+    # Évaluer et retourner
     try:
         return eval(expr_work)
     except Exception as e:
-        raise ValueError(f"Failed to build expression from '{expr_str}': {e}\nProcessed: {expr_work}")
+        raise ValueError(f"Échec de la construction de l'expression depuis '{expr_str}': {e}\\nTraité : {expr_work}")
 
 def apply_transformations(
     df: DataFrame,
@@ -209,25 +209,25 @@ def apply_transformations(
     context: Dict[str, Any] = None
 ) -> DataFrame:
     """
-    Apply a series of column transformations from configuration.
+    Applique une série de transformations de colonnes à partir de la configuration.
 
-    Supports multiple transformation types:
-    - constant: Simple constant value
-    - coalesce_columns: Coalesce multiple columns
-    - coalesce_default: Coalesce with literal default
-    - arithmetic: Arithmetic expression
-    - conditional: Conditional logic (when/otherwise)
-    - flag: Simple 1/0 flag based on condition
-    - mapping: Map values from one column to another
-    - cleanup: Replace NULL/specific values with another column
+    Supporte plusieurs types de transformations :
+    - constant : Valeur constante simple
+    - coalesce_columns : Coalesce de plusieurs colonnes
+    - coalesce_default : Coalesce avec valeur par défaut littérale
+    - arithmetic : Expression arithmétique
+    - conditional : Logique conditionnelle (when/otherwise)
+    - flag : Drapeau simple 1/0 basé sur une condition
+    - mapping : Mappage de valeurs d'une colonne à une autre
+    - cleanup : Remplacement de valeurs NULL/spécifiques par une autre colonne
 
-    Args:
-        df: Input DataFrame
-        transformations: List of transformation configurations
-        context: Optional context dictionary with dates, constants, etc.
+    Paramètres :
+        df : DataFrame en entrée
+        transformations : Liste des configurations de transformation
+        context : Dictionnaire de contexte optionnel avec dates, constantes, etc.
 
-    Returns:
-        DataFrame with all transformations applied
+    Retourne :
+        DataFrame avec toutes les transformations appliquées
     """
     if context is None:
         context = {}
@@ -334,31 +334,24 @@ def apply_transformations(
 
 def apply_business_filters(df, filter_config, logger=None, business_rules=None):
     """
-    Apply SAS-style business filters coming from JSON configuration.
+    Applique des filtres métier provenant de la configuration JSON.
 
-    This function preserves SAS WHERE semantics:
-    - NOT IN keeps NULL rows
-    - != keeps NULL rows
-    - IN excludes NULL rows
-    - AND/OR/NOT precedence is respected via the safe parser
-    - Complex expressions are evaluated via safe JSON expression parsing
-    - Comparisons involving NULL behave like SAS (NULL included where expected)
+    Fonctionnalités :
+    - Préserve la sémantique de gestion des NULL (souvent incluse ou exclue selon le type)
+    - NOT IN conserve les lignes NULL
+    - != conserve les lignes NULL
+    - IN exclut les lignes NULL
+    - La précédence AND/OR/NOT est respectée via le parseur sécurisé
+    - Les expressions complexes sont évaluées via une analyse d'expression JSON sécurisée
 
-    Parameters
-    ----------
-    df : DataFrame
-        Input DataFrame.
-    filter_config : dict
-        Configuration JSON node under "business_filters".
-    logger : Logger, optional
-        Debug logger (if provided).
-    business_rules : dict, optional
-        For values_ref expansion.
+    Paramètres :
+        df : DataFrame en entrée.
+        filter_config : Nœud JSON de configuration sous "business_filters".
+        logger : Logger optionnel (pour le débogage).
+        business_rules : Dictionnaire optionnel pour l'expansion de values_ref.
 
-    Returns
-    -------
-    DataFrame
-        Filtered DataFrame.
+    Retourne :
+        DataFrame filtré.
     """
 
     filters = filter_config.get("filters", [])
@@ -391,6 +384,6 @@ def apply_business_filters(df, filter_config, logger=None, business_rules=None):
             df = df.filter(col(a).isNull() | col(b).isNull() | (col(a) != col(b)))
 
         else:
-            raise ValueError(f"Unsupported filter type: {ftype}")
+            raise ValueError(f"Type de filtre non supporté : {ftype}")
 
     return df

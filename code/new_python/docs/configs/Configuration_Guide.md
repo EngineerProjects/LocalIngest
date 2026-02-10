@@ -70,7 +70,7 @@ The pipeline uses a **configuration-driven** architecture with all business logi
 
 ### Current File Groups (45 total)
 
-- IMS files: `ipf_az`, `ipfm99_az`, `ipfspe_*`
+- IMS files: `ipf`, `ipfm99_az`, `ipfspe_*`
 - OneBI: `rf_fr1_prm_dtl_midcorp_m`
 - AZEC: `polic_cu_azec`, `capitxcu_azec`, `incendcu_azec`, etc.
 - IRD Risk: `ird_risk_q45`, `ird_risk_q46`, `ird_risk_qan`
@@ -86,7 +86,7 @@ Explicit PySpark schemas for type safety.
 ### Schema Registry
 
 Maps file group names to StructType schemas:
-- `ipf_az` → IPF_AZ_SCHEMA
+- `ipf` → IPF_AZ_SCHEMA
 - `capitxcu_azec` → CAPITXCU_SCHEMA
 - etc.
 

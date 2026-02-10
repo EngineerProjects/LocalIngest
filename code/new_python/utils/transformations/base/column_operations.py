@@ -1,39 +1,38 @@
 """
-Column-level transformation utilities.
+Utilitaires de transformation au niveau des colonnes.
 
-This module handles:
-- Column passthrough selection (SAS-style projection)
-- Optional renaming
-- Simple computed columns (safe operations only)
-- Column initialization with types
-- Metadata injection (vision, year, month)
+Ce module gère :
+- La sélection des colonnes (projection)
+- Le renommage optionnel
+- Les colonnes calculées simples (opérations sûres uniquement)
+- L'initialisation des colonnes avec types
+- L'injection de métadonnées (vision, année, mois)
 
-Important:
-This file intentionally does NOT support complex expressions,
-date arithmetic, nested logic, or any operation that depends
-on SAS UPDATE ordering. Those MUST remain inside PySpark code,
-not configuration files.
+Important :
+Ce fichier ne supporte intentionnellement PAS les expressions complexes,
+l'arithmétique de dates, la logique imbriquée ou toute opération dépendant
+d'un ordre de mise à jour spécifique. Ces opérations DOIVENT rester dans le code PySpark,
+et non dans les fichiers de configuration.
 
-All output column names remain lowercase.
+Tous les noms de colonnes en sortie restent en minuscules.
 """
 
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, lit, coalesce, to_date
+from pyspark.sql.functions import col, lit, coalesce
 from pyspark.sql.types import DataType
 
 
 # =========================================================
-# Public API
+# API Publique
 # =========================================================
 
 def lowercase_all_columns(df: DataFrame) -> DataFrame:
     """
-    Lowercase all DataFrame column names.
+    Convertit tous les noms de colonnes du DataFrame en minuscules.
 
-    Notes:
-        SAS is case-insensitive. Spark is not.
-        To ensure consistency across the pipeline,
-        all columns are normalized to lowercase.
+    Notes :
+        Pour assurer la cohérence à travers le pipeline,
+        toutes les colonnes sont normalisées en minuscules.
     """
     return df.select([col(c).alias(c.lower()) for c in df.columns])
 
@@ -46,44 +45,44 @@ def apply_column_config(
     mois: int = None
 ) -> DataFrame:
     """
-    Apply a structured column selection and initialization configuration.
+    Applique une configuration structurée de sélection et d'initialisation des colonnes.
 
-    Supported actions:
-    - Passthrough: keep columns present in the DataFrame
-    - Renaming: simple old_name -> new_name mapping
-    - Computed columns: only very simple operations (coalesce, default)
-    - Init columns: create missing columns with default typed values
-    - Metadata: add VISION, EXEVUE, MOISVUE as SAS does
+    Actions supportées :
+    - Passthrough : conserve les colonnes présentes dans le DataFrame
+    - Renommage : mappage simple ancien_nom -> nouveau_nom
+    - Colonnes calculées : opérations très simples uniquement (coalesce, défaut)
+    - Initialisation : création de colonnes manquantes avec valeurs typées par défaut
+    - Métadonnées : ajout de VISION, EXEVUE, MOISVUE
 
-    This function explicitly avoids:
-        - any eval()
-        - any complex condition parsing
-        - any unsafe expression evaluation
-        - any multi-column arithmetic logic
+    Cette fonction évite explicitement :
+        - tout eval()
+        - toute analyse de condition complexe
+        - toute évaluation d'expression non sûre
+        - toute logique arithmétique multi-colonnes
 
-    Parameters
+    Paramètres
     ----------
     df : DataFrame
-        Input DataFrame with lowercase column names.
+        DataFrame en entrée avec noms de colonnes en minuscules.
     config : dict
-        Section from transformations JSON.
+        Section issue du JSON de transformations.
     vision : str
-        YYYYMM string.
+        Chaîne YYYYMM.
     annee : int
-        Year extracted from vision.
+        Année extraite de la vision.
     mois : int
-        Month extracted from vision.
+        Mois extrait de la vision.
 
-    Returns
+    Retour
     -------
     DataFrame
-        Transformed DataFrame with selected / initialized columns.
+        DataFrame transformé avec colonnes sélectionnées / initialisées.
     """
 
     select_exprs = []
 
     # ---------------------------
-    # 2. Renamed columns
+    # 2. Colonnes renommées
     # ---------------------------
     rename_map = {old.lower(): new.lower() for old, new in config.get("rename", {}).items()}
 
@@ -95,14 +94,14 @@ def apply_column_config(
             select_exprs.append(col(orig_col))
 
     # ---------------------------
-    # 3. Computed columns (safe)
+    # 3. Colonnes calculées (sûres)
     # ---------------------------
     for col_name, comp_cfg in config.get("computed", {}).items():
         expr = _safe_computed_expression(df, comp_cfg)
         select_exprs.append(expr.alias(col_name.lower()))
 
     # ---------------------------
-    # 4. Init columns
+    # 4. Initialisation colonnes
     # ---------------------------
     for col_name, (default_val, dtype) in config.get("init", {}).items():
         cname = col_name.lower()
@@ -112,7 +111,7 @@ def apply_column_config(
             select_exprs.append(lit(default_val).alias(cname))
 
     # ---------------------------
-    # 5. Metadata columns
+    # 5. Colonnes de métadonnées
     # ---------------------------
     if vision is not None:
         select_exprs.append(lit(str(vision)).alias("vision"))
@@ -122,12 +121,12 @@ def apply_column_config(
         select_exprs.append(lit(int(mois)).alias("moisvue"))
 
     # ---------------------------
-    # 6. Apply SELECT first (SAS: RENAME happens before DROP)
+    # 6. Appliquer SELECT d'abord
     # ---------------------------
     df = df.select(*select_exprs)
 
     # ---------------------------
-    # 7. Then DROP columns (SAS: DROP applies to output)
+    # 7. Puis DROP colonnes
     # ---------------------------
     drop_set = set(d.lower() for d in config.get("drop", []))
     if drop_set:
@@ -139,26 +138,26 @@ def apply_column_config(
 
 
 # =========================================================
-# Internal helpers
+# Helpers Internes
 # =========================================================
 
 def _safe_computed_expression(df: DataFrame, cfg: dict):
     """
-    Build a safe 'computed' column expression.
+    Construit une expression de colonne 'calculée' sûre.
 
-    Supported types:
-    - coalesce_default: coalesce(column, default)
-    - constant: literal constant
-    - flag_equality: column == value ? 1 : 0
+    Types supportés :
+    - coalesce_default : coalesce(colonne, defaut)
+    - constant : constante littérale
+    - flag_equality : colonne == valeur ? 1 : 0
 
-    Unsupported (on purpose):
-    - ANY expression requiring eval()
-    - ANY arithmetic between columns
-    - ANY logical multi-column expression
-    - ANY date computation
+    Non supporté (intentionnellement) :
+    - TOUTE expression nécessitant eval()
+    - TOUTE arithmétique entre colonnes
+    - TOUTE expression logique multi-colonnes
+    - TOUTE opération sur les dates
 
-    SAS performs most of its computed logic inside code,
-    not configuration. This function intentionally remains minimal.
+    La logique complexe doit être implémentée dans le code PySpark,
+    pas dans la configuration. Cette fonction reste volontairement minimale.
     """
 
     ctype = cfg.get("type", "").lower()
@@ -190,9 +189,9 @@ def _safe_computed_expression(df: DataFrame, cfg: dict):
         return (col(src) == val).cast("int")
 
     # -----------------------------------
-    # Unsupported → raise error
+    # Non supporté -> lever une erreur
     # -----------------------------------
     raise ValueError(
-        f"Unsupported computed column type '{ctype}'. "
-        f"Complex computed expressions must be implemented in PySpark code."
+        f"Type de colonne calculée non supporté '{ctype}'. "
+        f"Les expressions complexes doivent être implémentées dans le code PySpark."
     )

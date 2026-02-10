@@ -1,75 +1,85 @@
-# Construction Data Pipeline - Configuration
-# Bronze → Silver → Gold Architecture
+# =============================================================================
+# Configuration Pipeline Construction
+# Architecture : Bronze → Silver → Gold
+# =============================================================================
 
-# Pipeline metadata
+# Métadonnées du pipeline
 pipeline:
   name: "Construction Data Pipeline"
   version: "1.0"
-  description: "PTF_MVT Portfolio Movements Pipeline"
+  description: "Pipeline mouvements de portefeuille"
 
-# Vision configuration
+# Format de vision (période de traitement)
 vision:
   format: "YYYYMM"
   validation:
     min_year: 2000
     max_year: 2100
 
-# Runtime parameters (overridable via CLI/environment)
+# Paramètres d'exécution
 runtime:
-  # Default vision for development/testing
   vision_: "202512"
 
-# Azure Data Lake Storage configuration
+# Configuration environnement (Dev/Prod)
+environment:
+  # Container ADLS (override via variable env DATALAKE_CONTAINER)
+  container: "abfs://shared@azfrdatalab.dfs.core.windows.net"
+
+# Azure Data Lake Storage - Chemins des données
 datalake:
-  # Base path (override via environment: DATALAKE_BASE_PATH)
-  base_path: abfs://shared@azfrdatalab.dfs.core.windows.net/ABR/P4D/ADC/DATAMARTS/CONSTRUCTION/
+  # Racine stable (gérée par l'équipe data, change rarement)
+  data_root: "/ABR/P4D/ADC/DATAMARTS/CONSTRUCTION"
 
-  # Path template for all layers : {base_path}, {layer}, {year}, {month}
-  path_template: "{base_path}/{layer}/{year}/{month}"
+  # Templates de chemins pour chaque couche
+  paths:
+    bronze_monthly: "{container}{data_root}/bronze/{year}/{month}"
+    bronze_reference: "{container}{data_root}/bronze/ref"
+    silver: "{container}{data_root}/silver/{year}/{month}"
+    gold: "{container}{data_root}/gold/{year}/{month}"
 
-# Output configuration (silver and gold layers)
+# Configuration écriture (couches Silver et Gold)
 output:
-  # Format for all outputs (delta recommended for ACID guarantees)
   clean: true
-  format: "delta"
+  format: "delta" # Delta Lake recommandé (ACID)
   compression: "snappy"
   mode: "overwrite"
-  # Delta Lake VACUUM retention (14 days recommended by Databricks)
-  vacuum_hours: 336  # 14 days = 336 hours
+  vacuum_hours: 336 # Rétention 14 jours (336h)
 
-# Component toggles
+# Composants du pipeline
 components:
   ptf_mvt:
     enabled: false
-    description: "Portfolio Movements (AZ + AZEC)"
+    description: "Mouvements de portefeuille (AZ + AZEC)"
 
   capitaux:
     enabled: false
-    description: "Capitaux domain (SMP/LCI extraction)"
+    description: "Extraction capitaux (SMP/LCI)"
 
   emissions:
     enabled: true
-    description: "Emissions domain (future)"
+    description: "Traitement émissions"
 
-# Spark configuration
+# Configuration Spark
 spark:
   app_name: "Construction_Pipeline"
   config:
-    # Adaptive query execution
+    # Exécution adaptative
     "spark.sql.adaptive.enabled": "true"
     "spark.sql.adaptive.coalescePartitions.enabled": "true"
     "spark.sql.files.maxPartitionBytes": "134217728" # 128MB
-    # Memory settings (adjust based on cluster)
+
+    # Mémoire (ajuster selon cluster)
     "spark.driver.memory": "4g"
     "spark.executor.memory": "8g"
+
+    # Compatibilité Parquet
     "spark.sql.parquet.datetimeRebaseModeInWrite": "CORRECTED"
 
-# Configuration file paths
+# Fichiers de configuration
 config_files:
   reading_config: "config/reading_config.json"
-  # schema_definitions removed - obsolete after refactoring
 
-# Logging configuration
+# Logs
 logging:
   level: "INFO" # DEBUG, INFO, WARNING, ERROR, CRITICAL
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

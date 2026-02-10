@@ -1,10 +1,10 @@
 """
-Capitaux Processors Package.
+Package des processeurs de Capitaux.
 
-Contains processors for capital data extraction and consolidation:
-- AZCapitauxProcessor: Process AZ channel capital data
-- AZECCapitauxProcessor: Process AZEC channel capital data
-- CapitauxConsolidationProcessor: Consolidate AZ + AZEC capital data
+Contient les processeurs pour l'extraction et la consolidation des données de capitaux :
+- AZCapitauxProcessor : Traite les données capitaux du canal AZ
+- AZECCapitauxProcessor : Traite les données capitaux du canal AZEC
+- CapitauxConsolidationProcessor : Consolide les données capitaux AZ + AZEC
 """
 
 from .az_capitaux_processor import AZCapitauxProcessor

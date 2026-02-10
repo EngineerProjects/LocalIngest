@@ -9,7 +9,7 @@ from pathlib import Path
 
 # Import the column list
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from config.constants import GOLD_COLUMNS_PTF_MVT
+from config.column_definitions import GOLD_COLUMNS_PTF_MVT
 
 def check_column_exists(column_name: str) -> tuple:
     """

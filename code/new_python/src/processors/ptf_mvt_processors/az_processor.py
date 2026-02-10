@@ -1,12 +1,30 @@
+# -*- coding: utf-8 -*-
 """
-AZ Processor - Portfolio Movements for AZ (Agent + Courtage channels).
+===============================================================================
+PROCESSEUR AZ (Mouvements de Portefeuille - Agents & Courtiers)
+===============================================================================
 
-Processes PTF16 (Agent) and PTF36 (Courtage) data from bronze layer,
-applies business transformations, and outputs to silver layer.
+Ce processeur gère le traitement des mouvements de portefeuille pour le périmètre "AZ",
+qui regroupe les canaux Agents et Courtage.
 
-Uses dictionary-driven configuration for maximum reusability.
+OBJECTIFS DU PROCESSEUR :
+------------------------
+1. Lire les fichiers de mouvements (PTF16 pour Agents, PTF36 pour Courtage)
+2. Appliquer les filtres métier (périmètre marché Construction)
+3. Initialiser et calculer les indicateurs clés (Primes, Expositions, Capitaux)
+4. Enrichir les données avec la segmentation produit et client
+5. Produire une vision consolidée "Silver" des mouvements
+
+SOURCES DE DONNÉES :
+-------------------
+- PTF16 (Agents) et PTF36 (Courtiers)
+- Tables de référence : PRDPFA1, PRDPFA3, CPRODUIT, PRDCAP, TABLE_PT_GEST, IPFM99
+
+FLUX DE TRAITEMENT :
+-------------------
+Le traitement suit une logique séquentielle pour transformer les données brutes
+en données exploitables pour le reporting.
 """
-
 
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
@@ -14,19 +32,19 @@ from pyspark.sql.functions import (
 )
 from pyspark.sql.types import DoubleType, StringType, DateType
 
-# Base processor
+# Classe de base
 from src.processors.base_processor import BaseProcessor
 
-# Loader
+# Chargeurs de configuration
 from utils.loaders import get_default_loader
 
-# Constants
-from config.constants import DIRCOM, POLE, LTA_TYPES
+# Constantes
+from config.constants import DIRCOM, POLE
 
-# Helpers
+# Utilitaires
 from utils.helpers import extract_year_month_int, compute_date_ranges
 
-# Business logic (corrected & final)
+# Logique métier
 from utils.transformations.base.column_operations import apply_column_config
 from utils.transformations.operations.business_logic import (
     extract_capitals,
@@ -34,7 +52,7 @@ from utils.transformations.operations.business_logic import (
     calculate_exposures,
 )
 
-# Processor helpers
+# Assistants processeur
 from utils.processor_helpers import (
     safe_reference_join,
     safe_multi_reference_join,
@@ -43,37 +61,59 @@ from utils.processor_helpers import (
 
 class AZProcessor(BaseProcessor):
     """
-    Process AZ (Agent + Courtage) portfolio data.
+    =======================================================================
+    PROCESSEUR DE MOUVEMENTS AZ
+    =======================================================================
     
-    Reads PTF16/PTF36 from bronze, applies transformations, writes to silver.
-    All columns are lowercase.
+    Transforme les données brutes de portefeuille (Bronze) en couche Silver.
+    
+    WORKFLOW DÉTAILLÉ :
+    ------------------
+    1. READ : Lecture combinée des fichiers Agents et Courtage avec filtrage préalable
+    2. TRANSFORM :
+       - Initialisation des colonnes techniques
+       - Ajout des métadonnées (vision, dates)
+       - Gestion de la Coassurance
+       - Jointures référentielles (IPFM99 pour CA spécial)
+       - Extraction des capitaux (SMP, LCI, etc.)
+       - Calcul des indicateurs de mouvement (Affaires Nouvelles, Résiliations...)
+       - Calcul des expositions (Durée de couverture)
+       - Calcul des cotisations à 100%
+       - Enrichissement complet de la segmentation
+       - Déduplication finale
+    3. WRITE : Écriture en couche Silver
     """
 
     def read(self, vision: str) -> DataFrame:
         """
-        Read PTF16 (Agent) and PTF36 (Courtage) files from bronze layer.
+        Lit les fichiers PTF16 (Agents) et PTF36 (Courtage) depuis la couche Bronze.
         
-        Business filters are now applied BEFORE union (SAS L135, L149).
-        SAS applies filters in the WHERE clause of each SELECT statement before OUTER UNION.
-        Python must do the same - filter each file BEFORE unionByName.
-
-        Args:
-            vision: Vision in YYYYMM format
-
-        Returns:
-            Combined DataFrame (PTF16 + PTF36) with lowercase columns and filters applied
+        LOGIQUE DE LECTURE :
+        -------------------
+        Les filtres métier (ex: cmarch='6' pour Construction) sont appliqués
+        DIRECTEMENT à la lecture de chaque fichier, AVANT de les fusionner.
+        Cela optimise les performances en réduisant le volume de données dès le départ.
+        
+        PARAMÈTRES :
+        -----------
+        vision : str
+            Vision (Période) à traiter au format YYYYMM
+            
+        RETOUR :
+        -------
+        DataFrame
+            Données brutes filtrées et fusionnées (Agents + Courtiers)
         """
         from src.reader import BronzeReader
         reader = BronzeReader(self.spark, self.config)
         
-        # Load business filters (SAS: &filtres_ptf in WHERE clause)
+        # Chargement des filtres métier depuis la configuration centralisée
         loader = get_default_loader()
         business_rules = loader.get_business_rules()
         az_filters = business_rules.get('business_filters', {}).get('az', {}).get('filters', [])
         
-        # Convert business_rules filter format to reader's custom_filter format
-        # business_rules uses: {type: "equals", column: "cmarch", value: "6"}
-        # reader expects: {operator: "==", column: "cmarch", value: "6"}
+        # Conversion du format de règles métier vers le format attendu par le Reader
+        # Exemple : 'equals' devient '=='
         operator_map = {
             'equals': '==', 'not_equals': '!=', 'in': 'in', 'not_in': 'not_in',
             'greater_than': '>', 'less_than': '<', 'greater_equal': '>=', 'less_equal': '<='
@@ -87,21 +127,29 @@ class AZProcessor(BaseProcessor):
             for f in az_filters
         ]
         
-        self.logger.info(f"Reading ipf_az files (PTF16 + PTF36) with {len(custom_filters)} filters applied BEFORE union")
-        return reader.read_file_group('ipf_az', vision, custom_filters=custom_filters)
-
+        self.logger.info(f"Lecture des fichiers IPF (PTF16 + PTF36) avec {len(custom_filters)} filtres appliqués à la source")
+        
+        # Lecture du groupe 'ipf' qui contient les deux fichiers
+        return reader.read_file_group('ipf', vision, custom_filters=custom_filters)
 
 
     def transform(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Apply AZ business transformations following SAS logic.
-
-        Args:
-            df: Input DataFrame from read() (lowercase columns)
-            vision: Vision in YYYYMM format
-
-        Returns:
-            Transformed DataFrame ready for silver layer (all lowercase)
+        Applique l'ensemble des transformations métier AZ.
+        
+        C'est le cœur du réacteur : toutes les règles de gestion sont appliquées ici.
+        
+        PARAMÈTRES :
+        -----------
+        df : DataFrame
+            Données brutes lues par read()
+        vision : str
+            Vision (Période) à traiter
+            
+        RETOUR :
+        -------
+        DataFrame
+            Données transformées prêtes pour la couche Silver
         """
 
         from pyspark.sql.functions import (
@@ -111,15 +159,15 @@ class AZProcessor(BaseProcessor):
         year_int, month_int = extract_year_month_int(vision)
         dates = compute_date_ranges(vision)
         
-
-
         loader = get_default_loader()
         az_config = loader.get_az_config()
 
         # ============================================================
-        # STEP 1 — Initialize indicator columns (SAS L106–115)
+        # ÉTAPE 1 : Initialisation des colonnes techniques
         # ============================================================
-        self.logger.step(1, "Initializing indicator columns")
+        self.logger.step(1, "Initialisation des indicateurs et colonnes techniques")
+        
+        # On s'assure que toutes les colonnes nécessaires existent, initialisées à 0 ou NULL
         init_columns = {
             **{c: lit(0.0) for c in [
                 'primeto', 'primes_ptf', 'primes_afn', 'primes_res',
@@ -134,17 +182,19 @@ class AZProcessor(BaseProcessor):
             ]},
             'dt_deb_expo': lit(None).cast(DateType()),
             'dt_fin_expo': lit(None).cast(DateType()),
-            # 'ctduree' ne doit PAS être écrasée si déjà présente
+            # 'ctduree' est préservée si elle existe déjà dans les données
             'ctduree': lit(None).cast('double'),
         }
+        
         for name, value in init_columns.items():
             if name not in df.columns:
                 df = df.withColumn(name, value)
 
         # ============================================================
-        # STEP 2 — Metadata (vision, dircom, exevue, moisvue) + CDPOLE propre
+        # ÉTAPE 2 : Métadonnées et Code Pôle
         # ============================================================
-        self.logger.step(2, "Adding metadata columns")
+        self.logger.step(2, "Ajout des métadonnées (Vision, Direction)")
+        
         metadata_cols = {
             'dircom': lit(DIRCOM.AZ),
             'vision': lit(vision),
@@ -154,37 +204,43 @@ class AZProcessor(BaseProcessor):
         for name, value in metadata_cols.items():
             df = df.withColumn(name, value)
 
-        # CDPOLE: produire des valeurs propres '1'/'3' (pas "  1")
+        # Détermination propre du Code Pôle (CDPOLE)
+        # 1 = Agents (via PTF16), 3 = Courtage (via PTF36)
         if '_source_file' in df.columns:
             df = df.withColumn(
                 'cdpole',
                 when(col('_source_file').contains('ipf16'), lit('1'))
                 .when(col('_source_file').contains('ipf36'), lit('3'))
-                .otherwise(lit('1'))
+                .otherwise(lit('1')) # Valeur par défaut
             ).drop('_source_file')
         else:
+            # Sécurité si la colonne source n'est pas là
             df = df.withColumn('cdpole', lit('1'))
 
         df = df.withColumn("cdpole", col("cdpole").cast("string"))
 
         # ============================================================
-        # STEP 3 — Apply renames from JSON (SAS SELECT renames)
+        # ÉTAPE 3 : Renommage des colonnes (Standardisation)
         # ============================================================
-        self.logger.step(3, "Applying renames")
+        self.logger.step(3, "Renommage des colonnes selon la configuration")
+        
         rename_map = az_config.get("column_selection", {}).get("rename", {})
-        self.logger.info(f"Rename map loaded: {rename_map}")
+        self.logger.info(f"Application de {len(rename_map)} renommages")
+        
         for old, new in rename_map.items():
             if old in df.columns:
                 df = df.withColumnRenamed(old, new)
 
         # ============================================================
-        # STEP 4a — COASS + PARTCIE (comme dans le SELECT SAS)
-        #   Standardiser sur cdcoass (double "s")
-        #   (si la colonne s'appelle cdcoas, on la renomme à la volée)
+        # ÉTAPE 4 : Gestion de la Coassurance
         # ============================================================
+        self.logger.step(4, "Calcul des indicateurs de Coassurance")
+        
+        # Standardisation du nom de colonne (cdcoas -> cdcoass)
         if 'cdcoass' not in df.columns and 'cdcoas' in df.columns:
             df = df.withColumnRenamed('cdcoas', 'cdcoass')
 
+        # Définition du type de coassurance (Libellé)
         df = df.withColumn(
             "coass",
             when((col("cdpolqpl") == "1") & col("cdcoass").isin("3", "6"), lit("APERITION"))
@@ -194,85 +250,98 @@ class AZProcessor(BaseProcessor):
             .otherwise(lit("SANS COASSURANCE"))
         )
 
+        # Calcul de la Part Compagnie (pour normalisation future)
+        # Si pas chef de file, part = 100% (1.0)
+        # Sinon, on prend le pourcentage réel divisé par 100
         df = df.withColumn(
             "partcie",
-            when(col("cdpolqpl") != "1", lit(1.0))      # sans coassurance
-            .otherwise(col("prcdcie") / 100.0)          # avec coassurance
+            when(col("cdpolqpl") != "1", lit(1.0))      # San Coassurance
+            .otherwise(col("prcdcie") / 100.0)          # Avec Coassurance
         )
 
         # ============================================================
-        # STEP 4b — SELECT-level computed fields (tx, top_coass, etc.)
+        # ÉTAPE 4bis : Champs calculés génériques (Niveau 1)
         # ============================================================
-        self.logger.step(4, "Applying SELECT-level computed fields")
+        self.logger.step(4, "Application des champs calculés génériques (Niveau 1)")
         select_computed = az_config.get("column_selection", {}).get("computed", {})
         df = self._apply_computed_generic(df, select_computed)
 
-        # CRITERE_REVISION depuis config
+        # Gestion spécifique du CRITERE_REVISION avec mapping
         rev_cfg = az_config.get("revision_criteria", {})
         src = rev_cfg.get("source_col", "cdgrev")
         mapping = rev_cfg.get("mapping", {})
+        
         if mapping and src in df.columns:
+            # Création d'une map Spark pour traduire les codes en libellés
             kv = []
             for k, v in mapping.items():
                 kv += [lit(k), lit(v)]
             df = df.withColumn("critere_revision", create_map(kv)[col(src)])
 
         # ============================================================
-        # STEP 5 — Join IPFM99 (special CA logic for product 01099)
+        # ÉTAPE 5 : Jointure spécifique IPFM99 (Chiffre d'Affaires Spécial)
         # ============================================================
-        self.logger.step(5, "Joining IPFM99")
+        self.logger.step(5, "Jointure IPFM99 (Gestion spéciale produit 01099)")
         df = self._join_ipfm99(df, vision)
 
-
         # ============================================================
-        # STEP 6 — Capital extraction (LCI, SMP, RISQUE_DIRECT, PERTE_EXP)
+        # ÉTAPE 6 : Extraction des Capitaux (LCI, SMP, RD, PE)
         # ============================================================
-        self.logger.step(6, "Extracting capital fields")
+        self.logger.step(6, "Extraction des rubriques de Capitaux")
+        
         capital_cfg = az_config['capital_extraction']
-        # Dictionary order = execution order ("last write wins")
-        # Must match SAS UPDATE sequence exactly: LCI → SMP → RISQUE_DIRECT → PERTE_EXP
+        
+        # L'ordre d'exécution est important (le dernier écrase les précédents si conflit)
+        # 1. LCI (Limite Contractuelle d'Indemnité)
+        # 2. SMP (Sinistre Maximum Possible)
+        # 3. Risque Direct
+        # 4. Perte d'Exploitation
         df = extract_capitals(df, {
-            'lci_100': capital_cfg['lci_100'],              # 1st - SAS L199-204
-            'smp_100': capital_cfg['smp_100'],              # 2nd - SAS L207-211
-            'risque_direct': capital_cfg['risque_direct'],  # 3rd - SAS L214-218
-            'perte_exp': capital_cfg['perte_exp']           # 4th - SAS L221-230 (last wins)
+            'lci_100': capital_cfg['lci_100'],
+            'smp_100': capital_cfg['smp_100'],
+            'risque_direct': capital_cfg['risque_direct'],
+            'perte_exp': capital_cfg['perte_exp']
         })
 
-
         # ============================================================
-        # STEP 7 — UPDATE-level computed fields (primeto, top_lta, top_temp, top_revisable)
+        # ÉTAPE 7 : Champs calculés génériques (Niveau 2)
         # ============================================================
-        self.logger.step(7, "Applying UPDATE-level computed fields")
+        self.logger.step(7, "Application des champs calculés génériques (Niveau 2)")
         update_computed = az_config.get("computed_fields", {})
         df = self._apply_computed_generic(df, update_computed)
 
         # ============================================================
-        # STEP 8 — Movement indicators (AFN, RES, RPC, RPT, NBPTF)
+        # ÉTAPE 8 : Indicateurs de Mouvement (AFN, RES, RPT...)
         # ============================================================
-        self.logger.step(8, "Calculating movement indicators")
+        self.logger.step(8, "Calcul des indicateurs de mouvement")
+        
+        # Identifie le type de mouvement (Affaire Nouvelle, Résiliation, etc.)
+        # en fonction des dates d'effet par rapport à la vision
         movement_cols = az_config['movements']['column_mapping']
         df = calculate_az_movements(df, dates, year_int, movement_cols)
 
         # ============================================================
-        # STEP 9 — Exposure calculations (expo_ytd, expo_gli)
+        # ÉTAPE 9 : Calcul des Expositions (Durée de couverture)
         # ============================================================
-        self.logger.step(9, "Calculating exposures")
+        self.logger.step(9, "Calcul des expositions (YTD / GLI)")
+        
+        # Calcule le temps passé en risque sur l'année (YTD) ou sur période glissante (GLI)
         exposure_cols = az_config['exposures']['column_mapping']
         df = calculate_exposures(df, dates, year_int, exposure_cols)
 
         # ============================================================
-        # STEP 10 — Cotisation 100% and MTCA_
+        # ÉTAPE 10 : Calcul des Cotisations
         # ============================================================
-        self.logger.step(10, "Calculating cotis_100 and mtca_")
+        self.logger.step(10, "Calcul des cotisations techniques (100% et MTCA)")
 
-        # ISO-SAS: PRCDCIE = 100 si NULL ou 0 (sur la COLONNE elle-même)
+        # Règle de sécurité : PRCDCIE = 100 si manquant ou 0
         df = df.withColumn(
             'prcdcie',
             when((col('prcdcie').isNull()) | (col('prcdcie') == 0), lit(100))
             .otherwise(col('prcdcie'))
         )
 
-        # Cotisation technique à 100% (COASS ACCEPTEE => (mtprprto*100)/prcdcie)
+        # Calcul de la cotisation ramenée à 100% pour la Coassurance Acceptée
         df = df.withColumn(
             'cotis_100',
             when(
@@ -281,27 +350,29 @@ class AZProcessor(BaseProcessor):
             ).otherwise(lit(0.0))
         )
 
-        # ISO-SAS: MTCA / MTCAF à 0 si NULL puis MTCA_
+        # Consolidation des Montants Chiffre d'Affaires (MTCA)
         df = df.withColumn("mtca", coalesce(col("mtca"), lit(0.0))) \
             .withColumn("mtcaf", coalesce(col("mtcaf"), lit(0.0))) \
             .withColumn("mtca_", col("mtcaf") + col("mtca"))
 
         # ============================================================
-        # STEP 11 — TOP_AOP flag (STRICT ORDER MATCH)
+        # ÉTAPE 11 : Indicateur TOP_AOP (Appel d'Offre)
         # ============================================================
-        self.logger.step(11, "Applying TOP_AOP flag")
+        self.logger.step(11, "Calcul du flag TOP_AOP")
         df = df.withColumn(
             'top_aop',
             when(col('opapoffr') == 'O', lit(1)).otherwise(lit(0))
         )
 
         # ============================================================
-        # STEP 12 — Anticipated movements (AFN/RES anticipés)
+        # ÉTAPE 12 : Mouvements Anticipés
         # ============================================================
-        self.logger.step(12, "Calculating anticipated movements")
-        finmois = dates['finmois']  # 'YYYY-MM-DD'
+        self.logger.step(12, "Détection des mouvements anticipés")
+        
+        finmois = dates['finmois']
         df = df.withColumn("finmois", lit(finmois).cast("date"))
 
+        # AFN Anticipée : Date effet future par rapport à la vision
         df = df.withColumn(
             "nbafn_anticipe",
             when(
@@ -311,6 +382,7 @@ class AZProcessor(BaseProcessor):
             ).otherwise(lit(0))
         )
 
+        # Résiliation Anticipée : Date résiliation future
         df = df.withColumn(
             "nbres_anticipe",
             when(
@@ -322,11 +394,11 @@ class AZProcessor(BaseProcessor):
         )
 
         # ============================================================
-        # STEP 13 — Final cleanup (expo dates, nmclt) - SAS L362-370
+        # ÉTAPE 13 : Nettoyage final des données
         # ============================================================
-        self.logger.step(13, "Final data cleanup")
+        self.logger.step(13, "Nettoyage final (Dates d'exposition, Client)")
         
-        # Cleanup EXPO dates if exposure is zero
+        # Nettoyage des dates d'exposition si l'exposition est nulle
         if 'expo_ytd' in df.columns and 'dt_deb_expo' in df.columns and 'dt_fin_expo' in df.columns:
             df = df.withColumn(
                 'dt_deb_expo',
@@ -335,9 +407,8 @@ class AZProcessor(BaseProcessor):
                 'dt_fin_expo',
                 when(col('expo_ytd') == 0, lit(None)).otherwise(col('dt_fin_expo'))
             )
-            self.logger.debug("  ✓ Cleaned DT_DEB_EXPO and DT_FIN_EXPO when EXPO_YTD = 0")
         
-        # Replace empty NMCLT with NMACTA
+        # Remplacement du Numéro Client vide par le Numéro Actuaire
         if 'nmclt' in df.columns and 'nmacta' in df.columns:
             df = df.withColumn(
                 'nmclt',
@@ -346,31 +417,41 @@ class AZProcessor(BaseProcessor):
                     col('nmacta')
                 ).otherwise(col('nmclt'))
             )
-            self.logger.debug("  ✓ Replaced empty NMCLT with NMACTA")
 
         # ============================================================
-        # STEP 14 — Segmentation & PT_GEST enrichment
+        # ÉTAPE 14 : Enrichissement Segmentation
         # ============================================================
-        self.logger.step(14, "Enriching segmentation and management point")
+        self.logger.step(14, "Enrichissement Segmentation et Typologie")
+        # Cette méthode jointe les référentiels PRDPFA1, PRDPFA3, CPRODUIT, etc.
         df = self._enrich_segment_and_product_type(df, vision)
 
         # ============================================================
-        # STEP 15 — Deduplication (SAS L505–507)
+        # ÉTAPE 15 : Déduplication
         # ============================================================
-        self.logger.step(15, "Deduplicating by nopol")
+        self.logger.step(15, "Déduplication par Numéro de Police")
+        
+        # On ne garde qu'une seule ligne par police
+        # Le tri par 'cdsitp' (Code Situation) permet de prioriser les lignes les plus récentes/pertinentes
         df = df.orderBy("nopol", "cdsitp").dropDuplicates(["nopol"])
         
-        self.logger.info("AZ transformations completed successfully")
+        self.logger.success("Transformations AZ terminées avec succès")
         return df
 
 
     def write(self, df: DataFrame, vision: str) -> None:
         """
-        Write transformed AZ data to silver layer.
-
-        Args:
-            df: Transformed DataFrame (lowercase columns)
-            vision: Vision in YYYYMM format
+        Écrit les données transformées en couche Silver.
+        
+        FICHIER DE SORTIE :
+        ------------------
+        mvt_const_ptf_{vision}.parquet
+        
+        PARAMÈTRES :
+        -----------
+        df : DataFrame
+            Données finales transformées
+        vision : str
+            Vision traitée
         """
         from utils.helpers import write_to_layer
         write_to_layer(
@@ -380,22 +461,34 @@ class AZProcessor(BaseProcessor):
             filename=f'mvt_const_ptf_{vision}',
             vision=vision,
             logger=self.logger,
-            optimize=True,
+            optimize=True, # Optimisation Z-ORDER activée pour performance de lecture
         )
-
-
 
     def _apply_computed_generic(self, df: DataFrame, computed_config: dict) -> DataFrame:
         """
-        Generic computed-field engine.
-        Supports:
-        - coalesce_default
-        - flag_equality
-        - expression
-        - conditional
-        Works for both:
-        - column_selection.computed (SELECT SAS)
-        - computed_fields (UPDATE SAS)
+        Moteur générique de calcul de champs.
+        
+        Permet d'appliquer des règles de calcul définies dans la configuration JSON
+        sans écrire de code Spark spécifique.
+        
+        TYPES DE CALCULS SUPPORTÉS :
+        --------------------------
+        - coalesce_default : Prend une colonne, remplace NULL par défaut
+        - flag_equality : 1 si égalité, 0 sinon
+        - expression : Formule SQL libre
+        - conditional : Série de conditions "si... alors..." (CASE WHEN)
+        
+        PARAMÈTRES :
+        -----------
+        df : DataFrame
+            Données en entrée
+        computed_config : dict
+            Configuration des champs à calculer
+            
+        RETOUR :
+        -------
+        DataFrame
+            Données avec les nouvelles colonnes
         """
 
         from pyspark.sql.functions import col, lit, when, expr
@@ -403,45 +496,45 @@ class AZProcessor(BaseProcessor):
         if not computed_config:
             return df
 
-        # --- helper: normalize any JSON literal to a Spark Column ---
+        # --- Fonction interne : Normalise les valeurs littérales en colonnes Spark ---
         def _normalize(value):
-            # NULL explicit
+            # Gestion explicite du NULL
             if value is None:
                 return lit(None).cast("string")
 
-            # string-based
+            # Gestion des chaînes
             if isinstance(value, str):
                 cleaned = value.strip()
 
-                # SAS missing markers → NULL
+                # Marqueurs de valeur manquante
                 if cleaned in ["", ".", "NULL", "NA"]:
                     return lit(None).cast("string")
 
-                # numeric strings
+                # Détection numérique dans une chaîne
                 if cleaned.replace(".", "", 1).isdigit():
                     if "." in cleaned:
                         return lit(float(cleaned))
                     else:
                         return lit(int(cleaned))
 
-                # otherwise: treat as a literal string (SAFE)
+                # Sinon, c'est une vraie chaîne
                 return lit(cleaned)
 
-            # numeric Python literal
+            # Gestion des nombres natifs Python
             if isinstance(value, (int, float)):
                 return lit(value)
 
-            # fallback
+            # Fallback
             return lit(str(value))
 
-        # --- main processing ---
+        # --- Boucle de traitement des champs ---
         for field_name, field_def in computed_config.items():
             if field_name == "description":
                 continue
 
             field_type = field_def.get("type")
 
-            # 1. coalesce_default
+            # TYPE 1 : COALESCE (Valeur par défaut si NULL)
             if field_type == "coalesce_default":
                 source = field_def["source_col"]
                 default = field_def["default"]
@@ -450,7 +543,7 @@ class AZProcessor(BaseProcessor):
                     when(col(source).isNull(), _normalize(default)).otherwise(col(source))
                 )
 
-            # 2. flag_equality
+            # TYPE 2 : FLAG D'ÉGALITÉ (Binaire 0/1)
             elif field_type == "flag_equality":
                 source = field_def["source_col"]
                 value = field_def["value"]
@@ -459,22 +552,22 @@ class AZProcessor(BaseProcessor):
                     when(col(source) == value, lit(1)).otherwise(lit(0))
                 )
 
-            # 3. expression
+            # TYPE 3 : EXPRESSION LIBRE (Formule SQL)
             elif field_type == "expression":
                 formula = field_def["formula"]
                 df = df.withColumn(field_name, expr(formula))
 
-            # 4. conditional
+            # TYPE 4 : CONDITIONNEL (Case When multiple)
             elif field_type == "conditional":
                 conditions = field_def["conditions"]
                 default_v = field_def["default"]
 
-                # start from normalized default
+                # Initialiser avec la valeur par défaut
                 result_expr = _normalize(default_v)
 
-                # apply conditions in reverse order (last wins)
+                # Appliquer les conditions en ordre inverse (construction par empilement)
                 for cond in reversed(conditions):
-                    check_expr = expr(cond["check"])  # condition always SQL
+                    check_expr = expr(cond["check"])  # Condition SQL
                     result_val = _normalize(cond["result"])
 
                     result_expr = when(check_expr, result_val).otherwise(result_expr)
@@ -482,41 +575,51 @@ class AZProcessor(BaseProcessor):
                 df = df.withColumn(field_name, result_expr)
 
             else:
-                self.logger.warning(f"Unknown computed field type: {field_type}")
+                self.logger.warning(f"Type de champ calculé inconnu : {field_type}")
 
         return df
                 
     def _join_ipfm99(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Join IPFM99 data for product 01099 special CA handling.
-
-        Args:
-            df: Main AZ DataFrame (lowercase columns)
-            vision: Vision string
-
-        Returns:
-            DataFrame with IPFM99 joined (lowercase columns)
+        Effectue la jointure spécifique avec IPFM99 (Gestion spéciale).
+        
+        BUT :
+        ----
+        Pour le produit spécifique '01099', les montants de chiffre d'affaires
+        ne sont pas dans le fichier principal mais dans IPFM99.
+        
+        PARAMÈTRES :
+        -----------
+        df : DataFrame
+            Données principales AZ
+        vision : str
+            Vision traitée
+            
+        RETOUR :
+        -------
+        DataFrame
+            Données enrichies avec les montants IPFM99 intégrés
         """
         from src.reader import BronzeReader
         reader = BronzeReader(self.spark, self.config)
         
-        # IPFM99 is optional (SAS L157-187)
-        # SAS joins on (CDPOLE, CDPROD, NOPOL, NOINT) - 4 keys
-        # Must include cdpole to prevent incorrect matches between Pole 1 and Pole 3
+        # IPFM99 est optionnel
+        # Clés de jointure : CDPOLE, CDPROD, NOPOL, NOINT
+        # Il est CRUCIAL d'inclure cdpole pour éviter de mélanger Agents(1) et Courtage(3)
         df = safe_reference_join(
             df, reader,
-            file_group='ipfm99_az',
+            file_group='ipfm99',
             vision=vision,
-            join_keys=['cdpole', 'cdprod', 'nopol', 'noint'],  # FIXED: Added cdpole
+            join_keys=['cdpole', 'cdprod', 'nopol', 'noint'],
             select_columns=['mtcaenp', 'mtcasst', 'mtcavnt'],
             null_columns={'mtcaenp': DoubleType, 'mtcasst': DoubleType, 'mtcavnt': DoubleType},
-            filter_condition="cdprod == '01099'",
+            filter_condition="cdprod == '01099'", # Optimisation : on ne charge que le produit concerné
             use_broadcast=True,
             logger=self.logger,
             required=False
         )
         
-
+        # Consolidation : Si produit 01099, on somme les composantes IPFM99
         df = df.withColumn(
             "mtca",
             when(
@@ -531,39 +634,46 @@ class AZProcessor(BaseProcessor):
 
     def _enrich_segment_and_product_type(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Enrich with segment2, type_produit_2, and upper_mid.
+        Enrichit les données avec la Segmentation et le Type de Produit.
         
-        Now matches SAS logic exactly (PTF_MVTS_AZ_MACRO.sas L377-503):
-        1. Read PRDPFA1 (Agent) and PRDPFA3 (Courtage) separately
-        2. Add reseau column ('1' or '3')
-        3. Union them into Segment table
-        4. Join with CPRODUIT for Type_Produit_2
-        5. Join with main DF on cdprod AND cdpole=reseau
+        MÉCANISME COMPLEXE :
+        -------------------
+        1. Charge PRDPFA1 (Segmentation Agents)
+        2. Charge PRDPFA3 (Segmentation Courtiers)
+        3. Fusionne les deux référentiels
+        4. Complète avec CPRODUIT (Type Produit)
+        5. Complète avec PRDCAP (Libellés Produit)
+        6. Joint avec les données principales sur (Code Produit + Code Pôle)
         
-        This ensures Agent products don't get Courtage segmentation and vice-versa.
+        POURQUOI UNE LOGIQUE SI COMPLEXE ?
+        ---------------------------------
+        Un même code produit peut avoir une segmentation différente chez les Agents
+        et chez les Courtiers. Il faut donc absolument distinguer par 'reseau' (Pôle).
         
-        Args:
-            df: Input DataFrame with cdprod and cdpole columns
-            vision: Vision string
+        PARAMÈTRES :
+        -----------
+        df : DataFrame
+            Données principales (doit contenir cdprod et cdpole)
+        vision : str
+            Vision traitée
         
-        Returns:
-            DataFrame with segment2, type_produit_2, upper_mid columns
-        
-        Raises:
-            RuntimeError: If required reference data is unavailable
+        RETOUR :
+        -------
+        DataFrame
+            Données enrichies avec segment2, type_produit_2, upper_mid
         """
-        self.logger.info("Enriching segment and product type (using PRDPFA1/PRDPFA3)...")
+        self.logger.info("Enrichissement Segmentation (via PRDPFA1/PRDPFA3)...")
         from src.reader import BronzeReader
         reader = BronzeReader(self.spark, self.config)
         
-        # STEP 1: Read PRDPFA1 (Agent segmentation) - SAS L377-392
+        # --- ÉTAPE 1 : Chargement PRDPFA1 (Agents) ---
         try:
             df_prdpfa1 = reader.read_file_group('segmprdt_prdpfa1', 'ref')
         except FileNotFoundError as e:
-            self.logger.error("PRDPFA1 reference table is required for AZ processing")
-            raise RuntimeError("Missing required reference data: PRDPFA1. Cannot process AZ without product segmentation.") from e
+            self.logger.error("Référentiel PRDPFA1 manquant (Bloquant pour AZ)")
+            raise RuntimeError("Fichier requis manquant : PRDPFA1") from e
         
-        # Filter construction market and add reseau='1' (Agent)
+        # Filtre Construction (6) et Ajout marqueur Réseau = '1'
         df_segment1 = df_prdpfa1.filter(col('cmarch') == '6') \
             .select(
                 col('cprod'),
@@ -578,16 +688,16 @@ class AZProcessor(BaseProcessor):
             ) \
             .dropDuplicates(['cprod'])
         
-        self.logger.info(f"✓ Loaded PRDPFA1 (Agent): {df_segment1.count()} products")
+        self.logger.info(f"✓ PRDPFA1 (Agents) chargé : {df_segment1.count()} produits")
         
-        # STEP 2: Read PRDPFA3 (Courtage segmentation) - SAS L395-410
+        # --- ÉTAPE 2 : Chargement PRDPFA3 (Courtiers) ---
         try:
             df_prdpfa3 = reader.read_file_group('segmprdt_prdpfa3', 'ref')
         except FileNotFoundError as e:
-            self.logger.error("PRDPFA3 reference table is required for AZ processing")
-            raise RuntimeError("Missing required reference data: PRDPFA3. Cannot process AZ without product segmentation.") from e
+            self.logger.error("Référentiel PRDPFA3 manquant (Bloquant pour AZ)")
+            raise RuntimeError("Fichier requis manquant : PRDPFA3") from e
         
-        # Filter construction market and add reseau='3' (Courtage)
+        # Filtre Construction (6) et Ajout marqueur Réseau = '3'
         df_segment3 = df_prdpfa3.filter(col('cmarch') == '6') \
             .select(
                 col('cprod'),
@@ -602,21 +712,20 @@ class AZProcessor(BaseProcessor):
             ) \
             .dropDuplicates(['cprod'])
         
-        self.logger.info(f"✓ Loaded PRDPFA3 (Courtage): {df_segment3.count()} products")
+        self.logger.info(f"✓ PRDPFA3 (Courtage) chargé : {df_segment3.count()} produits")
         
-        # STEP 3: Union PRDPFA1 + PRDPFA3 - SAS L422-428
+        # --- ÉTAPE 3 : Fusion des deux référentiels ---
         df_segment = df_segment1.unionByName(df_segment3, allowMissingColumns=True)
-        self.logger.info(f"✓ Combined segmentation: {df_segment.count()} total products")
+        self.logger.info(f"✓ Segmentation combinée : {df_segment.count()} produits au total")
         
-        # STEP 4: Read CPRODUIT and join for Type_Produit_2 - SAS L413-435
+        # --- ÉTAPE 4 : Enrichissement via CPRODUIT (Type Produit) ---
         try:
             df_cproduit = reader.read_file_group('cproduit', 'ref')
         except FileNotFoundError:
-            self.logger.warning("⚠️ CPRODUIT not found, segment2/type_produit_2 will be from PRDPFAx only")
+            self.logger.warning("⚠️ CPRODUIT non trouvé, Type_Produit_2 sera vide")
             df_cproduit = None
         
         if df_cproduit is not None:
-            # Merge Segment with Cproduit for Type_Produit_2 and segment (SAS L431-435)
             df_cproduit_enrichment = df_cproduit.select(
                 col('cprod'),
                 col('Type_Produit_2').alias('type_produit_2'),
@@ -629,17 +738,17 @@ class AZProcessor(BaseProcessor):
                 on='cprod',
                 how='left'
             )
-            self.logger.info("✓ Enriched segmentation with CPRODUIT Type_Produit_2")
+            self.logger.info("✓ Enrichissement Type Produit via CPRODUIT effectué")
         
-        # STEP 5: Read PRDCAP for product labels - SAS L442-468
+        # --- ÉTAPE 5 : Enrichissement Libellés via PRDCAP ---
         try:
             df_prdcap = reader.read_file_group('prdcap', 'ref')
             df_prdcap = df_prdcap.select(
                 col('cdprod').alias('cprod'),
-                col('lbtprod').alias('lprod_prdcap')
+                col('lbtprod').alias('lprod_prdcap') # Libellé long
             ).dropDuplicates(['cprod'])
             
-            # Update lprod with PRDCAP where available (SAS L454-468)
+            # Mise à jour du libellé si présent dans PRDCAP
             df_segment = df_segment.join(
                 df_prdcap,
                 on='cprod',
@@ -649,45 +758,47 @@ class AZProcessor(BaseProcessor):
                 when(col('lprod_prdcap').isNotNull(), col('lprod_prdcap')).otherwise(col('lprod'))
             ).drop('lprod_prdcap')
             
-            self.logger.info("✓ Enriched product labels from PRDCAP")
+            self.logger.info("✓ Mise à jour des libellés via PRDCAP effectuée")
         except FileNotFoundError:
-            self.logger.warning("⚠️ PRDCAP not found, using lprod from PRDPFAx only")
+            self.logger.warning("⚠️ PRDCAP non trouvé, conservation des libellés originaux")
         
-        # STEP 6: Prepare segmentation for join (SAS L470-472: BY reseau CPROD)
+        # --- ÉTAPE 6 : Préparation de la table de jointure ---
+        # Nettoyage des doublons sur la clé (Réseau + Produit)
         df_segment = df_segment.dropDuplicates(['reseau', 'cprod'])
         
-        # Trim join keys (SAS does implicit trim, PySpark requires explicit)
+        # Nettoyage des espaces (Trim) sur les clés de jointure
         from pyspark.sql.functions import trim
         df = df.withColumn('cdpole', trim(col('cdpole'))) \
                .withColumn('cdprod', trim(col('cdprod')))
         
-        # Join with main DataFrame (SAS L500)
-        # SAS: left join segment b on a.cdprod = b.cprod and a.CDPOLE = b.reseau
+        # --- ÉTAPE 7 : Jointure Principale ---
+        # On joint sur Code Produit ET Code Pôle
         df = df.join(
             broadcast(df_segment.select(
                 col('cprod').alias('cdprod'),
-                col('reseau').alias('cdpole'),  # Must match cdpole
+                col('reseau').alias('cdpole'),
+                # Sélection sécurisée des colonnes optionnelles
                 col('segment_from_cproduit').alias('segment2') if 'segment_from_cproduit' in df_segment.columns else lit(None).alias('segment2'),
                 col('type_produit_2') if 'type_produit_2' in df_segment.columns else lit(None).alias('type_produit_2')
             )),
-            on=['cdprod', 'cdpole'],  # Join on BOTH cdprod AND cdpole!
+            on=['cdprod', 'cdpole'],
             how='left'
         )
         
-        self.logger.info("✓ Successfully joined segmentation with CDPROD + CDPOLE")
+        self.logger.info("✓ Jointure Segmentation (CDPROD + CDPOLE) terminée")
         
-        # STEP 8: Enrich with TABLE_PT_GEST for UPPER_MID - SAS L477-503
+        # --- ÉTAPE 8 : Enrichissement UPPER_MID (via TABLE_PT_GEST) ---
         year_int, month_int = extract_year_month_int(vision)
         
-        # Determine which PT_GEST version to use
+        # Gestion historique : bascule de version de fichier en Janvier 2012
         if year_int < 2011 or (year_int == 2011 and month_int <= 12):
-            pt_gest_vision = '201201'
-            self.logger.info(f"Using PT_GEST version 201201 (vision {vision} <= 201112)")
+            pt_gest_vision = '201201' # Version figée pour l'historique
+            self.logger.info(f"Utilisation TABLE_PT_GEST historique (vision {pt_gest_vision})")
         else:
-            pt_gest_vision = vision
-            self.logger.info(f"Using PT_GEST version {vision} (vision-specific)")
+            pt_gest_vision = vision # Version courante
+            self.logger.info(f"Utilisation TABLE_PT_GEST courante (vision {vision})")
         
-        # Try to load version-specific TABLE_PT_GEST
+        # Jointure sécurisée avec fallback
         df = safe_reference_join(
             df, reader,
             file_group='table_pt_gest',
@@ -697,22 +808,7 @@ class AZProcessor(BaseProcessor):
             null_columns={'upper_mid': StringType},
             use_broadcast=True,
             logger=self.logger,
-            required=False  # Fallback to NULL if not found
+            required=False
         )
         
-        # Debug: Check enrichment results
-        if 'upper_mid' in df.columns:
-            upper_mid_count = df.filter(col('upper_mid').isNotNull()).count()
-            total_count = df.count()
-            self.logger.info(f"✓ upper_mid enrichment: {upper_mid_count}/{total_count} non-null ({100*upper_mid_count/total_count:.1f}%)")
-        
-        # Check segment2 enrichment
-        if 'segment2' in df.columns:
-            segment2_count = df.filter(col('segment2').isNotNull()).count()
-            total_count = df.count()
-            self.logger.info(f"✓ segment2 enrichment: {segment2_count}/{total_count} non-null ({100*segment2_count/total_count:.1f}%)")
-        
         return df
-    
-
-

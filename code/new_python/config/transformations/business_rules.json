@@ -1,12 +1,9 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
   "description": "Business rules and filters for AZ and AZEC data processing",
-
   "business_filters": {
     "description": "Business filters to apply on AZ and AZEC data",
-
     "az": {
-      "description": "AZ (Agent + Courtage) business filters - SAS PTF_MVTS_AZ_MACRO.sas L40-48",
+      "description": "AZ (Agent + Courtage) business filters",
       "filters": [
         {
           "type": "not_equals",
@@ -17,17 +14,36 @@
         {
           "type": "not_in",
           "column": "cdsitp",
-          "values": ["4", "5"],
+          "values": [
+            "4",
+            "5"
+          ],
           "description": "Exclude policy status 4 and 5"
         },
         {
           "type": "not_in",
           "column": "noint",
           "values": [
-            "H90061", "482001", "489090", "102030", "H90036", "H90059",
-            "H99045", "H99059", "5B2000", "446000", "5R0001", "446118",
-            "4F1004", "4A1400", "4A1500", "4A1600", "4A1700", "4A1800",
-            "4A1900", "4L1010"
+            "H90061",
+            "482001",
+            "489090",
+            "102030",
+            "H90036",
+            "H90059",
+            "H99045",
+            "H99059",
+            "5B2000",
+            "446000",
+            "5R0001",
+            "446118",
+            "4F1004",
+            "4A1400",
+            "4A1500",
+            "4A1600",
+            "4A1700",
+            "4A1800",
+            "4A1900",
+            "4L1010"
           ],
           "description": "Exclude specific intermediaries"
         },
@@ -40,7 +56,12 @@
         {
           "type": "in",
           "column": "cdnatp",
-          "values": ["R", "O", "T", "C"],
+          "values": [
+            "R",
+            "O",
+            "T",
+            "C"
+          ],
           "description": "Valid policy natures only"
         },
         {
@@ -58,9 +79,8 @@
       ]
     }
   },
-
   "lta_types": {
-    "description": "Long term agreement risk types - SAS L242-243",
+    "description": "Long term agreement risk types",
     "types": [
       "QAW",
       "QBJ",

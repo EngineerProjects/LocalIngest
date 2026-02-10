@@ -1,7 +1,7 @@
 """
-Configuration loaders package.
+Package des chargeurs de configuration.
 
-Provides utilities for loading transformation configurations from JSON files.
+Fournit des utilitaires pour charger les configurations de transformation à partir de fichiers JSON.
 """
 
 from utils.loaders.transformation_loader import TransformationLoader, get_loader, get_default_loader

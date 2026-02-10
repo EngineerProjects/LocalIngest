@@ -1,13 +1,31 @@
+# -*- coding: utf-8 -*-
 """
-AZ Capitaux Processor.
+===============================================================================
+PROCESSEUR CAPITAUX AZ (Canal Agents & Courtiers)
+===============================================================================
 
-Processes AZ channel capital data (Agent + Courtage):
-- Extracts capitals WITH and WITHOUT indexation
-- Normalizes to 100% basis
-- Applies business rules
-- Enriches with segmentation
+Ce processeur traite les données de capitaux pour le périmètre "AZ", qui regroupe
+les agents généraux et le courtage traditionnel.
 
-Based on: CAPITAUX_AZ_MACRO.sas (313 lines)
+OBJECTIFS DU PROCESSEUR :
+------------------------
+1. Lire les données des fichiers IPF (Inventaire Portefeuille)
+2. Extraire les montants de capitaux assurés (SMP, LCI, etc.)
+3. Gérer deux versions des capitaux : AVEC et SANS indexation
+4. Normaliser les montants à 100% (base technique)
+5. Enrichir avec la segmentation commerciale
+
+SOURCES DE DONNÉES :
+-------------------
+- IPFE16 : Fichiers agents
+- IPFE36 : Fichiers courtage
+(Ces deux sources sont lues ensemble via le groupe 'ipf')
+
+TRAITEMENTS SPÉCIFIQUES :
+------------------------
+- Extraction dynamique des capitaux (14 rubriques possibles)
+- Application des coefficients d'indexation (PRPRVC)
+- Règles de gestion métier (complétude SMP, limites RC)
 """
 
 from pyspark.sql import DataFrame # type: ignore
@@ -18,132 +36,152 @@ from utils.processor_helpers import enrich_segmentation
 from pathlib import Path
 
 
-
 class AZCapitauxProcessor(BaseProcessor):
     """
-    Process AZ capital data: IPFE16 + IPFE36 → Silver layer.
+    =======================================================================
+    PROCESSEUR CAPITAUX AZ
+    =======================================================================
     
-    Workflow:
-    1. Read: IPF Agent + Courtage files
-    2. Transform: 
-       - Apply business filters
-       - Extract capitals (indexed + non-indexed)
-       - Normalize to 100%
-       - Apply business rules
-       - Enrich segmentation
-    3. Write: az_capitaux_{vision}.parquet to silver
+    Transforme les données brutes AZ en données Silver enrichies.
+    
+    FLUX DE TRAITEMENT (WORKFLOW) :
+    ------------------------------
+    1. READ : Lecture des fichiers IPF (Agents + Courtiers)
+    2. TRANSFORM :
+       - Filtrage métier
+       - Configuration des colonnes
+       - Extraction des capitaux INDEXÉS
+       - Extraction des capitaux NON INDEXÉS
+       - Normalisation à 100%
+       - Application des règles métier
+       - Enrichissement (Segmentation)
+    3. WRITE : Écriture du fichier Silver resultats
     """
     
     def __init__(self, spark, config: ConfigLoader, logger):
         """
-        Initialize AZ Capitaux Processor.
+        Initialise le processeur AZ Capitaux.
         
-        Args:
-            spark: SparkSession
-            config: ConfigLoader instance
-            logger: Logger instance
+        PARAMÈTRES :
+        -----------
+        spark : SparkSession
+            Session Spark active
+        config : ConfigLoader
+            Configuration du pipeline
+        logger : PipelineLogger
+            Système de journalisation
         """
         super().__init__(spark, config, logger)
-        self.logger.info("AZ Capitaux Processor initialized")
+        self.logger.info("Initialisation du Processeur Capitaux AZ")
     
     def read(self, vision: str) -> DataFrame:
         """
-        Read IPF files (Agent + Courtage) from bronze layer.
+        Lit les données IPF (Inventaire Portefeuille) depuis la couche Bronze.
         
-        Args:
-            vision: Vision in YYYYMM format
+        FICHIES LUS :
+        ------------
+        Groupe 'ipf' qui combine :
+        - IPFE16 (Agents)
+        - IPFE36 (Courtiers)
         
-        Returns:
-            Combined DataFrame from IPFE16 + IPFE36
+        PARAMÈTRES :
+        -----------
+        vision : str
+            La période à traiter (YYYYMM)
+            
+        RETOUR :
+        -------
+        DataFrame
+            Les données brutes (Agents + Courtiers)
         """
-        self.logger.info(f"Reading AZ capital data for vision {vision}")
+        self.logger.info(f"Lecture des données capitaux AZ pour vision {vision}")
         
         from src.reader import BronzeReader
         
+        # Charger la configuration de lecture
         reading_config_path = self.config.get('config_files.reading_config', 'config/reading_config.json')
         
-        # Convert to absolute path if relative
         if not Path(reading_config_path).is_absolute():
             reading_config_path = str(self.get_project_root() / reading_config_path)
         
         reader = BronzeReader(self.spark, self.config, reading_config_path)
 
+        # Lire les fichiers IPF (combine IPFE16 + IPFE36)
+        df = reader.read_file_group('ipf', vision)
         
-        # Read IPF files (combines Agent IPFE16 + Courtage IPFE36)
-        df = reader.read_file_group('ipf_az', vision)
-        
-        self.logger.success(f"Read {df.count():,} records from bronze (AZ)")
+        self.logger.success(f"Lecture terminée : {df.count():,} enregistrements chargés (AZ)")
         return df
     
     def transform(self, df: DataFrame, vision: str) -> DataFrame:
         """
-        Apply AZ capital transformations.
+        Applique les règles de gestion pour extraire et calculer les capitaux.
         
-        Steps:
-        1. Business filters
-        2. Column configuration
-        3. Extract capitals WITH indexation
-        4. Extract capitals WITHOUT indexation
-        5. Normalize to 100%
-        6. Apply business rules
-        7. Enrich segmentation
+        ÉTAPES DE TRANSFORMATION :
+        -------------------------
+        1. Application des filtres métier (ex: exclusion des polices annulées)
+        2. Renommage et sélection des colonnes
+        3. Calcul des capitaux INDEXÉS (avec application des coefficients)
+        4. Calcul des capitaux NON INDEXÉS (montants d'origine)
+        5. Normalisation des montants (ramener à 100% si coassurance)
+        6. Règles métier spécifiques (gestion des plafonds, complétude)
+        7. Enrichissement avec la segmentation commerciale
         
-        Args:
-            df: Input DataFrame from read()
-            vision: Vision in YYYYMM format
-        
-        Returns:
-            Transformed DataFrame ready for silver
+        PARAMÈTRES :
+        -----------
+        df : DataFrame
+            Données brutes lues par read()
+        vision : str
+            Période traitée
+            
+        RETOUR :
+        -------
+        DataFrame
+            Données transformées prêtes pour la couche Silver
         """
-        self.logger.info("Starting AZ capital transformations")
+        self.logger.info("Démarrage des transformations Capitaux AZ")
         
         year_int, month_int = extract_year_month_int(vision)
         
-        # Load configurations
+        # Chargement des configurations de transformation
         from utils.loaders.transformation_loader import get_default_loader
         loader = get_default_loader()
         
-        # Use AZ config as base
+        # Configuration spécifique AZ
         az_config = loader.get_az_config()
         
-        # Load capital extraction config
+        # Configuration pour l'extraction des capitaux
         import json
-        
         config_path = 'config/transformations/capitaux_extraction_config.json'
         
-        # Convert to absolute path if relative
         if not Path(config_path).is_absolute():
             config_path = self.get_project_root() / config_path
         
         with open(config_path, 'r') as f:
             capital_config = json.load(f)
         
-        # Step 1: Apply business filters
-        self.logger.step(1, "Applying business filters")
+        # --- Étape 1 : Filtres métier ---
+        self.logger.step(1, "Application des filtres métier")
         from utils.transformations import apply_business_filters
         filters = az_config.get('business_filters', {}).get('filters', [])
         df = apply_business_filters(df, {'filters': filters}, self.logger)
-        self.logger.info(f"After filters: {df.count():,} records")
+        self.logger.info(f"Après filtres : {df.count():,} enregistrements")
         
-        # Step 2: Column configuration (rename csegt→cseg, etc.)
-        self.logger.step(2, "Applying column configuration")
+        # --- Étape 2 : Configuration des colonnes ---
+        self.logger.step(2, "Standardisation des colonnes")
         from utils.transformations import lowercase_all_columns, apply_column_config
         df = lowercase_all_columns(df)
         column_config = az_config['column_selection']
         df = apply_column_config(df, column_config, vision, year_int, month_int)
         
-        # Add DIRCOM and initialize capital columns
+        # Ajout de l'indicateur de direction commerciale
         from pyspark.sql.functions import lit
-        df = df.withColumn('dircom', lit('az'))  # AZ direction commerciale
+        df = df.withColumn('dircom', lit('az'))
         
-        # Step 3: Extract capitals WITH indexation
-        self.logger.step(3, "Extracting capitals WITH indexation")
+        # --- Étape 3 : Capitaux AVEC indexation ---
+        self.logger.step(3, "Extraction des capitaux AVEC indexation")
         
-        # Apply indexation to mtcapi1-14
-        # STRATEGY: Use PRPRVC-based indexation (no indices table)
-        # - Uses existing PRPRVC coefficients from IPF data
-        # - No dependency on indices table or $INDICE format lookup
-        # - Corresponds to SAS indexation_v2 CASE 1 (when &DATE EQ .)
+        # Appliquer l'indexation sur les colonnes sources (mtcapi1 à 14)
+        # STRATÉGIE : Utiliser les coefficients PRPRVC présents dans le fichier
         from utils.transformations.operations.indexation import index_capitals
         df = index_capitals(
             df,
@@ -153,42 +191,42 @@ class AZCapitauxProcessor(BaseProcessor):
             capital_prefix='mtcapi',
             nature_prefix='cdprvb',
             index_prefix='prprvc',
-            reference_date=None,  # Use current date
-            use_index_table=False,  # EXPLICIT: Use PRPRVC mode, not indices table
-            index_table_df=None,  # No indices table needed
+            reference_date=None,   # Utilise la date courante
+            use_index_table=False, # Utilise les colonnes PRPRVC du fichier (pas de table externe)
+            index_table_df=None,
             logger=self.logger
         )
         
-        # Extract indexed capitals (mtcapi1i-14i)
+        # Extraire les colonnes indexées (suffixe _ind)
         from utils.transformations import extract_capitals_extended
-        df = extract_capitals_extended(
-            df,
-            capital_config,  # Pass the entire dict
-            num_capitals=14,
-            indexed=True  # Use indexed columns
-        )
-        
-        self.logger.info("Indexed capitals extracted: smp_100_ind, lci_100_ind, perte_exp_100_ind, etc.")
-        
-        # Step 4: Extract capitals WITHOUT indexation
-        self.logger.step(4, "Extracting capitals WITHOUT indexation")
-        
-        # Extract non-indexed capitals (mtcapi1-14)
         df = extract_capitals_extended(
             df,
             capital_config,
             num_capitals=14,
-            indexed=False  # Use non-indexed columns
+            indexed=True  # Mode indexé
         )
         
-        self.logger.info("Non-indexed capitals extracted: smp_100, lci_100, perte_exp_100, etc.")
+        self.logger.info("Capitaux indexés extraits : smp_100_ind, lci_100_ind, etc.")
         
-        # Step 5: Normalize to 100% basis
-        self.logger.step(5, "Normalizing capitals to 100%")
+        # --- Étape 4 : Capitaux SANS indexation ---
+        self.logger.step(4, "Extraction des capitaux SANS indexation")
+        
+        # Extraire les colonnes brutes
+        df = extract_capitals_extended(
+            df,
+            capital_config,
+            num_capitals=14,
+            indexed=False  # Mode non indexé
+        )
+        
+        self.logger.info("Capitaux non indexés extraits : smp_100, lci_100, etc.")
+        
+        # --- Étape 5 : Normalisation à 100% ---
+        self.logger.step(5, "Normalisation à 100% (Base Technique)")
         
         from utils.transformations import normalize_capitals_to_100
         
-        # List of all capital columns to normalize
+        # Liste de toutes les colonnes capitaux à normaliser
         indexed_cols = [
             'smp_100_ind', 'lci_100_ind', 'perte_exp_100_ind', 'risque_direct_100_ind',
             'limite_rc_100_par_sin_ind', 'limite_rc_100_par_sin_tous_dom_ind', 'limite_rc_100_par_an_ind',
@@ -203,56 +241,62 @@ class AZCapitauxProcessor(BaseProcessor):
         
         all_capital_cols = indexed_cols + non_indexed_cols
         
+        # Diviser par le pourcentage de part (prcdcie) pour obtenir le 100%
         df = normalize_capitals_to_100(df, all_capital_cols, 'prcdcie')
         
-        self.logger.info("Capitals normalized to 100% technical basis")
+        self.logger.info("Capitaux ramenés à 100% selon la part compagnie (prcdcie)")
         
-        # Step 6: Apply business rules
-        self.logger.step(6, "Applying business rules")
+        # --- Étape 6 : Règles métier ---
+        self.logger.step(6, "Application des règles de gestion")
         
         from utils.transformations import apply_capitaux_business_rules
         
-        # Apply for indexed and non-indexed
+        # Appliquer pour les deux jeux de colonnes
         df = apply_capitaux_business_rules(df, indexed=True)
         df = apply_capitaux_business_rules(df, indexed=False)
         
-        self.logger.info("Business rules applied: SMP completion, RC limits")
+        self.logger.info("Règles appliquées : complétude SMP, limites Responsabilité Civile")
         
-        # Step 7: Enrich with segmentation (using helper)
-        self.logger.step(7, "Enriching with segmentation")
+        # --- Étape 7 : Enrichissement Segmentation ---
+        self.logger.step(7, "Enrichissement avec la segmentation")
         
         from src.reader import BronzeReader
         
         reading_config_path = self.config.get('config_files.reading_config', 'config/reading_config.json')
-        
-        # Convert to absolute path if relative
         if not Path(reading_config_path).is_absolute():
             reading_config_path = str(self.get_project_root() / reading_config_path)
         
         reader = BronzeReader(self.spark, self.config, reading_config_path)
 
-        # Drop segmentation columns if they already exist to avoid duplication
+        # Nettoyer les colonnes existantes pour éviter les doublons
         cols_to_drop = ['cmarch', 'cseg', 'cssseg']
         for col in cols_to_drop:
             if col in df.columns:
                 df = df.drop(col)
         
-        # Use enrich_segmentation helper to replace 14 lines of duplicate code
-        # AZ requires join on both cdprod AND cdpole (SAS L308-309)
+        # Ajouter les segments commerciaux
+        # AZ nécessite une jointure sur Code Produit + Code Pôle
         df = enrich_segmentation(df, reader, vision, include_cdpole=True, logger=self.logger)
         
-        self.logger.success("AZ capital transformations completed")
+        self.logger.success("Transformations Capitaux AZ terminées")
         return df
     
     def write(self, df: DataFrame, vision: str) -> None:
         """
-        Write transformed data to silver layer.
+        Écrit les résultats transformés en couche Silver.
         
-        Args:
-            df: Transformed DataFrame
-            vision: Vision in YYYYMM format
+        FICHIER PRODUIT :
+        ----------------
+        az_capitaux_{vision}.parquet
+        
+        PARAMÈTRES :
+        -----------
+        df : DataFrame
+            Données transformées
+        vision : str
+            Période traitée
         """
-        self.logger.info(f"Writing AZ capital data to silver for vision {vision}")
+        self.logger.info(f"Écriture des données Silver AZ pour vision {vision}")
         
         from utils.helpers import write_to_layer
         
@@ -261,4 +305,4 @@ class AZCapitauxProcessor(BaseProcessor):
             df, self.config, 'silver', output_name, vision, self.logger
         )
         
-        self.logger.success(f"Wrote {df.count():,} records to silver: {output_name}.parquet")
+        self.logger.success(f"Fichier écrit : {output_name}.parquet ({df.count():,} enregistrements)")

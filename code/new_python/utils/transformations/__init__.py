@@ -70,7 +70,7 @@ from utils.transformations.enrichment.client_enrichment import (
     join_client_data,
 )
 
-from utils.transformations.enrichment.segmentation_enrichment import enrich_segmentation_sas
+from utils.transformations.enrichment.segmentation_enrichment import enrich_segmentation
 
 # ============================================================================
 # EXPORTS
@@ -117,5 +117,5 @@ __all__ = [
 
     # Enrichment
     'join_client_data',
-    'enrich_segmentation_sas'
+    'enrich_segmentation'
 ]

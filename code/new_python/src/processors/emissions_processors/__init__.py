@@ -1,8 +1,8 @@
 """
-Emissions Processors Package.
+Package des processeurs d'émissions.
 
-Contains processors for premium emissions data from One BI:
-- EmissionsProcessor: Main processor for One BI premium data (Bronze → Silver → Gold)
+Contient les processeurs pour les données de primes issues de One BI :
+- EmissionsProcessor : Processeur principal pour les données de primes One BI (Bronze → Silver → Gold)
 """
 
 from src.processors.emissions_processors.emissions_processor import EmissionsProcessor

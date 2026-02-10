@@ -30,7 +30,7 @@ from pyspark.sql.functions import (
 )
 from pyspark.sql.types import StringType, DateType
 
-from config.schemas import SCHEMA_REGISTRY
+from config.column_definitions import SCHEMA_REGISTRY
 
 
 # ======================================================================================

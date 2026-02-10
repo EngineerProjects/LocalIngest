@@ -1,7 +1,7 @@
 """
-Orchestrators package.
+Package des orchestrateurs.
 
-Provides base orchestration patterns for pipeline execution.
+Fournit les modèles d'orchestration de base pour l'exécution du pipeline.
 """
 
 from src.orchestrators.base_orchestrator import BaseOrchestrator

@@ -1,14 +1,26 @@
+# -*- coding: utf-8 -*-
 """
-Base Orchestrator for Pipeline Execution.
+===============================================================================
+ORCHESTRATEUR DE BASE (Modèle pour l'exécution des pipelines)
+===============================================================================
 
-Provides common patterns for pipeline orchestration:
-- Config loading and validation
-- Processor initialization
-- Sequential stage execution with logging
-- Error handling and reporting
-- Summary generation
+Ce module définit le modèle standard que tous les pipelines doivent suivre.
 
-Eliminates ~200 lines of duplicate code across pipeline orchestrators.
+POURQUOI UNE CLASSE DE BASE ?
+----------------------------
+Plutôt que de répéter le même code dans chaque pipeline (PTF_MVT, Capitaux, etc.),
+on centralise ici la logique commune :
+- Chargement de la configuration
+- Validation des formats (ex: vision YYYYMM)
+- Exécution séquentielle des étapes
+- Gestion des erreurs et des logs
+- Génération des rapports de fin de traitement
+
+COMMENT L'UTILISER ?
+-------------------
+Chaque nouveau pipeline doit hériter de cette classe et définir simplement
+sa liste d'étapes dans la méthode `define_stages()`. Tout le reste est géré
+automatiquement.
 """
 
 from pathlib import Path
@@ -18,52 +30,85 @@ from pyspark.sql import DataFrame
 
 class BaseOrchestrator:
     """
-    Base class for pipeline orchestrators.
+    =======================================================================
+    CLASSE MÈRE DES ORCHESTRATEURS
+    =======================================================================
     
-    Subclasses should override:
-    - define_stages() - List of (stage_name, processor_class) tuples
-    - pre_process() - Optional pre-processing hook
-    - post_process() - Optional post-processing hook
+    Squelette générique pour tous les pipelines de données.
     
-    Example:
-        class MyOrchestrator(BaseOrchestrator):
-            def define_stages(self):
-                return [
-                    ("Stage 1", MyProcessor1),
-                    ("Stage 2", MyProcessor2)
-                ]
+    RÔLES DE CETTE CLASSE :
+    -----------------------
+    1. Initialiser l'environnement (Spark, Config, Logger)
+    2. Valider les entrées (format de la vision)
+    3. Lancer les étapes de traitement une par une
+    4. Attraper les erreurs et arrêter le pipeline proprement si nécessaire
+    5. Afficher un résumé clair de ce qui s'est passé
+    
+    MÉTHODES À SURCHARGER (dans les classes filles) :
+    ------------------------------------------------
+    - define_stages() : [OBLIGATOIRE] Liste des étapes à exécuter
+    - pre_process() : [OPTIONNEL] Actions à faire AVANT les étapes
+    - post_process() : [OPTIONNEL] Actions à faire APRÈS les étapes
+    - allow_stage_failure() : [OPTIONNEL] Définir quelles étapes peuvent échouer
+    
+    EXEMPLE D'IMPLÉMENTATION :
+    -------------------------
+    class MonPipeline(BaseOrchestrator):
+        def define_stages(self):
+            return [
+                ("Étape 1 : Nettoyage", CleanerProcessor),
+                ("Étape 2 : Calculs", CalculatorProcessor)
+            ]
     """
     
     def __init__(self, spark, config_path: str, logger):
         """
-        Initialize orchestrator.
+        Initialise l'orchestrateur avec les outils nécessaires.
         
-        Args:
-            spark: SparkSession instance
-            config_path: Path to config.yml
-            logger: Logger instance
+        PARAMÈTRES :
+        -----------
+        spark : SparkSession
+            Le moteur de calcul Spark actif
+            
+        config_path : str
+            Chemin vers le fichier de configuration (config.yml)
+            
+        logger : PipelineLogger
+            Système pour écrire les logs (console et fichier)
         """
         self.spark = spark
         self.logger = logger
         
-        # Load configuration
+        # Charger la configuration depuis le fichier YAML
+        # (contient les chemins, les paramètres de calcul, etc.)
         from utils.loaders.config_loader import ConfigLoader
         self.config = ConfigLoader(config_path)
     
     def validate_vision(self, vision: str) -> bool:
         """
-        Validate vision format (YYYYMM).
+        Vérifie que la vision (période) est au bon format.
         
-        Args:
-            vision: Vision string to validate
+        BUT :
+        ----
+        S'assurer qu'on ne lance pas de calculs avec une date invalide.
+        Le format attendu est TOUJOURS 'YYYYMM' (ex: 202509).
         
-        Returns:
-            True if valid, False otherwise
+        PARAMÈTRES :
+        -----------
+        vision : str
+            La chaîne de caractères représentant la période
+            
+        RETOUR :
+        -------
+        bool
+            True si le format est correct, False sinon
         """
         from utils.helpers import validate_vision
+        
         if not validate_vision(vision):
-            self.logger.error(f"Invalid vision format: {vision}. Expected YYYYMM")
+            self.logger.error(f"Format de vision invalide : {vision}. Attendu : YYYYMM (ex: 202509)")
             return False
+            
         return True
     
     def run_stage(
@@ -74,169 +119,226 @@ class BaseOrchestrator:
         vision: str
     ) -> Optional[Union[DataFrame, Tuple[DataFrame, ...]]]:
         """
-        Execute a single processor stage.
+        Exécute une seule étape du pipeline.
         
-        Args:
-            stage_num: Stage number for logging (e.g., 1, 2, 3)
-            stage_name: Human-readable stage name
-            processor_class: Processor class to instantiate
-            vision: Vision in YYYYMM format
+        PROCESSUS :
+        ----------
+        1. Affiche le début de l'étape dans les logs
+        2. Instancie le processeur (la classe qui fait le travail)
+        3. Lance la méthode .run() du processeur
+        4. Vérifie le résultat
+        5. Affiche le succès ou l'échec
         
-        Returns:
-            DataFrame result, tuple of DataFrames, or None if failed
+        PARAMÈTRES :
+        -----------
+        stage_num : int
+            Numéro de l'étape (pour l'affichage)
+            
+        stage_name : str
+            Nom lisible de l'étape (ex: "Calcul des primes")
+            
+        processor_class : class
+            La classe Python à instancier (doit hériter de BaseProcessor)
+            
+        vision : str
+            La période à traiter
+            
+        RETOUR :
+        -------
+        DataFrame ou Tuple[DataFrame] ou None
+            Les données résultantes du traitement, ou None si échec
         """
-        self.logger.section(f"STAGE {stage_num}: {stage_name}")
+        self.logger.section(f"ÉTAPE {stage_num} : {stage_name}")
         
         try:
+            # Créer une instance du processeur
             processor = processor_class(self.spark, self.config, self.logger)
+            
+            # Lancer le traitement
             result = processor.run(vision)
             
+            # Vérifier si le traitement a retourné quelque chose
             if result is None:
-                self.logger.error(f"{stage_name} returned None")
+                self.logger.error(f"L'étape {stage_name} a retourné None (pas de résultat)")
                 return None
             
-            # Handle tuple results (e.g., emissions returns 2 DFs)
+            # Gérer le cas où l'étape retourne plusieurs DataFrames (ex: Émissions)
             if isinstance(result, tuple):
+                # Calculer le nombre total de lignes générées
                 total_rows = sum(df.count() for df in result if df is not None)
-                self.logger.success(f"{stage_name} completed: {total_rows:,} total rows")
+                self.logger.success(f"{stage_name} terminée : {total_rows:,} lignes au total")
             else:
-                self.logger.success(f"{stage_name} completed: {result.count():,} rows")
+                # Cas standard : un seul DataFrame
+                self.logger.success(f"{stage_name} terminée : {result.count():,} lignes")
             
             return result
             
         except Exception as e:
-            self.logger.failure(f"{stage_name} failed: {e}")
-            self.logger.error(f"Error details: {e}")
+            # En cas d'erreur imprévue (bug, problème réseau, etc.)
+            self.logger.failure(f"Échec de l'étape {stage_name} : {e}")
+            self.logger.error(f"Détails de l'erreur : {e}")
+            # Relancer l'exception pour qu'elle soit attrapée par la méthode run()
             raise
     
     def run(self, vision: str) -> bool:
         """
-        Execute complete pipeline.
+        Lance l'exécution complète du pipeline (toutes les étapes).
         
-        Workflow:
-        1. Validate vision
-        2. Pre-process (optional)
-        3. Execute stages sequentially
-        4. Post-process (optional)
-        5. Print summary
+        FLUX DE TRAVAIL (WORKFLOW) :
+        ---------------------------
+        1. Valider le format de la date (vision)
+        2. Exécuter le pré-traitement (hook optionnel)
+        3. Boucler sur chaque étape définie et l'exécuter
+           - Si une étape obligatoire échoue → ARRÊT DU PIPELINE
+           - Si une étape optionnelle échoue → CONTINUATION
+        4. Exécuter le post-traitement (hook optionnel)
+        5. Afficher le résumé final
         
-        Args:
-            vision: Vision in YYYYMM format
-        
-        Returns:
-            True if successful, False otherwise
+        PARAMÈTRES :
+        -----------
+        vision : str
+            La période à traiter (YYYYMM)
+            
+        RETOUR :
+        -------
+        bool
+            True si tout s'est bien passé, False en cas d'erreur bloquante
         """
-        # Validate vision format
+        # 1. Validation
         if not self.validate_vision(vision):
             return False
         
-        # Log pipeline start
+        # Récupérer le nom du pipeline pour l'affichage (enlève "Orchestrator")
         pipeline_name = self.__class__.__name__.replace("Orchestrator", "").upper()
-        self.logger.section(f"{pipeline_name} PIPELINE - Vision {vision}")
+        self.logger.section(f"DÉMARRAGE PIPELINE {pipeline_name} - Vision {vision}")
         
         try:
-            # Pre-processing hook
+            # 2. Pré-traitement (vide par défaut)
             self.pre_process(vision)
             
-            # Execute stages
+            # 3. Exécution des étapes
             stages = self.define_stages()
-            results = {}
+            results = {} # Stocke les résultats de chaque étape
             
             for i, (stage_name, processor_class) in enumerate(stages, 1):
+                # Lancer l'étape courante
                 result = self.run_stage(i, stage_name, processor_class, vision)
                 
-                # Allow stage failure if explicitly configured
-                if result is None and not self.allow_stage_failure(stage_name):
-                    self.logger.failure(f"Pipeline stopped due to {stage_name} failure")
-                    return False
+                # Gestion des échecs
+                if result is None:
+                    # Vérifier si l'échec est toléré pour cette étape
+                    if self.allow_stage_failure(stage_name):
+                        self.logger.warning(f"L'étape {stage_name} a échoué mais le pipeline continue (échec toléré).")
+                    else:
+                        # Échec critique : on arrête tout
+                        self.logger.failure(f"ARRÊT DU PIPELINE : L'étape obligatoire {stage_name} a échoué.")
+                        return False
                 
+                # Sauvegarder le résultat pour le post-traitement et le résumé
                 results[stage_name] = result
             
-            # Post-processing hook
+            # 4. Post-traitement (vide par défaut, ex: copie de fichiers)
             self.post_process(vision, results)
             
-            # Print summary
+            # 5. Résumé final
             self.print_summary(results)
             
-            # Success
-            self.logger.success(f"{pipeline_name} Pipeline completed successfully!")
+            # Succès global
+            self.logger.success(f"Pipeline {pipeline_name} terminé avec succès !")
             return True
             
         except Exception as e:
-            self.logger.failure(f"Pipeline failed: {e}")
-            self.logger.error(f"Exception: {e}")
+            # Filet de sécurité global : attrape toute erreur non gérée
+            self.logger.failure(f"Le pipeline a planté : {e}")
+            self.logger.error(f"Exception non gérée : {e}")
             return False
     
     def define_stages(self) -> List[Tuple[str, type]]:
         """
-        Define pipeline stages.
+        Définit la liste des étapes du pipeline.
         
-        Override in subclass to specify processor sequence.
+        CETTE MÉTHODE DOIT ÊTRE SURCHARGÉE PAR LA CLASSE FILLE.
+        Si la classe fille ne la définit pas, une erreur est levée.
         
-        Returns:
-            List of (stage_name, processor_class) tuples
-        
-        Example:
-            return [
-                ("AZ Processor (Bronze → Silver)", AZProcessor),
-                ("AZEC Processor (Bronze → Silver)", AZECProcessor)
-            ]
+        RETOUR :
+        -------
+        list[tuple]
+            Liste ordonnée de tuples (Nom de l'étape, Classe du processeur)
         """
-        raise NotImplementedError("Subclasses must define stages")
+        raise NotImplementedError("Les sous-classes doivent définir leurs étapes dans define_stages()")
     
     def pre_process(self, vision: str):
         """
-        Pre-processing hook (optional).
+        Point d'extension pour exécuter du code AVANT les étapes principales.
         
-        Override in subclass if needed.
-        
-        Args:
-            vision: Vision in YYYYMM format
+        À SURCHARGER SI NÉCESSAIRE.
+        Par défaut : ne fait rien.
         """
         pass
     
     def post_process(self, vision: str, results: Dict[str, Any]):
         """
-        Post-processing hook (optional).
+        Point d'extension pour exécuter du code APRÈS les étapes principales.
         
-        Override in subclass for custom post-processing (e.g., copy files, cleanup).
+        À SURCHARGER SI NÉCESSAIRE.
+        Par défaut : ne fait rien.
+        Exemple d'usage : copier des fichiers, nettoyer des temporaires, envoyer un email.
         
-        Args:
-            vision: Vision in YYYYMM format
-            results: Dict mapping stage_name → DataFrame result
+        PARAMÈTRES :
+        -----------
+        vision : str
+            La période traitée
+        results : dict
+            Dictionnaire contenant les résultats de toutes les étapes exécutées
         """
         pass
     
     def allow_stage_failure(self, stage_name: str) -> bool:
         """
-        Check if a stage is allowed to fail without stopping pipeline.
+        Définit si une étape spécifique a le droit d'échouer.
         
-        Override in subclass to allow specific optional stages.
+        POURQUOI ?
+        ---------
+        Parfois, une étape secondaire (ex: calcul statistique optionnel)
+        peut échouer sans remettre en cause la validité des données principales.
         
-        Args:
-            stage_name: Name of the stage
-        
-        Returns:
-            True if failure is acceptable, False otherwise
+        PARAMÈTRES :
+        -----------
+        stage_name : str
+            Nom de l'étape à vérifier
+            
+        RETOUR :
+        -------
+        bool
+            True si l'échec est accepté, False sinon (par défaut False)
         """
         return False
     
     def print_summary(self, results: Dict[str, Any]):
         """
-        Print pipeline execution summary.
+        Affiche un tableau récapitulatif des résultats à la fin du pipeline.
         
-        Args:
-            results: Dict mapping stage_name → DataFrame result
+        BUT :
+        ----
+        Donner une vue synthétique des volumes de données traités.
+        
+        PARAMÈTRES :
+        -----------
+        results : dict
+            Les résultats collectés pendant l'exécution
         """
-        self.logger.section("Pipeline Summary")
+        self.logger.section("RÉSUMÉ DU PIPELINE")
         
         for stage_name, result in results.items():
             if result is None:
-                self.logger.info(f"{stage_name}: SKIPPED or FAILED")
+                self.logger.info(f"{stage_name} : IGNORÉE OU ÉCHOUÉE")
+            
             elif isinstance(result, tuple):
-                # Handle multiple outputs (e.g., emissions)
+                # Cas spécial : étapes produisant plusieurs fichiers
                 for i, df in enumerate(result, 1):
                     if df is not None:
-                        self.logger.info(f"{stage_name} (output {i}): {df.count():,} rows")
+                        self.logger.info(f"{stage_name} (sortie {i}) : {df.count():,} lignes")
+            
             else:
-                self.logger.info(f"{stage_name}: {result.count():,} rows")
+                # Cas standard : un seul fichier
+                self.logger.info(f"{stage_name} : {result.count():,} lignes")

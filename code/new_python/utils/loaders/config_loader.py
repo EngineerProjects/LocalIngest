@@ -1,6 +1,6 @@
 """
-Configuration loader for Construction Data Pipeline.
-Loads and manages YAML configuration with dot-notation access.
+Chargeur de configuration pour le Pipeline de Données Construction.
+Charge et gère la configuration YAML avec accès par notation pointée.
 """
 
 import yaml
@@ -9,18 +9,19 @@ from typing import Dict, Any, Optional
 
 
 class ConfigLoader:
-    """Load and manage pipeline configuration from YAML."""
+    """Charge et gère la configuration du pipeline depuis YAML."""
 
     def __init__(self, config_path: Optional[str] = None):
         """
-        Initialize configuration loader.
+        Initialise le chargeur de configuration.
 
         Args:
-            config_path: Path to config.yml file. If None, uses default path.
+            config_path: Chemin vers le fichier config.yml. Si None, utilise le chemin par défaut.
         """
         if config_path is None:
-            # Default to config/config.yml in project root
-            project_root = Path(__file__).parent.parent
+            # Défaut à config/config.yml à la racine du projet
+            # CORRECTION : .parent.parent.parent pour remonter de utils/loaders/config_loader.py vers la racine
+            project_root = Path(__file__).parent.parent.parent
             config_path = project_root / "config" / "config.yml"
 
         self.config_path = Path(config_path)
@@ -28,17 +29,17 @@ class ConfigLoader:
 
     def _load_config(self) -> Dict[str, Any]:
         """
-        Load configuration from YAML file.
+        Charge la configuration depuis le fichier YAML.
 
         Returns:
-            Configuration dictionary
+            Dictionnaire de configuration
 
         Raises:
-            FileNotFoundError: If config file doesn't exist
-            yaml.YAMLError: If config file is malformed
+            FileNotFoundError: Si le fichier de config n'existe pas
+            yaml.YAMLError: Si le fichier de config est mal formé
         """
         if not self.config_path.exists():
-            raise FileNotFoundError(f"Config file not found: {self.config_path}")
+            raise FileNotFoundError(f"Fichier de config non trouvé : {self.config_path}")
 
         with open(self.config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
@@ -47,16 +48,16 @@ class ConfigLoader:
 
     def get(self, key: str, default: Any = None) -> Any:
         """
-        Get configuration value by key (supports nested keys with dot notation).
+        Obtient une valeur de configuration par clé (supporte les clés imbriquées avec notation pointée).
 
         Args:
-            key: Configuration key (e.g., 'datalake.base_path')
-            default: Default value if key not found
+            key: Clé de configuration (ex: 'datalake.base_path')
+            default: Valeur par défaut si la clé n'est pas trouvée
 
         Returns:
-            Configuration value or default
+            Valeur de configuration ou défaut
 
-        Example:
+        Exemple:
             >>> config = ConfigLoader()
             >>> base_path = config.get('datalake.base_path')
             >>> log_level = config.get('logging.level', 'INFO')
@@ -74,39 +75,39 @@ class ConfigLoader:
 
     def set(self, key: str, value: Any) -> None:
         """
-        Set configuration value (supports nested keys with dot notation).
+        Définit une valeur de configuration (supporte les clés imbriquées avec notation pointée).
 
         Args:
-            key: Configuration key (e.g., 'datalake.base_path')
-            value: Value to set
+            key: Clé de configuration (ex: 'datalake.base_path')
+            value: Valeur à définir
 
-        Example:
+        Exemple:
             >>> config = ConfigLoader()
             >>> config.set('datalake.base_path', 'abfss://mycontainer@...')
         """
         keys = key.split('.')
         target = self.config
 
-        # Navigate to the parent of the final key
+        # Naviguer jusqu'au parent de la clé finale
         for k in keys[:-1]:
             if k not in target:
                 target[k] = {}
             target = target[k]
 
-        # Set the value
+        # Définir la valeur
         target[keys[-1]] = value
 
     def get_all(self) -> Dict[str, Any]:
         """
-        Get entire configuration dictionary.
+        Obtient le dictionnaire de configuration complet.
 
         Returns:
-            Complete configuration dict
+            Dict de configuration complet
         """
         return self.config
 
     def __repr__(self) -> str:
-        """String representation of configuration."""
-        pipeline_name = self.get('pipeline.name', 'Unknown')
+        """Représentation chaîne de la configuration."""
+        pipeline_name = self.get('pipeline.name', 'Inconnu')
         version = self.get('pipeline.version', 'N/A')
         return f"ConfigLoader(pipeline={pipeline_name}, version={version})"
