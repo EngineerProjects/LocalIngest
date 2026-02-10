@@ -1,188 +1,172 @@
-# Configuration Guide
+# Guide de Configuration
 
-## Overview
+## Vue d'Ensemble
 
-The pipeline uses a **configuration-driven** architecture with all business logic externalized from code.
+Le pipeline utilise une architecture **pilotée par la configuration**, toute la logique métier étant externalisée du code.
 
 ---
 
-## Configuration Files
+## Fichiers de Configuration
 
-| File                            | Location                  | Purpose                                |
+| Fichier                         | Emplacement               | Objectif                               |
 | ------------------------------- | ------------------------- | -------------------------------------- |
-| **config.yml**                  | `config/`                 | Paths, Spark settings, logging         |
-| **reading_config.json**         | `config/`                 | File patterns and read options         |
-| **schemas.py**                  | `config/`                 | PySpark schema definitions             |
-| **constants.py**                | `config/`                 | Business constants and exclusion lists |
-| **az_transformations.json**     | `config/transformations/` | AZ channel logic                       |
-| **azec_transformations.json**   | `config/transformations/` | AZEC channel logic                     |
-| **business_rules.json**         | `config/transformations/` | Shared business rules                  |
-| **emissions_config.json**       | `config/transformations/` | Emissions filters and mappings         |
-| **consolidation_mappings.json** | `config/transformations/` | AZ/AZEC schema harmonization           |
+| **config.yml**                  | `config/`                 | Chemins, paramètres Spark, logging     |
+| **reading_config.json**         | `config/`                 | Modèles de fichiers et options lecture |
+| **schemas.py**                  | `config/`                 | Définitions schémas PySpark            |
+| **constants.py**                | `config/`                 | Constantes métier et listes exclusion  |
+| **az_transformations.json**     | `config/transformations/` | Logique canal AZ                       |
+| **azec_transformations.json**   | `config/transformations/` | Logique canal AZEC                     |
+| **business_rules.json**         | `config/transformations/` | Règles métier partagées                |
+| **emissions_config.json**       | `config/transformations/` | Filtres et mappages Émissions          |
+| **consolidation_mappings.json** | `config/transformations/` | Harmonisation schéma AZ/AZEC           |
 
 ---
 
-## 1. Global Settings (config.yml)
+## 1. Paramètres Globaux (config.yml)
 
-### Key Sections
+### Sections Clés
 
-| Section              | Purpose                                 |
-| -------------------- | --------------------------------------- |
-| `datalake.base_path` | Root path for bronze/silver/gold layers |
-| `output.format`      | Output format (delta, parquet)          |
-| `components`         | Enable/disable pipeline components      |
-| `spark.config`       | Spark session configuration             |
-| `logging`            | Log level and file location             |
-| `vision.validation`  | Year range validation                   |
+| Section              | Objectif                                      |
+| -------------------- | --------------------------------------------- |
+| `datalake.base_path` | Chemin racine pour couches bronze/silver/gold |
+| `output.format`      | Format de sortie (delta, parquet)             |
+| `components`         | Activer/désactiver composants pipeline        |
+| `spark.config`       | Configuration session Spark                   |
+| `logging`            | Niveau de log et emplacement fichier          |
+| `vision.validation`  | Validation plage d'années                     |
 
-### Output Configuration
+### Configuration Sortie
 
-| Key                  | Default     | Description                               |
-| -------------------- | ----------- | ----------------------------------------- |
-| `output.format`      | `delta`     | Output format (delta for ACID guarantees) |
-| `output.mode`        | `overwrite` | Write mode (overwrite, append)            |
-| `output.compression` | `snappy`    | Compression codec                         |
-| `output.clean`       | `true`      | Clean existing data before write          |
+| Clé                  | Défaut      | Description                                |
+| -------------------- | ----------- | ------------------------------------------ |
+| `output.format`      | `delta`     | Format sortie (delta pour garanties ACID)  |
+| `output.mode`        | `overwrite` | Mode écriture (overwrite, append)          |
+| `output.compression` | `snappy`    | Codec compression                          |
+| `output.clean`       | `true`      | Nettoyer données existantes avant écriture |
 
 ---
 
-## 2. File Reading (reading_config.json)
+## 2. Lecture de Fichiers (reading_config.json)
 
-### File Group Structure
+### Structure Groupe de Fichiers
 
-| Field                   | Description                       |
+| Champ                   | Description                       |
 | ----------------------- | --------------------------------- |
-| `description`           | Human-readable description        |
-| `file_patterns`         | Glob patterns for file matching   |
-| `schema`                | Reference to schema in schemas.py |
+| `description`           | Description lisible               |
+| `file_patterns`         | Patterns Glob pour correspondance |
+| `schema`                | Référence vers schéma schemas.py  |
 | `read_options.format`   | csv, parquet                      |
-| `read_options.sep`      | Column separator                  |
-| `read_options.header`   | Has header row                    |
+| `read_options.sep`      | Séparateur colonnes               |
+| `read_options.header`   | A une ligne d'entête              |
 | `read_options.encoding` | ISO-8859-15, UTF-8                |
-| `location_type`         | monthly or reference              |
+| `location_type`         | monthly (mensuel) ou reference    |
 
-### Location Types
+### Types d'Emplacement
 
-| Type          | Path Pattern          |
+| Type          | Modèle Chemin         |
 | ------------- | --------------------- |
 | **monthly**   | `bronze/{YYYY}/{MM}/` |
 | **reference** | `bronze/ref/`         |
 
-### Current File Groups (45 total)
+### Groupes de Fichiers Actuels (45 total)
 
-- IMS files: `ipf`, `ipfm99_az`, `ipfspe_*`
-- OneBI: `rf_fr1_prm_dtl_midcorp_m`
-- AZEC: `polic_cu_azec`, `capitxcu_azec`, `incendcu_azec`, etc.
-- IRD Risk: `ird_risk_q45`, `ird_risk_q46`, `ird_risk_qan`
-- Reference: `segmentprdt`, `ptgst`, `cproduit`, `prdcap`, etc.
-- New tables: `ref_mig_azec_vs_ims`, `indices`, `mapping_isic_*`, `ref_isic`
+- Fichiers IMS : `ipf`, `ipfm99_az`, `ipfspe_*`
+- OneBI : `rf_fr1_prm_dtl_midcorp_m`
+- AZEC : `polic_cu_azec`, `capitxcu_azec`, `incendcu_azec`, etc.
+- Risque IRD : `ird_risk_q45`, `ird_risk_q46`, `ird_risk_qan`
+- Référence : `segmentprdt`, `ptgst`, `cproduit`, `prdcap`, etc.
+- Nouvelles tables : `ref_mig_azec_vs_ims`, `indices`, `mapping_isic_*`, `ref_isic`
 
 ---
 
-## 3. Schemas (schemas.py)
+## 3. Schémas (schemas.py)
 
-Explicit PySpark schemas for type safety.
+Schémas PySpark explicites pour la sécurité de type.
 
-### Schema Registry
+### Registre de Schémas
 
-Maps file group names to StructType schemas:
+Mappe les noms de groupes de fichiers vers les StructType :
 - `ipf` → IPF_AZ_SCHEMA
 - `capitxcu_azec` → CAPITXCU_SCHEMA
 - etc.
 
-### Benefits
+### Avantages
 
-- ✅ Type safety and validation
-- ✅ Better performance (no schema inference)
-- ✅ Self-documenting data dictionary
-
----
-
-## 4. Constants (constants.py)
-
-### Business Constants
-
-| Constant | Values                             |
-| -------- | ---------------------------------- |
-| DIRCOM   | AZ="AZ", AZEC="AZEC" (string)      |
-| CDPOLE   | Agent="1", Courtage="3" (string)   |
-| CMARCH   | Construction="6"                   |
-| CSEG     | Segment="2" (Construction segment) |
-
-### Exclusion Lists
-
-| List              | Count | Used In       |
-| ----------------- | ----- | ------------- |
-| NOINT exclusions  | 20    | AZ filters    |
-| AZEC intermediary | 2     | AZEC filters  |
-| Excluded products | 1     | All pipelines |
+- ✅ Validation et sécurité de type
+- ✅ Meilleure performance (pas d'inférence de schéma)
+- ✅ Dictionnaire de données auto-documenté
 
 ---
 
-## 5. Transformation JSONs
+## 4. Constantes (constants.py)
+
+### Constantes Métier
+
+| Constante | Valeurs                            |
+| --------- | ---------------------------------- |
+| DIRCOM    | AZ="AZ", AZEC="AZEC" (chaine)      |
+| CDPOLE    | Agent="1", Courtage="3" (chaine)   |
+| CMARCH    | Construction="6"                   |
+| CSEG      | Segment="2" (segment Construction) |
+
+### Listes d'Exclusion
+
+| Liste               | Compte | Utilisé Dans   |
+| ------------------- | ------ | -------------- |
+| Exclusions NOINT    | 20     | Filtres AZ     |
+| Intermédiaires AZEC | 2      | Filtres AZEC   |
+| Produits Exclus     | 1      | Tous pipelines |
+
+---
+
+## 5. JSONs de Transformation
 
 ### az_transformations.json
 
-| Section              | Purpose                               |
-| -------------------- | ------------------------------------- |
-| `column_selection`   | Passthrough, rename, computed columns |
-| `business_filters`   | Market, segment, status filters       |
-| `capital_extraction` | Keyword-based capital extraction      |
-| `movements`          | Date column mappings                  |
+| Section              | Objectif                                   |
+| -------------------- | ------------------------------------------ |
+| `column_selection`   | Passthrough, renommage, colonnes calculées |
+| `business_filters`   | Filtres marché, segment, statut            |
+| `capital_extraction` | Extraction capitaux par mots-clés          |
+| `movements`          | Mappages colonnes date                     |
 
 ### business_rules.json
 
-| Section              | Purpose                    |
-| -------------------- | -------------------------- |
-| `coassurance_config` | COASS type determination   |
-| `az_transform_steps` | Business rule calculations |
-| `gestsit_rules`      | Status updates             |
+| Section              | Objectif                 |
+| -------------------- | ------------------------ |
+| `coassurance_config` | Détermination type COASS |
+| `az_transform_steps` | Calculs règles métier    |
+| `gestsit_rules`      | Mises à jour statut      |
 
 ### azec_transformations.json
 
-| Section              | Purpose                       |
-| -------------------- | ----------------------------- |
-| `column_selection`   | AZEC column configuration     |
-| `business_filters`   | AZEC-specific filters         |
-| `migration_handling` | Vision > 202009 logic         |
-| `movement_products`  | 47-product list for movements |
+| Section              | Objectif                          |
+| -------------------- | --------------------------------- |
+| `column_selection`   | Configuration colonnes AZEC       |
+| `business_filters`   | Filtres spécifiques AZEC          |
+| `migration_handling` | Logique vision > 202009           |
+| `movement_products`  | Liste 47 produits pour mouvements |
 
 ### emissions_config.json
 
-| Section                   | Purpose               |
-| ------------------------- | --------------------- |
-| `excluded_intermediaries` | 15 intermediary codes |
-| `excluded_guarantees`     | 4 guarantee codes     |
-| `channel_mapping`         | cd_niv_2_stc → CDPOLE |
+| Section                   | Objectif                |
+| ------------------------- | ----------------------- |
+| `excluded_intermediaries` | 15 codes intermédiaires |
+| `excluded_guarantees`     | 4 codes garanties       |
+| `channel_mapping`         | cd_niv_2_stc → CDPOLE   |
 
 ---
 
-## Adding New Configuration
+## Dépannage
 
-### New File Group
-
-1. Add entry to `reading_config.json`
-2. Add schema to `schemas.py`
-3. Register in SCHEMA_REGISTRY
-
-### New Business Rule
-
-1. Add to appropriate transformation JSON
-2. Test with sample data
-3. Document in this guide
+| Problème                     | Solution                                      |
+| ---------------------------- | --------------------------------------------- |
+| Échec validation schéma      | Vérifier correspondance exacte noms colonnes  |
+| Filtre non appliqué          | Vérifier existence colonne avant étape filtre |
+| Fichier non trouvé           | Vérifier correspondance pattern glob          |
+| Transformation retourne null | Ajouter valeurs par défaut                    |
 
 ---
 
-## Troubleshooting
-
-| Issue                       | Solution                                          |
-| --------------------------- | ------------------------------------------------- |
-| Schema validation fails     | Check column names match exactly (case-sensitive) |
-| Filter not applied          | Verify column exists before filter step           |
-| File not found              | Check file_pattern glob matches filenames         |
-| Transformation returns null | Add default values                                |
-
----
-
-**Last Updated**: 2026-02-06  
-**Version**: 1.1
+**Dernière Mise à Jour** : 06/02/2026
+**Version** : 1.1

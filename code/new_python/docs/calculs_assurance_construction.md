@@ -1,329 +1,329 @@
-# Business Calculations - Construction Insurance
+# Calculs Métier - Assurance Construction
 
-> **Audience**: Business users, analysts, product owners  
-> **Purpose**: Explains insurance calculations in plain language, without technical code
-
----
-
-## 📊 Overview
-
-This document explains the business logic and formulas used in the Construction Data Pipeline. All calculations are based on SAS business rules and insurance standards.
+> **Public** : Utilisateurs métier, analystes, product owners
+> **Objectif** : Explique les calculs d'assurance en langage clair, sans détails techniques de code
 
 ---
 
-## 🎯 Movement Indicators
+## 📊 Vue d'Ensemble
 
-### What are Movements?
+Ce document explique la logique métier et les formules utilisées dans le Pipeline de Données Construction. Tous les calculs sont basés sur les règles de gestion et les normes d'assurance.
 
-Movements track changes in the insurance portfolio over time. Each policy has **exactly ONE movement indicator = 1** per period.
+---
 
-### AFN (Affaires Nouvelles) - New Policies
+## 🎯 Indicateurs de Mouvement
 
-**Definition**: Policies created or renewed during the period.
+### Qu'est-ce qu'un Mouvement ?
 
-**Business Rule**:
-- Policy creation date (`dtcrepol`) is within the processing period
-- Policy is in "R" (Résilié) or "E" (En cours) status
-- For AZEC: Depends on product type (47 specific products use creation date logic)
+Les mouvements suivent l'évolution du portefeuille d'assurance au fil du temps. Chaque police a **exactement UN indicateur de mouvement = 1** par période.
 
-**Example**:
+### AFN (Affaires Nouvelles)
+
+**Définition** : Polices créées ou renouvelées au cours de la période.
+
+**Règle de Gestion** :
+- La date de création de la police (`dtcrepol`) est dans la période de traitement
+- La police est en statut "R" (Résilié) ou "E" (En cours)
+- Pour AZEC : Dépend du type de produit (47 produits spécifiques utilisent la logique de date de création)
+
+**Exemple** :
 ```
-Policy A123 created on 2025-12-05
-Vision: 202512 (December 2025)
+Police A123 créée le 05/12/2025
+Vision : 202512 (Décembre 2025)
 → NBAFN = 1
 ```
 
 ---
 
-### RES (Résiliations) - Terminations
+### RES (Résiliations)
 
-**Definition**: Policies terminated or not renewed during the period.
+**Définition** : Polices résiliées ou non renouvelées au cours de la période.
 
-**Business Rule**:
-- Policy termination date (`dtresilp`) is within the processing period
-- Policy status changed to "Résilié"
-- Exclusions: DO0, TRC, CTR, CNR product types (AZEC specific)
+**Règle de Gestion** :
+- La date de résiliation de la police (`dtresilp`) est dans la période de traitement
+- Le statut de la police est passé à "Résilié"
+- Exclusions : Types de produits DO0, TRC, CTR, CNR (spécifique AZEC)
 
-**Example**:
+**Exemple** :
 ```
-Policy B456 terminated on 2025-12-20
-Vision: 202512
+Police B456 résiliée le 20/12/2025
+Vision : 202512
 → NBRES = 1
 ```
 
 ---
 
-### PTF (Portefeuille) - Active Portfolio
+### PTF (Portefeuille)
 
-**Definition**: Policies that remain active with no movement during the period.
+**Définition** : Polices restant actives sans mouvement durant la période.
 
-**Business Rule**:
-- Policy is active (status "E" = En cours)
-- No creation or termination in this period
-- Anniversary date is in the period (for annual tracking)
+**Règle de Gestion** :
+- La police est active (statut "E" = En cours)
+- Pas de création ni de résiliation dans cette période
+- La date d'anniversaire est dans la période (pour le suivi annuel)
 
-**Formula**:
+**Formule** :
 ```
-NBPTF = 1 if (NBAFN = 0 AND NBRES = 0 AND policy is active)
+NBPTF = 1 si (NBAFN = 0 ET NBRES = 0 ET police est active)
 ```
 
-**Example**:
+**Exemple** :
 ```
-Policy C789 created in 2024, still active
-Vision: 202512
+Police C789 créée en 2024, toujours active
+Vision : 202512
 → NBPTF = 1
 ```
 
 ---
 
-### RPT (Remise en Portefeuille - New Premium)
+### RPT (Remise en Portefeuille - Nouvelle Prime)
 
-**Definition**: Policies reinstated into portfolio with a **new premium** amount.
+**Définition** : Polices remises en portefeuille avec un **nouveau montant de prime**.
 
-**Business Rule**:
-- Previous policy was suspended or terminated
-- New policy number assigned with different premium
-- Replaces another policy (`cdpolrv` field populated)
-
----
-
-### RPC (Remise en Portefeuille - Same Premium)
-
-**Definition**: Policies reinstated into portfolio with the **same premium** amount.
-
-**Business Rule**:
-- Previous policy was suspended
-- Same policy number, same premium
-- Administrative reinstatement only
+**Règle de Gestion** :
+- La police précédente était suspendue ou résiliée
+- Nouveau numéro de police attribué avec une prime différente
+- Remplace une autre police (champ `cdpolrv` renseigné)
 
 ---
 
-## 💰 Premium Calculations
+### RPC (Remise en Portefeuille - Même Prime)
 
-### PRIMES_PTF - Portfolio Premiums
+**Définition** : Polices remises en portefeuille avec le **même montant de prime**.
 
-**Definition**: Total annual premium for active policies (100% basis, before coinsurance).
+**Règle de Gestion** :
+- La police précédente était suspendue
+- Même numéro de police, même prime
+- Remise en vigueur administrative uniquement
 
-**Formula**:
+---
+
+## 💰 Calculs des Primes
+
+### PRIMES_PTF - Primes Portefeuille
+
+**Définition** : Prime annuelle totale pour les polices actives (base 100%, avant coassurance).
+
+**Formule** :
 ```
 PRIMES_PTF = PRIMETO × (1 - TXCESSCNT/100)
 
-Where:
-- PRIMETO = Gross premium
-- TXCESSCNT = Ceding rate percentage
+Où :
+- PRIMETO = Prime brute
+- TXCESSCNT = Taux de cession en réassurance
 ```
 
-**Example**:
+**Exemple** :
 ```
-PRIMETO = €10,000
-TXCESSCNT = 20% (ceding to reinsurer)
-→ PRIMES_PTF = €10,000 × (1 - 0.20) = €8,000
+PRIMETO = 10 000 €
+TXCESSCNT = 20% (cession au réassureur)
+→ PRIMES_PTF = 10 000 € × (1 - 0,20) = 8 000 €
 ```
 
 ---
 
-### PART_CIE - Company Share
+### PART_CIE - Part Compagnie
 
-**Definition**: Company's actual premium share after coinsurance.
+**Définition** : Part réelle de prime de la compagnie après coassurance.
 
-**Formula**:
+**Formule** :
 ```
 PART_CIE = PRIMES_PTF × (PART/100)
 
-Where PART = Company's coinsurance percentage
+Où PART = Pourcentage de coassurance de la compagnie
 ```
 
-**Example**:
+**Exemple** :
 ```
-PRIMES_PTF = €8,000
-PART = 50% (coinsurance with another company)
-→ PART_CIE = €8,000 × 0.50 = €4,000
+PRIMES_PTF = 8 000 €
+PART = 50% (coassurance avec une autre compagnie)
+→ PART_CIE = 8 000 € × 0,50 = 4 000 €
 ```
 
 ---
 
 ### PRIMES_AFN / PRIMES_RES
 
-**Definition**: Premiums associated with new policies (AFN) or terminated policies (RES).
+**Définition** : Primes associées aux nouvelles affaires (AFN) ou aux polices résiliées (RES).
 
-**Business Rule**:
+**Règle de Gestion** :
 ```
-PRIMES_AFN = PRIMES_PTF if NBAFN = 1, else 0
-PRIMES_RES = PRIMES_PTF if NBRES = 1, else 0
+PRIMES_AFN = PRIMES_PTF si NBAFN = 1, sinon 0
+PRIMES_RES = PRIMES_PTF si NBRES = 1, sinon 0
 ```
 
-**Exclusions (AZEC only)**:
-- CSSSEG = '5' excluded from AFN calculations
-- DO0/TRC/CTR/CNR products excluded from RES
+**Exclusions (AZEC uniquement)** :
+- CSSSEG = '5' exclus des calculs AFN
+- Produits DO0/TRC/CTR/CNR exclus des RES
 
 ---
 
-## 🏗️ Capital Amounts
+## 🏗️ Montants de Capitaux
 
-### What are Capitals?
+### Que sont les Capitaux ?
 
-Capitals represent the maximum amounts the insurer might have to pay in case of claims. They are extracted from policy details using keyword matching.
+Les capitaux représentent les montants maximums que l'assureur pourrait avoir à payer en cas de sinistre. Ils sont extraits des détails de la police par recherche de mots-clés.
 
 ### SMP_100 (Sinistre Maximum Possible)
 
-**Definition**: Maximum possible claim amount the insurer could pay.
+**Définition** : Montant maximum possible de sinistre que l'assureur pourrait payer.
 
-**Extraction Keywords**:
+**Mots-clés d'Extraction** :
 - "SMP GLOBAL"
 - "SMP RETENU"
 - "SINISTRE MAXIMUM POSSIBLE"
 
-**Formula (AZEC)**:
+**Formule (AZEC)** :
 ```
 SMP_100 = SMP_PE_100 + SMP_DD_100
 
-Where:
-- SMP_PE_100 = Business Interruption SMP
-- SMP_DD_100 = Direct Damage SMP
+Où :
+- SMP_PE_100 = SMP Perte d'Exploitation
+- SMP_DD_100 = SMP Dommages Directs
 ```
 
-**Example**:
+**Exemple** :
 ```
-Policy has:
-- PE (Business Interruption): €500,000
-- DD (Direct Damage): €2,000,000
-→ SMP_100 = €2,500,000
+La police a :
+- PE (Perte d'Exploitation) : 500 000 €
+- DD (Dommages Directs) : 2 000 000 €
+→ SMP_100 = 2 500 000 €
 ```
 
 ---
 
 ### LCI_100 (Limite Contractuelle d'Indemnité)
 
-**Definition**: Contractual limit - maximum amount stated in the insurance contract.
+**Définition** : Limite contractuelle - montant maximum stipulé dans le contrat d'assurance.
 
-**Extraction Keywords**:
+**Mots-clés d'Extraction** :
 - "LCI GLOBAL"
 - "CAPITAL REFERENCE"
 - "LIMITE CONTRACTUELLE"
 
 ---
 
-### PE (Perte d'Exploitation) - Business Interruption
+### PE (Perte d'Exploitation)
 
-**Definition**: Coverage for financial losses due to business interruption.
+**Définition** : Couverture pour les pertes financières dues à l'interruption d'activité.
 
-**Extraction Keywords**:
+**Mots-clés d'Extraction** :
 - "PERTE D EXPLOITATION"
 - "PERTE EXPLOITATION"
 - "PE"
 
-**Example**:
+**Exemple** :
 ```
-Restaurant fire forces 6-month closure
-Estimated revenue loss: €300,000
-→ PERTE_EXP = €300,000
+Incendie de restaurant forçant une fermeture de 6 mois
+Perte de revenus estimée : 300 000 €
+→ PERTE_EXP = 300 000 €
 ```
 
 ---
 
-### RD (Risque Direct) - Direct Damage
+### RD (Risque Direct) - Dommages Directs
 
-**Definition**: Coverage for physical damage to insured property.
+**Définition** : Couverture pour les dommages physiques aux biens assurés.
 
-**Extraction Keywords**:
+**Mots-clés d'Extraction** :
 - "RISQUE DIRECT"
 - "DOMMAGES DIRECTS"
 - "RD"
 
-**Example**:
+**Exemple** :
 ```
-Factory building and equipment value: €5,000,000
-→ RISQUE_DIRECT = €5,000,000
-```
-
----
-
-## 📅 Exposure Calculations
-
-### EXPO_YTD (Year-to-Date Exposure)
-
-**Definition**: Proportion of the year the policy was active, expressed as a decimal.
-
-**Formula**:
-```
-EXPO_YTD = Active Days in Year / Total Days in Year
-
-Active Days = MIN(dtresilp, End of Year) - MAX(dtcrepol, Start of Year) + 1
-
-For leap year: Total Days = 366
-For normal year: Total Days = 365
-```
-
-**Example**:
-```
-Policy created: 2025-03-15
-Vision: 202512 (December 2025)
-Still active on 2025-12-31
-
-Active Days = 2025-12-31 - 2025-03-15 + 1 = 292 days
-Total Days = 365
-→ EXPO_YTD = 292/365 = 0.80 (80% of the year)
+Valeur du bâtiment d'usine et de l'équipement : 5 000 000 €
+→ RISQUE_DIRECT = 5 000 000 €
 ```
 
 ---
 
-### EXPO_GLI (Monthly Exposure)
+## 📅 Calculs d'Exposition
 
-**Definition**: Proportion of the month the policy was active.
+### EXPO_YTD (Exposition Annuelle à Date)
 
-**Formula**:
+**Définition** : Proportion de l'année durant laquelle la police était active, exprimée en décimale.
+
+**Formule** :
 ```
-EXPO_GLI = Active Days in Month / Total Days in Month
+EXPO_YTD = Jours Actifs dans l'Année / Total Jours dans l'Année
 
-Active Days = MIN(dtresilp, End of Month) - MAX(dtcrepol, Start of Month) + 1
+Jours Actifs = MIN(dtresilp, Fin d'Année) - MAX(dtcrepol, Début d'Année) + 1
+
+Pour une année bissextile : Total Jours = 366
+Pour une année normale : Total Jours = 365
 ```
 
-**Example**:
+**Exemple** :
 ```
-Policy created: 2025-12-10
-Vision: 202512
-Still active on 2025-12-31
+Police créée : 15/03/2025
+Vision : 202512 (Décembre 2025)
+Toujours active au 31/12/2025
 
-Active Days = 31 - 10 + 1 = 22 days
-Total Days in December = 31
-→ EXPO_GLI = 22/31 = 0.71
+Jours Actifs = 31/12/2025 - 15/03/2025 + 1 = 292 jours
+Total Jours = 365
+→ EXPO_YTD = 292/365 = 0,80 (80% de l'année)
+```
+
+---
+
+### EXPO_GLI (Exposition Mensuelle)
+
+**Définition** : Proportion du mois durant laquelle la police était active.
+
+**Formule** :
+```
+EXPO_GLI = Jours Actifs dans le Mois / Total Jours dans le Mois
+
+Jours Actifs = MIN(dtresilp, Fin du Mois) - MAX(dtcrepol, Début du Mois) + 1
+```
+
+**Exemple** :
+```
+Police créée : 10/12/2025
+Vision : 202512
+Toujours active au 31/12/2025
+
+Jours Actifs = 31 - 10 + 1 = 22 jours
+Total Jours en Décembre = 31
+→ EXPO_GLI = 22/31 = 0,71
 ```
 
 ---
 
 ## 🤝 Coassurance
 
-### What is Coassurance?
+### Qu'est-ce que la Coassurance ?
 
-Coassurance is when multiple insurance companies share the risk on a single policy. One company is the "leader" and others are "followers".
+La coassurance est lorsque plusieurs compagnies d'assurance partagent le risque sur une seule police. Une compagnie est "l'apériteur" (leader) et les autres sont "co-assureurs" (suiveurs).
 
-### COASS Types
+### Types de COASS
 
-| Type               | Description                         | Example                          |
-| ------------------ | ----------------------------------- | -------------------------------- |
-| **APÉRITION**      | Leader role - manages the policy    | Company A leads with 60% share   |
-| **COASS ACCEPTEE** | Follower role - accepts coassurance | Company B follows with 40% share |
-| **ACCEPTATION**    | Financial reinsurance accepted      | Traditional reinsurance          |
+| Type               | Description                              | Exemple                           |
+| ------------------ | ---------------------------------------- | --------------------------------- |
+| **APÉRITION**      | Rôle de leader - gère la police          | Compagnie A mène avec 60% de part |
+| **COASS ACCEPTEE** | Rôle de suiveur - accepte la coassurance | Compagnie B suit avec 40% de part |
+| **ACCEPTATION**    | Réassurance financière acceptée          | Réassurance traditionnelle        |
 
-### TOP_COASS (Leadership Flag)
+### TOP_COASS (Indicateur Leader)
 
-**Definition**: Indicates if the company is the coassurance leader.
+**Définition** : Indique si la compagnie est l'apériteur (leader) de la coassurance.
 
-**Business Rule**:
+**Règle de Gestion** :
 ```
-TOP_COASS = 1 if COASS = "APÉRITION"
-TOP_COASS = 0 otherwise
+TOP_COASS = 1 si COASS = "APÉRITION"
+TOP_COASS = 0 sinon
 ```
 
-### PARTCIE Calculation
+### Calcul de PARTCIE
 
-**Formula**:
+**Formule** :
 ```
-PARTCIE = Company's share percentage in the coinsurance agreement
+PARTCIE = Pourcentage de part de la compagnie dans l'accord de coassurance
 
-Total premium distribution:
-Company A (Leader, 60%): PARTCIE = 60
-Company B (Follower, 40%): PARTCIE = 40
+Distribution totale de la prime :
+Compagnie A (Leader, 60%) : PARTCIE = 60
+Compagnie B (Suiveur, 40%) : PARTCIE = 40
 ```
 
 ---
@@ -332,111 +332,111 @@ Company B (Follower, 40%): PARTCIE = 40
 
 ### SEGMENT2
 
-**Definition**: Business segment classification (e.g., SME, Corporate, Large Corporate).
+**Définition** : Classification du segment commercial (ex : PME, Corporate, Grands Comptes).
 
-**Data Source**: `PRDPFA1` (Agent) or `PRDPFA3` (Courtage)
+**Source de Données** : `PRDPFA1` (Agent) ou `PRDPFA3` (Courtage)
 
 ### TYPE_PRODUIT_2
 
-**Definition**: Product type classification (e.g., Standard Construction, Special Risks).
+**Définition** : Classification par type de produit (ex : Construction Standard, Risques Spéciaux).
 
-**Data Source**: Product reference tables
+**Source de Données** : Tables de référence produits
 
 ### UPPER_MID
 
-**Definition**: Upper-mid market flag for specific portfolio management strategies.
+**Définition** : Indicateur Upper-mid market pour des stratégies de gestion de portefeuille spécifiques.
 
-**Data Source**: `TABLE_PT_GEST` joined on `PTGST` field
+**Source de Données** : `TABLE_PT_GEST` joint sur le champ `PTGST`
 
 ---
 
-## 🔢 Indexation (FFB Index)
+## 🔢 Indexation (Indice FFB)
 
-### What is FFB Indexation?
+### Qu'est-ce que l'Indexation FFB ?
 
-FFB (Fédération Française du Bâtiment) provides construction cost indices. Insurance capitals are adjusted annually to account for construction cost inflation.
+La FFB (Fédération Française du Bâtiment) fournit des indices de coût de construction. Les capitaux d'assurance sont ajustés annuellement pour tenir compte de l'inflation des coûts de construction.
 
-### Indexed Capitals
+### Capitaux Indexés
 
-**CAPITAUX Pipeline** produces both indexed and non-indexed values:
+Le Pipeline **CAPITAUX** produit des valeurs indexées et non indexées :
 
-| Capital | Non-Indexed         | Indexed (_IND suffix)   |
+| Capital | Non-Indexé          | Indexé (suffixe _IND)   |
 | ------- | ------------------- | ----------------------- |
 | SMP     | `smp_100`           | `smp_100_ind`           |
 | LCI     | `lci_100`           | `lci_100_ind`           |
 | PE      | `perte_exp_100`     | `perte_exp_100_ind`     |
 | RD      | `risque_direct_100` | `risque_direct_100_ind` |
 
-**Formula**:
+**Formule** :
 ```
-Capital_IND = Capital × (Current FFB Index / Base FFB Index)
-```
-
-**Example**:
-```
-Original SMP (2020): €1,000,000
-FFB Index 2020: 100
-FFB Index 2025: 115
-→ SMP_100_IND = €1,000,000 × (115/100) = €1,150,000
+Capital_IND = Capital × (Indice FFB Actuel / Indice FFB de Base)
 ```
 
----
-
-## 📊 ISIC Classification
-
-### What is ISIC?
-
-ISIC (International Standard Industrial Classification) categorizes businesses by economic activity. Used for risk assessment and pricing.
-
-### NAF to ISIC Mapping
-
-**Process**:
-1. Extract client's NAF code (French classification)
-2. Map NAF → ISIC using reference tables
-3. Apply hardcoded corrections (11 known exceptions)
-4. Derive ISIC_GLOBAL for hazard grading
-
-**Example**:
+**Exemple** :
 ```
-Client: Construction company
-NAF Code: 4120A (Single-family home construction)
-→ ISIC Code: 4100
-→ ISIC Global Category: Construction
-→ Hazard Grades: Fire=3, BI=2, RCA=1
+SMP Original (2020) : 1 000 000 €
+Indice FFB 2020 : 100
+Indice FFB 2025 : 115
+→ SMP_100_IND = 1 000 000 € × (115/100) = 1 150 000 €
 ```
 
 ---
 
-## 🎓 Business Rules Summary
+## 📊 Classification ISIC
 
-| Rule                    | Pipeline      | Description                                     |
-| ----------------------- | ------------- | ----------------------------------------------- |
-| **Construction Filter** | PTF_MVT       | CMARCH=6 AND CSEG=2                             |
-| **Vision Threshold**    | PTF_MVT       | <201211: AZ only, >=201211: AZ+AZEC             |
-| **Migration Filter**    | AZEC          | Vision >202009: Exclude migrated contracts      |
-| **Product Exclusions**  | AZEC          | DO0, TRC, CTR, CNR                              |
-| **CSSSEG=5 Exclusion**  | AZEC          | Excluded from AFN calculations                  |
-| **Deduplication**       | Consolidation | AZ priority if NOPOL exists in both AZ and AZEC |
+### Qu'est-ce que l'ISIC ?
 
----
+ISIC (International Standard Industrial Classification) catégorise les entreprises par activité économique. Utilisé pour l'évaluation des risques et la tarification.
 
-## 📖 Glossary
+### Mappage NAF vers ISIC
 
-| Term     | Full Name                                        | Meaning                        |
-| -------- | ------------------------------------------------ | ------------------------------ |
-| **AFN**  | Affaire Nouvelle                                 | New policy                     |
-| **RES**  | Résiliation                                      | Termination                    |
-| **PTF**  | Portefeuille                                     | Active portfolio               |
-| **SMP**  | Sinistre Maximum Possible                        | Maximum possible claim         |
-| **LCI**  | Limite Contractuelle d'Indemnité                 | Contract limit                 |
-| **PE**   | Perte d'Exploitation                             | Business interruption coverage |
-| **RD**   | Risque Direct                                    | Direct damage coverage         |
-| **FFB**  | Fédération Française du Bâtiment                 | French construction federation |
-| **ISIC** | International Standard Industrial Classification | Economic activity code         |
-| **NAF**  | Nomenclature d'Activités Française               | French activity code           |
+**Processus** :
+1. Extraire le code NAF du client (classification française)
+2. Mapper NAF → ISIC via des tables de référence
+3. Appliquer des corrections codées en dur (11 exceptions connues)
+4. Dériver ISIC_GLOBAL pour le classement des risques
+
+**Exemple** :
+```
+Client : Entreprise de construction
+Code NAF : 4120A (Construction de maisons individuelles)
+→ Code ISIC : 4100
+→ Catégorie Globale ISIC : Construction
+→ Grades de Risque : Incendie=3, BI=2, RCA=1
+```
 
 ---
 
-**Last Updated**: 2026-02-06  
-**Version**: 1.0  
-**For Technical Implementation**: See code comments in `src/processors/`
+## 🎓 Résumé des Règles de Gestion
+
+| Règle                   | Pipeline      | Description                                  |
+| ----------------------- | ------------- | -------------------------------------------- |
+| **Filtre Construction** | PTF_MVT       | CMARCH=6 ET CSEG=2                           |
+| **Seuil de Vision**     | PTF_MVT       | <201211 : AZ seul, >=201211 : AZ+AZEC        |
+| **Filtre Migration**    | AZEC          | Vision >202009 : Exclure les contrats migrés |
+| **Exclusions Produit**  | AZEC          | DO0, TRC, CTR, CNR                           |
+| **Exclusion CSSSEG=5**  | AZEC          | Exclus des calculs AFN                       |
+| **Déduplication**       | Consolidation | Priorité AZ si NOPOL existe dans AZ et AZEC  |
+
+---
+
+## 📖 Glossaire
+
+| Terme    | Nom Complet                                      | Signification                    |
+| -------- | ------------------------------------------------ | -------------------------------- |
+| **AFN**  | Affaire Nouvelle                                 | Nouvelle police                  |
+| **RES**  | Résiliation                                      | Police résiliée                  |
+| **PTF**  | Portefeuille                                     | Portefeuille actif               |
+| **SMP**  | Sinistre Maximum Possible                        | Sinistre maximum possible        |
+| **LCI**  | Limite Contractuelle d'Indemnité                 | Limite du contrat                |
+| **PE**   | Perte d'Exploitation                             | Couverture interruption activité |
+| **RD**   | Risque Direct                                    | Couverture dommages directs      |
+| **FFB**  | Fédération Française du Bâtiment                 | Fédération construction          |
+| **ISIC** | International Standard Industrial Classification | Code activité économique         |
+| **NAF**  | Nomenclature d'Activités Française               | Code activité français           |
+
+---
+
+**Dernière Mise à Jour** : 06/02/2026
+**Version** : 1.0
+**Pour l'Implémentation Technique** : Voir les commentaires du code dans `src/processors/`

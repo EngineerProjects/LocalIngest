@@ -1,7 +1,7 @@
 # Flux de Données - Pipelines PTF_MVT
 
-> **Documentation technique des flux de données pour les 3 pipelines PTF_MVT**  
-> **Vision**: 202512 (Décembre 2025)
+> **Documentation technique des flux de données pour les 3 pipelines PTF_MVT**
+> **Vision** : 202512 (Décembre 2025)
 
 ---
 
@@ -11,8 +11,8 @@
 
 | Attribut            | Valeur                                             |
 | ------------------- | -------------------------------------------------- |
-| **Input Bronze**    | IPF16 (Agent), IPF36 (Courtage), IPFM99, PRDPFA1/3 |
-| **Output Silver**   | `mvt_const_ptf_{vision}`                           |
+| **Entrée Bronze**   | IPF16 (Agent), IPF36 (Courtage), IPFM99, PRDPFA1/3 |
+| **Sortie Silver**   | `mvt_const_ptf_{vision}`                           |
 | **Volume**          | Varie selon vision (marché Construction seulement) |
 | **Temps Exécution** | ~2-3 min                                           |
 
@@ -25,57 +25,57 @@ sequenceDiagram
     participant AZ as AZ Processor
     participant S as Silver
     
-    R->>B: Load IPF16 (~50k rows)
-    R->>B: Load IPF36 (~50k rows)
-    R->>AZ: Union + Filters (CMARCH=6, CSEG=2)
+    R->>B: Chargement IPF16 (~50k lignes)
+    R->>B: Chargement IPF36 (~50k lignes)
+    R->>AZ: Union + Filtres (CMARCH=6, CSEG=2)
     
-    Note over AZ: ~100k rows after filter
+    Note over AZ: ~100k lignes après filtre
     
-    AZ->>B: Load IPFM99 (product 01099)
-    AZ->>AZ: LEFT JOIN on (CDPOLE, CDPROD, NOPOL, NOINT)
-    AZ->>AZ: Update MTCA for 01099
+    AZ->>B: Chargement IPFM99 (produit 01099)
+    AZ->>AZ: Jointure GAUCHE sur (CDPOLE, CDPROD, NOPOL, NOINT)
+    AZ->>AZ: Mise à jour MTCA pour 01099
     
-    AZ->>AZ: Extract Capitals (14x MTCAPI/LBCAPI)
+    AZ->>AZ: Extraction Capitaux (14x MTCAPI/LBCAPI)
     Note over AZ: SMP_100, LCI_100, PERTE_EXP, RISQUE_DIRECT
     
-    AZ->>AZ: Calculate Movements
+    AZ->>AZ: Calcul Mouvements
     Note over AZ: NBPTF, NBAFN, NBRES, NBRPT, NBRPC
     
-    AZ->>AZ: Calculate Exposures
+    AZ->>AZ: Calcul Expositions
     Note over AZ: EXPO_YTD, EXPO_GLI, DT_DEB_EXPO, DT_FIN_EXPO
     
-    AZ->>B: Load PRDPFA1/PRDPFA3 (segmentation)
-    AZ->>B: Load TABLE_PT_GEST (upper_mid)
-    AZ->>AZ: LEFT JOIN segmentation by (CDPROD, CDPOLE)
-    AZ->>AZ: LEFT JOIN upper_mid by (PTGST)
+    AZ->>B: Chargement PRDPFA1/PRDPFA3 (segmentation)
+    AZ->>B: Chargement TABLE_PT_GEST (upper_mid)
+    AZ->>AZ: Jointure GAUCHE segmentation (CDPROD, CDPOLE)
+    AZ->>AZ: Jointure GAUCHE upper_mid (PTGST)
     
-    AZ->>AZ: Data Cleanup (NULL dates, NMCLT fallback)
+    AZ->>AZ: Nettoyage Données (dates NULL, fallback NMCLT)
     
-    AZ->>S: Write mvt_const_ptf_{vision}
+    AZ->>S: Écriture mvt_const_ptf_{vision}
 ```
 
 ### 1.3 Étapes Détaillées
 
-| Step | SAS Ligne | Python Méthode                       | Description                                     |
-| ---- | --------- | ------------------------------------ | ----------------------------------------------- |
-| 1    | L135-150  | `read()`                             | Extract IPF16 + IPF36 avec filtres construction |
-| 2    | L157-188  | `_join_ipfm99()`                     | Join IPFM99 pour produit 01099 (CA spécifique)  |
-| 3    | L195-231  | `transform()` - capitals             | Calcul SMP/LCI/PE/RD (14 MTCAPI fields)         |
-| 4    | L238-292  | `transform()` - movements            | NBPTF/NBAFN/NBRES/NBRPT/NBRPC indicators        |
-| 5    | L298-311  | `transform()` - expo                 | EXPO_YTD, EXPO_GLI, DT_DEB_EXPO, DT_FIN_EXPO    |
-| 6    | L377-503  | `_enrich_segment_and_product_type()` | Segment2, type_produit_2, upper_mid             |
-| 7    | L362-370  | `_finalize_data_cleanup()`           | Cleanup NULL dates, NMCLT fallback              |
+| Étape | Méthode Python                       | Description                                        |
+| ----- | ------------------------------------ | -------------------------------------------------- |
+| 1     | `read()`                             | Extraction IPF16 + IPF36 avec filtres construction |
+| 2     | `_join_ipfm99()`                     | Jointure IPFM99 pour produit 01099 (CA spécifique) |
+| 3     | `transform()` - capitaux             | Calcul SMP/LCI/PE/RD (14 champs MTCAPI)            |
+| 4     | `transform()` - mouvements           | Indicateurs NBPTF/NBAFN/NBRES/NBRPT/NBRPC          |
+| 5     | `transform()` - expo                 | EXPO_YTD, EXPO_GLI, DT_DEB_EXPO, DT_FIN_EXPO       |
+| 6     | `_enrich_segment_and_product_type()` | Segment2, type_produit_2, upper_mid                |
+| 7     | `_finalize_data_cleanup()`           | Nettoyage dates NULL, fallback NMCLT               |
 
 ---
 
-## 2. Pipeline AZEC (Legacy Construction)
+## 2. Pipeline AZEC (Construction Legacy)
 
 ### 2.1 Vue d'Ensemble
 
 | Attribut            | Valeur                                                 |
 | ------------------- | ------------------------------------------------------ |
-| **Input Bronze**    | POLIC_CU, CAPITXCU, INCENDCU, MPACU, RCENTCU, RISTECCU |
-| **Output Silver**   | `azec_ptf_{vision}`                                    |
+| **Entrée Bronze**   | POLIC_CU, CAPITXCU, INCENDCU, MPACU, RCENTCU, RISTECCU |
+| **Sortie Silver**   | `azec_ptf_{vision}`                                    |
 | **Volume**          | Varie selon vision (filtre migration vision >202009)   |
 | **Temps Exécution** | ~5-7 min                                               |
 
@@ -87,47 +87,47 @@ sequenceDiagram
     participant AZECProc as AZEC Processor
     participant S as Silver
     
-    AZECProc->>B: Load POLIC_CU (~2M rows)
-    Note over AZECProc: Calculate DTECHANN = mdy(echeanmm, echeanjj, 2025)
+    AZECProc->>B: Chargement POLIC_CU (~2M lignes)
+    Note over AZECProc: Calcul DTECHANN = date(2025, echeanmm, echeanjj)
     
-    AZECProc->>B: Load ref_mig_azec_vs_ims
-    AZECProc->>AZECProc: LEFT JOIN migration ref
-    Note over AZECProc: Vision >202009 → Filter migrated contracts
+    AZECProc->>B: Chargement ref_mig_azec_vs_ims
+    AZECProc->>AZECProc: Jointure GAUCHE ref migration
+    Note over AZECProc: Vision >202009 → Filtrer contrats migrés
     
-    AZECProc->>AZECProc: Data Quality Adjustments
-    Note over AZECProc: Tacit renewal >1yr, temporaries, datexpir cleanup
+    AZECProc->>AZECProc: Ajustements Qualité Données
+    Note over AZECProc: Tacite reconduction >1an, temporaires, nettoyage datexpir
     
-    AZECProc->>AZECProc: Calculate Movements (product-dependent)
-    Note over AZECProc: NBPTF, NBAFN (list produit), NBRES
+    AZECProc->>AZECProc: Calcul Mouvements (dépendant du produit)
+    Note over AZECProc: NBPTF, NBAFN (liste produit), NBRES
     
-    AZECProc->>B: Load CAPITXCU
-    AZECProc->>AZECProc: Aggregate SMP/LCI (PE + DD branches)
+    AZECProc->>B: Chargement CAPITXCU
+    AZECProc->>AZECProc: Agrégation SMP/LCI (branches PE + DD)
     Note over AZECProc: SMP_100 = SMP_PE_100 + SMP_DD_100
     
-    AZECProc->>B: Load INCENDCU, MPACU, RCENTCU, RISTECCU
-    AZECProc->>AZECProc: FULL JOIN 4 tables for NAF
-    Note over AZECProc: COALESCEC(INCENDCU.COD_NAF, MPACU.cod_naf, ...)
+    AZECProc->>B: Chargement INCENDCU, MPACU, RCENTCU, RISTECCU
+    AZECProc->>AZECProc: FULL JOIN 4 tables pour NAF
+    Note over AZECProc: COALESCE(INCENDCU.COD_NAF, MPACU.cod_naf, ...)
     
-    AZECProc->>B: Load TABLE_SEGMENTATION_AZEC_MML
-    AZECProc->>AZECProc: LEFT JOIN segmentation
+    AZECProc->>B: Chargement TABLE_SEGMENTATION_AZEC_MML
+    AZECProc->>AZECProc: Jointure GAUCHE segmentation
     
-    AZECProc->>AZECProc: Calculate Premiums & Adjustments
-    Note over AZECProc: Exclude DO0/TRC/CTR/CNR, RMPLCANT replacements
+    AZECProc->>AZECProc: Calcul Primes & Ajustements
+    Note over AZECProc: Exclure DO0/TRC/CTR/CNR, remplacements RMPLCANT
     
-    AZECProc->>S: Write azec_ptf_{vision}
+    AZECProc->>S: Écriture azec_ptf_{vision}
 ```
 
 ### 2.3 Étapes Spécifiques AZEC
 
-| Step | SAS Ligne | Python Méthode               | CRITICAL LOGIC                                      |
-| ---- | --------- | ---------------------------- | --------------------------------------------------- |
-| 1    | L61       | `read()`                     | DTECHANN = `mdy(echeanmm, echeanjj, &annee.)`       |
-| 2    | L94-106   | `_handle_migration()`        | Vision >202009: LEFT JOIN ref_mig_azec_vs_ims       |
-| 3    | L113-137  | `_update_dates_and_states()` | 4 data quality rules (datexpir, tacit renewal >1yr) |
-| 4    | L144-182  | `_calculate_movements()`     | PRODUIT-dependent AFN/RES (list vs date-based)      |
-| 5    | L387-420  | `_join_capitals()`           | SMP/LCI agregation (PE + DD branches)               |
-| 6    | L272-302  | `_enrich_naf_codes()`        | **FULL JOIN 4 tables** → COALESCEC NAF priority     |
-| 7    | L448-466  | `_adjust_nbres()`            | Exclude DO0/TRC/CTR/CNR, replacements               |
+| Étape | Méthode Python               | LOGIQUE CRITIQUE                                     |
+| ----- | ---------------------------- | ---------------------------------------------------- |
+| 1     | `read()`                     | DTECHANN = `date(annee, echeanmm, echeanjj)`         |
+| 2     | `_handle_migration()`        | Vision >202009 : Jointure GAUCHE ref_mig_azec_vs_ims |
+| 3     | `_update_dates_and_states()` | 4 règles qualité données (datexpir, tacite >1an)     |
+| 4     | `_calculate_movements()`     | AFN/RES dépendants du PRODUIT (liste vs date)        |
+| 5     | `_join_capitals()`           | Agrégation SMP/LCI (branches PE + DD)                |
+| 6     | `_enrich_naf_codes()`        | **FULL JOIN 4 tables** → COALESCE priorité NAF       |
+| 7     | `_adjust_nbres()`            | Exclure DO0/TRC/CTR/CNR, remplacements               |
 
 ---
 
@@ -137,8 +137,8 @@ sequenceDiagram
 
 | Attribut            | Valeur                              |
 | ------------------- | ----------------------------------- |
-| **Input Silver**    | mvt_const_ptf (AZ), azec_ptf (AZEC) |
-| **Output Gold**     | `CUBE.MVT_PTF_{vision}`             |
+| **Entrée Silver**   | mvt_const_ptf (AZ), azec_ptf (AZEC) |
+| **Sortie Gold**     | `CUBE.MVT_PTF_{vision}`             |
 | **Volume**          | AZ + AZEC consolidé (varie)         |
 | **Temps Exécution** | ~8-10 min                           |
 
@@ -151,60 +151,60 @@ sequenceDiagram
     participant B as Bronze
     participant G as Gold
     
-    Cons->>S: Load mvt_const_ptf_{vision} (AZ)
-    Cons->>S: Load azec_ptf_{vision} (AZEC)
+    Cons->>S: Chargement mvt_const_ptf_{vision} (AZ)
+    Cons->>S: Chargement azec_ptf_{vision} (AZEC)
     
     Note over Cons: Vision >= 201211 → AZ + AZEC
     
-    Cons->>Cons: Harmonize Schemas
-    Note over Cons: Rename POLICE→NOPOL, CDMOTRES mapping, etc.
+    Cons->>Cons: Harmonisation Schémas
+    Note over Cons: Renommage POLICE→NOPOL, mappage CDMOTRES, etc.
     
     Cons->>Cons: UNION BY NAME (allowMissingColumns=True)
-    Cons->>Cons: Dedup by NOPOL (AZ priority)
+    Cons->>Cons: Dédup par NOPOL (Priorité AZ)
     
-    Note over Cons: Consolidated dataset
+    Note over Cons: Jeu de données consolidé
     
-    Cons->>B: Load ird_risk_q46_{vision}
-    Cons->>Cons: LEFT JOIN by NOPOL
-    Cons->>Cons: Fallback: Q46 → Q45 → QAN
+    Cons->>B: Chargement ird_risk_q46_{vision}
+    Cons->>Cons: Jointure GAUCHE par NOPOL
+    Cons->>Cons: Fallback : Q46 → Q45 → QAN
     
-    Cons->>B: Load CLIENT1, CLIENT3
+    Cons->>B: Chargement CLIENT1, CLIENT3
     Cons->>Cons: COALESCE(CLIENT1.cdsiret, CLIENT3.cdsiret)
     
-    Cons->>B: Load BINSEE.HISTO_NOTE_RISQUE
-    Cons->>Cons: LEFT JOIN by CDSIREN + date validity
+    Cons->>B: Chargement BINSEE.HISTO_NOTE_RISQUE
+    Cons->>Cons: Jointure GAUCHE par CDSIREN + validité date
     
-    Cons->>B: Load DO_DEST
-    Cons->>Cons: LEFT JOIN by NOPOL
-    Cons->>Cons: Apply PRXMATCH patterns for missing DESTINAT
+    Cons->>B: Chargement DO_DEST
+    Cons->>Cons: Jointure GAUCHE par NOPOL
+    Cons->>Cons: Appliquer patterns regex pour DESTINAT manquant
     
-    Cons->>Cons: Apply ISIC Codification
+    Cons->>Cons: Appliquer Codification ISIC
     Note over Cons: NAF2003/2008 → ISIC → ISIC_Global
     
-    Cons->>Cons: Apply 11 ISIC Corrections (hardcoded)
+    Cons->>Cons: Appliquer 11 Corrections ISIC (codé en dur)
     
-    Cons->>G: Write CUBE.MVT_PTF_{vision}
+    Cons->>G: Écriture CUBE.MVT_PTF_{vision}
 ```
 
-### 3.3 Vision-Dependent Logic
+### 3.3 Logique Dépendante de la Vision
 
-| Vision Threshold | Logique                                     | Note                |
-| ---------------- | ------------------------------------------- | ------------------- |
-| **< 201211**     | AZ only                                     | AZ seul             |
-| **>= 201211**    | AZ + AZEC union                             | AZ + AZEC consolidé |
-| **< 202210**     | Use RISK_REF 202210                         | Ref data fixe       |
-| **>= 202210**    | Use current vision RISK (ird_risk_{vision}) | Monthly data        |
+| Seuil Vision  | Logique                                           | Note                |
+| ------------- | ------------------------------------------------- | ------------------- |
+| **< 201211**  | AZ seul                                           | AZ seul             |
+| **>= 201211** | Union AZ + AZEC                                   | AZ + AZEC consolidé |
+| **< 202210**  | Utiliser RISK_REF 202210                          | Données réf fixes   |
+| **>= 202210** | Utiliser RISK vision courante (ird_risk_{vision}) | Données mensuelles  |
 
 ### 3.4 Enrichissements Gold
 
-| #   | Enrichissement         | Source Bronze                                            | Join Key                | Fallback Logic                          |
+| #   | Enrichissement         | Source Bronze                                            | Clé Jointure            | Logique Fallback                        |
 | --- | ---------------------- | -------------------------------------------------------- | ----------------------- | --------------------------------------- |
-| 1   | **IRD Risk Data**      | ird_risk_q46/q45/qan_{vision}                            | NOPOL                   | Q46 → Q45 → QAN (waterfall)             |
+| 1   | **Données Risque IRD** | ird_risk_q46/q45/qan_{vision}                            | NOPOL                   | Q46 → Q45 → QAN (cascade)               |
 | 2   | **Client SIRET/SIREN** | cliact14 (CLIENT1), cliact3 (CLIENT3)                    | NOCLT                   | COALESCE(CLIENT1, CLIENT3)              |
-| 3   | **Euler Risk Note**    | binsee_histo_note_risque                                 | CDSIREN + date validity | NULL if not found                       |
-| 4   | **Destinat**           | do_dest                                                  | NOPOL                   | PRXMATCH patterns if NULL               |
-| 5   | **ISIC Codification**  | mapping_cdnaf2003/2008_isic, table_isic_tre_naf, isic_lg | CDNAF + CDTRE           | NAF2003/2008 logic + 11 hardcoded fixes |
-| 6   | **Special Products**   | ipfm0024_1/3, ipfm63_1/3                                 | NOPOL + CDPROD          | Optional (if exists)                    |
+| 3   | **Note Risque Euler**  | binsee_histo_note_risque                                 | CDSIREN + validité date | NULL si non trouvé                      |
+| 4   | **Destinat**           | do_dest                                                  | NOPOL                   | Patterns regex si NULL                  |
+| 5   | **Codification ISIC**  | mapping_cdnaf2003/2008_isic, table_isic_tre_naf, isic_lg | CDNAF + CDTRE           | Logique NAF2003/2008 + 11 fix hardcodés |
+| 6   | **Produits Spéciaux**  | ipfm0024_1/3, ipfm63_1/3                                 | NOPOL + CDPROD          | Optionnel (si existe)                   |
 
 ---
 
@@ -212,20 +212,20 @@ sequenceDiagram
 
 ```mermaid
 graph TB
-    subgraph "Bronze Layer - CSV Sources"
-        B1[IPF16/36 - AZ Portfolio]
-        B2[POLIC_CU - AZEC Legacy]
-        B3[CAPITXCU - Capitals]
-        B4[Q45/Q46/QAN - IRD Risk]
-        B5[References LOB/NAF/ISIC]
+    subgraph "Bronze Layer - Sources CSV"
+        B1[IPF16/36 - Portefeuille AZ]
+        B2[POLIC_CU - Legacy AZEC]
+        B3[CAPITXCU - Capitaux]
+        B4[Q45/Q46/QAN - Risque IRD]
+        B5[Références LOB/NAF/ISIC]
     end
     
-    subgraph "Silver Layer - Processors"
-        S1[AZ Processor]
-        S2[AZEC Processor]
+    subgraph "Silver Layer - Processeurs"
+        S1[Processeur AZ]
+        S2[Processeur AZEC]
     end
     
-    subgraph "Gold Layer - Business Ready"
+    subgraph "Gold Layer - Prêt pour le Métier"
         G1[mvt_ptf_YYYYMM]
         G2[ird_risk_q45_YYYYMM]
         G3[ird_risk_q46_YYYYMM]
@@ -240,7 +240,7 @@ graph TB
     S1 --> |Consolidation| G1
     S2 --> |Consolidation| G1
     
-    B4 --> |Enrichment| G1
+    B4 --> |Enrichissement| G1
     
     G1 --> G2
     G1 --> G3
@@ -250,64 +250,51 @@ graph TB
 
 ## 5. Points d'Attention par Pipeline
 
-### 5.1 AZ Pipeline
+### 5.1 Pipeline AZ
 
 | Point                    | Criticité | Description                                                          |
 | ------------------------ | --------- | -------------------------------------------------------------------- |
-| **Filtres Construction** | HIGH      | CMARCH=6 AND CSEG=2 appliqués AVANT union                            |
-| **EXPO_YTD Formula**     | CRITICAL  | `(MIN(dtresilp, DTFIN) - MAX(dtcrepol, DTDEB_AN) + 1) / nbj_tot_ytd` |
-| **Capital Extraction**   | HIGH      | Loop 14x MTCAPI/LBCAPI avec keyword matching                         |
-| **Segmentation**         | MEDIUM    | PRDPFA1 (Agent) vs PRDPFA3 (Courtage) sources différentes            |
+| **Filtres Construction** | HAUTE     | CMARCH=6 ET CSEG=2 appliqués AVANT union                             |
+| **Formule EXPO_YTD**     | CRITIQUE  | `(MIN(dtresilp, DTFIN) - MAX(dtcrepol, DTDEB_AN) + 1) / nbj_tot_ytd` |
+| **Extraction Capitaux**  | HAUTE     | Boucle 14x MTCAPI/LBCAPI avec recherche mots-clés                    |
+| **Segmentation**         | MOYENNE   | PRDPFA1 (Agent) vs PRDPFA3 (Courtage) sources différentes            |
 
-### 5.2 AZEC Pipeline
+### 5.2 Pipeline AZEC
 
-| Point                | Criticité | Description                                                       |
-| -------------------- | --------- | ----------------------------------------------------------------- |
-| **Migration Filter** | CRITICAL  | Vision >202009 → exclut contracts migrés vers IMS                 |
-| **NAF FULL JOIN**    | CRITICAL  | FULL JOIN 4 tables (INCENDCU/MPACU/RCENTCU/RISTECCU)              |
-| **Product Lists**    | HIGH      | 48 products hardcoded pour AFN/RES logic                          |
-| **SMP Aggregation**  | HIGH      | `SMP_100 = SMP_PE_100 + SMP_DD_100` (PE + DD branches)            |
-| **Data Quality**     | MEDIUM    | 4 rules (datexpir, tacit renewal >1yr, temporaries, NULL cleanup) |
+| Point                | Criticité | Description                                                   |
+| -------------------- | --------- | ------------------------------------------------------------- |
+| **Filtre Migration** | CRITIQUE  | Vision >202009 → exclut contrats migrés vers IMS              |
+| **NAF FULL JOIN**    | CRITIQUE  | FULL JOIN 4 tables (INCENDCU/MPACU/RCENTCU/RISTECCU)          |
+| **Listes Produits**  | HAUTE     | 48 produits codés en dur pour logique AFN/RES                 |
+| **Agrégation SMP**   | HAUTE     | `SMP_100 = SMP_PE_100 + SMP_DD_100` (branches PE + DD)        |
+| **Qualité Données**  | MOYENNE   | 4 règles (datexpir, tacite >1an, temporaires, nettoyage NULL) |
 
-### 5.3 CONSOLIDATION Pipeline
+### 5.3 Pipeline CONSOLIDATION
 
-| Point                | Criticité | Description                                               |
-| -------------------- | --------- | --------------------------------------------------------- |
-| **OUTER UNION CORR** | CRITICAL  | `unionByName(allowMissingColumns=True)` reproduit SAS     |
-| **Dedup by NOPOL**   | CRITICAL  | AZ priority si NOPOL existe dans AZ et AZEC               |
-| **ISIC Corrections** | HIGH      | 11 hardcoded fixes (SAS L577-590)                         |
-| **Vision-Dependent** | HIGH      | <201211 (AZ only), >=201211 (AZ+AZEC), <202210 (ref RISK) |
-| **IRD Waterfall**    | MEDIUM    | Q46 → Q45 → QAN fallback logic                            |
+| Point                | Criticité | Description                                                          |
+| -------------------- | --------- | -------------------------------------------------------------------- |
+| **OUTER UNION CORR** | CRITIQUE  | `unionByName(allowMissingColumns=True)` reproduit logique historique |
+| **Dédup par NOPOL**  | CRITIQUE  | Priorité AZ si NOPOL existe dans AZ et AZEC                          |
+| **Corrections ISIC** | HAUTE     | 11 fix hardcodés (Legacy L577-590)                                   |
+| **Dépendant Vision** | HAUTE     | <201211 (AZ seul), >=201211 (AZ+AZEC), <202210 (réf RISK)            |
+| **Cascade IRD**      | MOYENNE   | Logique fallback Q46 → Q45 → QAN                                     |
 
 ---
 
 ## 6. Commandes Exécution
 
-### 6.1 Python (Databricks)
+### 6.1 Python (Databricks / Local)
 
 ```bash
-# Run full pipeline for vision 202512
+# Exécuter le pipeline complet pour la vision 202512
 python main.py --vision 202512 --component ptf_mvt
 
-# Run individual processors
-python main.py --vision 202512 --component ptf_mvt --processor az
-python main.py --vision 202512 --component ptf_mvt --processor azec
-python main.py --vision 202512 --component ptf_mvt --processor consolidation
-```
-
-### 6.2 SAS (Enterprise Guide)
-
-```sas
-%let vision = 202512;
-%let annee = 2025;
-%let mois = 12;
-
-%az_mvt_ptf(&annee., &mois.);
-%azec_mvt_ptf(&vision.);
-%consolidation_az_azec_mvt_ptf;
+# Exécuter des processeurs individuels (si implémenté via arguments)
+# Note : Actuellement les composants regroupent les processeurs
+python main.py --vision 202512 --component ptf_mvt
 ```
 
 ---
 
-**Dernière Mise à Jour**: 2026-02-06  
-**Note**: Row counts varient selon vision (filtres Construction, migration AZEC, etc.)
+**Dernière Mise à Jour** : 06/02/2026
+**Note** : Le nombre de lignes varie selon la vision (filtres Construction, migration AZEC, etc.)

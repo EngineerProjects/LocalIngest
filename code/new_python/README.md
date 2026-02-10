@@ -1,28 +1,28 @@
-# Construction Data Pipeline
+# Pipeline de Données Construction
 
-PySpark data pipeline for Construction insurance data (PTF_MVT, Capitaux, Emissions).
-
----
-
-## Overview
-
-Transforms raw CSV data through Bronze→Silver→Gold medallion architecture:
-
-| Layer | Content |
-|-------|---------|
-| **Bronze** | Raw CSV files (monthly + reference) |
-| **Silver** | Cleaned Parquet with schemas |
-| **Gold** | Business-ready analytics |
+Pipeline de données PySpark pour les données d'assurance Construction (PTF_MVT, Capitaux, Émissions).
 
 ---
 
-## Quick Start
+## Vue d'Ensemble
+
+Transforme les données CSV brutes via une architecture médaillon Bronze→Silver→Gold :
+
+| Couche     | Contenu                                   |
+| ---------- | ----------------------------------------- |
+| **Bronze** | Fichiers CSV bruts (mensuels + référence) |
+| **Silver** | Parquet nettoyé avec schémas              |
+| **Gold**   | Analytique prêt pour le métier            |
+
+---
+
+## Démarrage Rapide
 
 ```bash
-# Run all enabled components
+# Exécuter tous les composants activés
 python main.py --vision 202509
 
-# Run specific component
+# Exécuter un composant spécifique
 python main.py --vision 202509 --component ptf_mvt
 python main.py --vision 202509 --component capitaux
 python main.py --vision 202509 --component emissions
@@ -30,104 +30,83 @@ python main.py --vision 202509 --component emissions
 
 ---
 
-## Output Datasets
+## Jeux de Données en Sortie
 
-| # | Pipeline | Dataset | Layer |
-|---|----------|---------|-------|
-| 1 | PTF_MVT | `mvt_ptf_{vision}` | Gold |
-| 2 | PTF_MVT | `ird_risk_q45_{vision}` | Gold |
-| 3 | PTF_MVT | `ird_risk_q46_{vision}` | Gold |
-| 4 | Capitaux | `az_azec_capitaux_{vision}` | Gold |
-| 5 | Emissions | `primes_emises_{vision}_pol_garp` | Gold |
-| 6 | Emissions | `primes_emises_{vision}_pol` | Gold |
+| #   | Pipeline  | Jeu de Données                    | Couche |
+| --- | --------- | --------------------------------- | ------ |
+| 1   | PTF_MVT   | `mvt_ptf_{vision}`                | Gold   |
+| 2   | PTF_MVT   | `ird_risk_q45_{vision}`           | Gold   |
+| 3   | PTF_MVT   | `ird_risk_q46_{vision}`           | Gold   |
+| 4   | Capitaux  | `az_azec_capitaux_{vision}`       | Gold   |
+| 5   | Emissions | `primes_emises_{vision}_pol_garp` | Gold   |
+| 6   | Emissions | `primes_emises_{vision}_pol`      | Gold   |
 
 ---
 
-## Project Structure
+## Structure du Projet
 
 ```
 new_python/
-├── config/                     # Configuration files
-│   ├── config.yml              # Paths, Spark, logging
-│   ├── reading_config.json     # File patterns and schemas
-│   ├── schemas.py              # PySpark schema definitions
-│   ├── constants.py            # Business constants
-│   └── transformations/        # Business logic JSONs
+├── config/                     # Fichiers de configuration
+│   ├── config.yml              # Chemins, Spark, logging
+│   ├── reading_config.json     # Modèles de fichiers et schémas
+│   ├── schemas.py              # Définitions de schémas PySpark
+│   ├── constants.py            # Constantes métier
+│   └── transformations/        # JSONs de logique métier
 │
-├── src/                        # Core pipeline
-│   ├── reader.py               # Bronze/Silver readers
-│   ├── ptf_mvt_run.py          # PTF_MVT orchestrator
-│   ├── capitaux_run.py         # Capitaux orchestrator
-│   ├── emissions_run.py        # Emissions orchestrator
-│   └── processors/             # ETL processors
+├── src/                        # Pipeline principal
+│   ├── reader.py               # Lecteurs Bronze/Silver
+│   ├── ptf_mvt_run.py          # Orchestrateur PTF_MVT
+│   ├── capitaux_run.py         # Orchestrateur Capitaux
+│   ├── emissions_run.py        # Orchestrateur Émissions
+│   └── processors/             # Processeurs ETL
 │
-├── utils/                      # Utilities
-│   ├── loaders/                # Config loaders
-│   ├── logger.py               # Structured logging
-│   ├── helpers.py              # Date/path helpers
-│   └── transformations/        # Transform functions
+├── utils/                      # Utilitaires
+│   ├── loaders/                # Chargeurs de config
+│   ├── logger.py               # Logging structuré
+│   ├── helpers.py              # Aides dates/chemins
+│   └── transformations/        # Fonctions de transformation
 │
-├── notebooks/                  # Testing notebooks
-│   └── ptf_mvt/                # 11 component tests
+├── notebooks/                  # Notebooks de test
+│   └── ptf_mvt/                # Tests des composants
 │
 ├── docs/                       # Documentation
-│   ├── workflows/              # Pipeline workflows
-│   └── configs/                # Config documentation
+│   ├── workflows/              # Flux de travail du pipeline
+│   ├── configs/                # Documentation de configuration
+│   └── ...                     # Guides métier
 │
-└── main.py                     # Entry point
+└── main.py                     # Point d'entrée
 ```
 
 ---
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [PTF_MVT Workflow](docs/workflows/PTF_MVT_Workflow.md) | Portfolio movements |
-| [Capitaux Workflow](docs/workflows/Capitaux_Workflow.md) | Capital extraction |
-| [Emissions Workflow](docs/workflows/Emissions_Workflow.md) | Premium emissions |
-| [Configuration Guide](docs/configs/Configuration_Guide.md) | Config reference |
-| [Data Catalog](docs/configs/Data_Catalog.md) | Input/output tables |
-| [Insurance Calculations](docs/calculs_assurance_construction.md) | Technical formulas & business logic |
+| Document                                                      | Description                          |
+| ------------------------------------------------------------- | ------------------------------------ |
+| [Flux PTF_MVT](docs/workflows/PTF_MVT_Workflow.md)            | Mouvements de portefeuille           |
+| [Flux Capitaux](docs/workflows/Capitaux_Workflow.md)          | Extraction de capitaux               |
+| [Flux Émissions](docs/workflows/Emissions_Workflow.md)        | Émissions de primes                  |
+| [Guide de Configuration](docs/configs/Configuration_Guide.md) | Référence de configuration           |
+| [Catalogue de Données](docs/configs/Data_Catalog.md)          | Tables d'entrée/sortie               |
+| [Calculs Assurance](docs/calculs_assurance_construction.md)   | Formules techniques & logique métier |
 
 ---
 
 ## Configuration
 
-| File | Purpose |
-|------|---------|
-| `config.yml` | Paths, Spark, logging |
-| `reading_config.json` | File patterns, schemas |
-| `schemas.py` | PySpark type definitions |
-| `constants.py` | Business constants |
-| `*_transformations.json` | Business rules |
+| Fichier                  | Usage                        |
+| ------------------------ | ---------------------------- |
+| `config.yml`             | Chemins, Spark, logging      |
+| `reading_config.json`    | Modèles de fichiers, schémas |
+| `schemas.py`             | Définitions de types PySpark |
+| `constants.py`           | Constantes métier            |
+| `*_transformations.json` | Règles métier                |
 
 ---
 
-## Validation (SAS vs Python)
-
-Validate that Python outputs match SAS outputs exactly:
-
-```bash
-# Step 1: Aggregate Python outputs
-python scripts/aggregate_python_outputs.py \
-  --vision 202509 \
-  --gold-path gs://your-bucket/gold \
-  --output-dir ./python_aggregations
-
-# Step 2: Compare with SAS aggregations
-python scripts/validate_outputs.py \
-  --vision 202509 \
-  --sas-dir ./sas_outputs \
-  --python-dir ./python_aggregations
-```
-
-**See**: [scripts/README_VALIDATION.md](scripts/README_VALIDATION.md) for detailed instructions.
-
----
-
-## Prerequisites
+## Prérequis
 
 - Python 3.8+
 - PySpark 3.x
-- Azure Data Lake access (ABFSS)
+- Accès Azure Data Lake (ABFSS)

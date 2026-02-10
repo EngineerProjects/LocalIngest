@@ -1,139 +1,109 @@
-# Capitaux Workflow
+# Workflow Capitaux (AZ + AZEC)
 
-## Purpose
-
-Processes construction insurance capital data with indexation to produce:
-- Indexed capital amounts (SMP, LCI, PE, RD)
-- RC limits (per claim and per year)
-- Company share calculations
+> **Documentation technique du flux de gestion des Capitaux Assurés**
+> **Objectif** : Consolider les montants de garanties (SMP, LCI, PE, RD) des deux canaux de distribution.
+> **Statut** : En production
 
 ---
 
-## Pipeline Overview
+## 1. Vue d'Ensemble
+
+Le flux Capitaux agrège les données de deux provenances pour fournir une vision unique des engagements de l'assureur.
+
+### Architecture Simplifiée
 
 ```mermaid
-graph LR
-    Bronze[Bronze Layer] --> AZ[AZ Processor]
-    Bronze --> AZEC[AZEC Processor]
-    AZ --> Silver[Silver Layer]
-    AZEC --> Silver
-    Silver --> Consol[Consolidation]
-    Consol --> Gold[Gold Layer]
+graph TB
+    subgraph "Sources Bronze"
+        AZ_SRC["IPF16/36<br/>(Agents/Courtiers)"]
+        AZEC_SRC1["CAPITXCU<br/>(Construction)"]
+        AZEC_SRC2["INCENDCU<br/>(PE/RD)"]
+    end
+
+    subgraph "Traitements Silver"
+        AZ_PROC["Processeur AZ<br/>(Extraction 14 colonnes)"]
+        AZEC_PROC["Processeur AZEC<br/>(Agrégation par branche)"]
+    end
+
+    subgraph "Sortie Gold"
+        CONS["Consolidation<br/>(Union + Priorité)"]
+        GOLD["az_azec_capitaux_{vision}"]
+    end
+
+    AZ_SRC --> AZ_PROC
+    
+    AZEC_SRC1 --> AZEC_PROC
+    AZEC_SRC2 --> AZEC_PROC
+    
+    AZ_PROC --> CONS
+    AZEC_PROC --> CONS
+    
+    CONS --> GOLD
 ```
 
-**Stages:**
-1. **AZ Processor** → Extract and index capitals from IPF files
-2. **AZEC Processor** → Aggregate capitals from CAPITXCU + INCENDCU
-3. **Consolidation** → Merge AZ + AZEC with harmonized schema
-
 ---
 
-## Input Sources
+## 2. Pipeline AZ (Canal Agents)
 
-| Source | File Pattern | Layer | Description |
-|--------|-------------|-------|-------------|
-| IPF Agent | `*IPFE16_IPF_*.csv.gz` | Bronze/monthly | Agent policies (14 capital fields) |
-| IPF Courtage | `*IPFE36_IPF_*.csv.gz` | Bronze/monthly | Courtage policies (14 capital fields) |
-| CAPITXCU | `capitxcu.csv` | Bronze/ref | AZEC capitals by branch |
-| INCENDCU | `incendcu.csv` | Bronze/ref | AZEC PE/RD amounts |
-| SEGMPRDT | `segmentprdt_*.csv` | Bronze/ref | Product segmentation |
-| Indices | `indices.csv` | Bronze/ref | Construction cost indices |
+### 2.1 Logique de Traitement
 
----
+*   **Source** : Fichiers Inventaire Portefeuille (IPF16/36).
+*   **Particularité** : Les capitaux sont stockés dans 14 colonnes génériques (`MTCAPI1`...`MTCAPI14`) associées à 14 libellés (`LBCAPI1`...).
+*   **Indexation** : Le fichier contient les coefficients d'indexation (`PRPRVC`). Le processeur calcule deux versions :
+    *   **Indexé** : Montant * Coefficient.
+    *   **Non-Indexé** : Montant brut.
 
-## Capital Extraction
+### 2.2 Règles d'Extraction
+Le processeur parcourt les 14 occurrences pour trouver les montants via des mots-clés :
 
-### AZ Channel (Keyword-Based)
-
-Searches through `LBCAPI1-14` for keywords:
-
-| Capital | Keywords |
-|---------|----------|
-| **SMP_100** | "SMP GLOBAL", "SMP RETENU", "SINISTRE MAXIMUM POSSIBLE" |
-| **LCI_100** | "LCI GLOBAL", "CAPITAL REFERENCE", "LIMITE CONTRACTUELLE" |
-| **PERTE_EXP** | "PERTE D'EXPLOITATION", "PERTES D'EXPLOITATION" |
+| Capital Cible     | Mots-clés (Libellé)                 |
+| :---------------- | :---------------------------------- |
+| **SMP_100**       | "SMP GLOBAL", "SMP RETENU"          |
+| **LCI_100**       | "LCI GLOBAL", "CAPITAL REFERENCE"   |
+| **PERTE_EXP**     | "PERTE D EXPLOITATION"              |
 | **RISQUE_DIRECT** | "RISQUE DIRECT", "DOMMAGES DIRECTS" |
-| **RC_PAR_SIN** | "DOMMAGES CORPORELS" |
-| **RC_PAR_AN** | "TOUS DOMMAGES CONFONDUS" |
 
-### AZEC Channel (Structured)
-
-| Source | Field | Mapping |
-|--------|-------|---------|
-| CAPITXCU | LCI + IP0 | LCI_PE_100 |
-| CAPITXCU | LCI + ID0 | LCI_DD_100 |
-| CAPITXCU | SMP + IP0 | SMP_PE_100 |
-| CAPITXCU | SMP + ID0 | SMP_DD_100 |
-| INCENDCU | MT_BASPE | PERTE_EXP_100 |
-| INCENDCU | MT_BASDI | RISQUE_DIRECT_100 |
+> **Normalisation** : Tous les montants sont ramenés à 100% en divisant par la part compagnie (`PRCDCIE`).
 
 ---
 
-## Key Calculations
+## 3. Pipeline AZEC (Canal Construction)
 
-### Indexation (AZ Only)
+### 3.1 Logique de Traitement
 
-**Formula:** `Capital_IND = Capital × (Target_Index / Origin_Index)`
+*   **Sources Composites** :
+    *   `CAPITXCU` : Contient les montants de base (SMP, LCI).
+    *   `INCENDCU` : Contient les montants complémentaires (Pertes Exploitation, Risques Directs).
 
-- Origin Index: From contract start date (DTEFSITT)
-- Target Index: From anniversary date in current year
-- Index source: `indices.csv` or PRPRVC fallback
+### 3.2 Règles de Calcul
+Contrairement à AZ (extraction), AZEC fonctionne par **agrégation de branches** :
 
-### Normalization to 100% Basis
+1.  **SMP_100** = Somme des SMP pour la branche Dommages (`DD`) + branche PE (`PE`).
+2.  **PE & RD** = Lus directement dans la table `INCENDCU` et joints par police.
+3.  **Indexation** : AZEC ne fournit que des montants indexés.
 
-**Formula:** `Capital_100 = (Capital × 100) / PRCDCIE`
-
-Applied to all capitals to convert from company share.
-
-### Business Rules
-
-| Rule | Formula |
-|------|---------|
-| SMP Completion | `SMP = MAX(SMP, SMP_PE + SMP_RD)` |
-| RC Limit | `LIMITE_RC = MAX(RC_PAR_SIN, RC_PAR_AN)` |
-| Value Insured | `VALUE_INSURED = PERTE_EXP + RISQUE_DIRECT` |
+> **Point d'Attention** : Si le fichier `INCENDCU` est absent, les montants PE/RD sont forcés à 0 (logique de fallback).
 
 ---
 
-## Output Datasets
+## 4. Consolidation (Gold)
 
-### Silver Layer (Intermediate)
+### 4.1 Stratégie de Fusion
+*   **Priorité** : Si une police existe dans les deux systèmes, **AZ écrase AZEC**.
+*   **Harmonisation** :
+    *   AZEC reçoit le Code Pôle `3` (Courtage) par défaut.
+    *   Les colonnes "Non-Indexées" (absentes d'AZEC) sont remplies avec `NULL` pour les lignes AZEC.
 
-| # | Dataset | Rows | Description |
-|---|---------|------|-------------|
-| 1 | `az_capitaux_{vision}` | ~68K | AZ indexed capitals |
-| 2 | `azec_capitaux_{vision}` | ~12K | AZEC capitals |
+### 4.2 Schéma de Sortie (Gold)
 
-### Gold Layer (Final)
-
-| # | Dataset | Rows | Description |
-|---|---------|------|-------------|
-| 3 | `az_azec_capitaux_{vision}` | ~80K | Consolidated capitals |
+| Champ Clé               | Description                                   |
+| :---------------------- | :-------------------------------------------- |
+| `nopol`                 | Numéro de Police (Clé unique)                 |
+| `dircom`                | Origine de la donnée ("AZ" ou "AZEC")         |
+| `smp_100_ind`           | Sinistre Maximum Possible (Indexé)            |
+| `lci_100_ind`           | Limite Contractuelle d'Indemnisation (Indexé) |
+| `value_insured_100_ind` | Valeur Totale Assurée (Calculé : PE + RD)     |
 
 ---
 
-## Output Schema (az_azec_capitaux)
-
-### Identifiers
-- `nopol` - Policy number
-- `cdprod` - Product code
-- `cdpole` - Distribution channel (1=Agent, 3=Courtage)
-- `dircom` - Commercial direction ('AZ' or 'AZEC')
-
-### Segmentation
-- `cmarch` - Market code (6 = Construction)
-- `cseg`, `cssseg` - Segment codes
-
-### Indexed Capitals (100% Basis)
-- `smp_100_ind`, `lci_100_ind`
-- `perte_exp_100_ind`, `risque_direct_100_ind`
-- `value_insured_100_ind`
-- `limite_rc_100_ind`, `limite_rc_100_par_sin_ind`, `limite_rc_100_par_an_ind`
-
-### Non-Indexed Capitals (AZ Only)
-- `smp_100`, `lci_100`
-- `perte_exp_100`, `risque_direct_100`
-- `value_insured_100`, `limite_rc_100`
-
-### Company Share (AZEC Only)
-- `smp_cie`, `lci_cie`
+**Dernière mise à jour** : 11/02/2026

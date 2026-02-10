@@ -1,118 +1,61 @@
-# Emissions Workflow
+# Workflow Émissions (Primes)
 
-## Purpose
-
-Processes One BI premium data to calculate:
-- Total premiums (all years)
-- Current year premiums
-- Commissions by channel
+> **Documentation technique du flux de calcul des Primes (Émissions)**
+> **Objectif** : Calculer les primes émises et commissions par police et garantie.
+> **Statut** : En production
 
 ---
 
-## Pipeline Overview
+## 1. Vue d'Ensemble
+
+Le flux Émissions traite les données détaillées de facturation (Quittancement) pour produire une vision financière du portefeuille.
+
+### Flux de Données
 
 ```mermaid
 graph LR
-    Bronze[Bronze Layer] --> Transform[Transform]
-    Transform --> Gold[Gold Layer]
+    ONEBI[One BI - Détail Primes] --> PROC[Processeur Émissions]
+    REF[Référentiels Segmentation] --> PROC
+    
+    PROC --> GOLD1[Sortie 1 : Détail par Garantie]
+    PROC --> GOLD2[Sortie 2 : Synthèse par Police]
 ```
 
-**Note:** Emissions writes directly to Gold (no Silver intermediate)
+---
 
-**Output:** Two aggregation levels - by guarantee and by policy
+## 2. Règles de Transformation
+
+### 2.1 Calculs Temporels (Exercice)
+Le processeur distingue les primes selon leur exercice de rattachement :
+*   **Exercice Courant (`primes_n`)** : Primes dont l'année comptable correspond à l'année de vision.
+*   **Total (`primes_x`)** : Somme de toutes les émissions, quel que soit l'exercice.
+
+### 2.2 Règles Métier
+1.  **Code Pôle** : Déduit du canal de distribution (`CD_NIV_2_STC`).
+    *   Agents (`DCAG`, `DCPS`) -> Pôle 1.
+    *   Courtage (`BROKDIV`) -> Pôle 3.
+2.  **Code Garantie** : Extrait du code prospectif (positions 3 à 5).
+3.  **Filtre Marché** : Conservation uniquement du marché Construction (`CMARCH=6`).
 
 ---
 
-## Input Sources
+## 3. Sorties (Gold)
 
-| Source | File Pattern | Layer | Description |
-|--------|-------------|-------|-------------|
-| OneBI Premium | `rf_fr1_prm_dtl_midcorp_m_*.csv` | Bronze/monthly | Premium transactions |
-| SEGMPRDT | `segmentprdt_*.csv` | Bronze/ref | Product segmentation |
+Le processeur génère deux niveaux d'agrégation simultanément.
 
----
+### 3.1 Fichier Détail (POL_GARP)
+*   **Nom** : `primes_emises_{vision}_pol_garp`
+*   **Granularité** : Une ligne par Police + Code Garantie (`CGARP`).
+*   **Usage** : Analyses fines de rentabilité par garantie.
 
-## Business Filters
-
-| Filter | Value | Description |
-|--------|-------|-------------|
-| cd_marche | 6 | Construction market |
-| dt_cpta_cts | ≤ vision | Accounting date cutoff |
-| cd_int_stc | Exclusion list | 15 excluded intermediaries |
-| cd_prd_prm | ≠ 01073 | Excluded product |
-| cd_gar_prospctiv | Exclusion list | 4 excluded guarantees |
-| cd_cat_min | ≠ 080/090/095/099 | Excluded categories |
+### 3.2 Fichier Synthèse (POL)
+*   **Nom** : `primes_emises_{vision}_pol`
+*   **Granularité** : Une ligne par Police.
+*   **Colonnes Clés** :
+    *   `primes_x` : Total primes HT.
+    *   `primes_n` : Primes exercice courant HT.
+    *   `mtcom_x` : Montant total commissions.
 
 ---
 
-## Key Calculations
-
-### Channel Assignment (CDPOLE)
-
-| cd_niv_2_stc | CDPOLE | Channel |
-|--------------|--------|---------|
-| DCAG | 1 | Agent |
-| DCPS | 1 | Agent |
-| DIGITAL | 1 | Agent |
-| BROKDIV | 3 | Courtage |
-
-### Year Classification (EXERCICE)
-
-| Condition | EXERCICE | Meaning |
-|-----------|----------|---------|
-| nu_ex_ratt ≥ vision year | 'cou' | Current year |
-| nu_ex_ratt < vision year | 'ant' | Prior year |
-
-### Premium Metrics
-
-| Metric | Description |
-|--------|-------------|
-| **primes_x** | Sum of mt_ht_cts (all years) |
-| **primes_n** | Sum where exercice = 'cou' |
-| **mtcom_x** | Sum of mt_cms_cts |
-
----
-
-## Output Datasets
-
-### Gold Layer (Final)
-
-| # | Dataset | Granularity | Rows | Description |
-|---|---------|-------------|------|-------------|
-| 1 | `primes_emises_{vision}_pol_garp` | Policy + Guarantee | ~12K | Detailed by guarantee |
-| 2 | `primes_emises_{vision}_pol` | Policy | ~8K | Aggregated by policy |
-
----
-
-## Output Schema (primes_emises_pol_garp)
-
-### Identifiers
-- `vision` - Processing vision (YYYYMM)
-- `nopol` - Policy number
-- `cdprod` - Product code
-- `noint` - Intermediary code
-- `cgarp` - Guarantee code (chars 3-5 from cd_gar_prospctiv)
-
-### Channel
-- `dircom` - Commercial direction ('AZ')
-- `cdpole` - Distribution channel (1=Agent, 3=Courtage)
-
-### Segmentation
-- `cmarch` - Market code (6 = Construction)
-- `cseg`, `cssseg` - Segment codes
-- `cd_cat_min` - Minimum category
-
-### Financial
-- `primes_x` - Total premiums (all years)
-- `primes_n` - Current year premiums
-- `mtcom_x` - Total commissions
-
----
-
-## Output Schema (primes_emises_pol)
-
-Same as pol_garp but **without**:
-- `cgarp` (guarantee code)
-- `cd_cat_min` (category)
-
-Premiums aggregated across all guarantees for each policy.
+**Dernière mise à jour** : 11/02/2026
