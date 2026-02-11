@@ -321,8 +321,7 @@ Exemples:
             logger.info("Upload du log vers le datalake...")
 
             try:
-                base_path = config.get('datalake.base_path')
-                upload_success = upload_log_to_datalake(spark, log_file, base_path)
+                upload_success = upload_log_to_datalake(spark, log_file, config)
                 if upload_success:
                     logger.success(f"Log uploadé vers le datalake : bronze/logs/{log_filename}")
                     print(f"√ Log uploadé : bronze/logs/{log_filename}")

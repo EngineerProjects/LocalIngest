@@ -98,43 +98,47 @@ def extract_year_month_int(vision: str) -> Tuple[int, int]:
 
 
 def build_layer_path(
-    base_path: str,
+    config,
     layer: str,
-    vision: str,
-    path_template: str = None
+    vision: str
 ) -> str:
     """
     Construit le chemin d'accès pour une couche donnée du Data Lake.
+    Utilise la nouvelle structure de configuration (container + data_root).
 
     PARAMÈTRES :
     -----------
-    base_path : str
-        Chemin racine du Data Lake
+    config : ConfigLoader
+        Configuration chargée contenant environment.container et datalake.data_root
     layer : str
         Nom de la couche (bronze, silver, gold)
     vision : str
         Vision au format YYYYMM
-    path_template : str, optionnel
-        Modèle de chemin (par défaut: "{base_path}/{layer}/{year}/{month}")
 
     RETOUR :
     -------
     str
         Chemin complet vers la couche
+
+    EXEMPLE :
+    --------
+    >>> path = build_layer_path(config, 'bronze', '202509')
+    >>> # Retourne : abfs://container@.../ABR/.../bronze/2025/09
     """
-    year, month = extract_year_month(vision)
+    import os
 
-    if path_template is None:
-        path_template = "{base_path}/{layer}/{year}/{month}"
+    # Récupérer le conteneur (avec possibilité de surcharge via variable d'env)
+    container = os.getenv('DATALAKE_CONTAINER') or config.get('environment.container')
+    data_root = config.get('datalake.data_root')
 
-    path = path_template.format(
-        base_path=base_path,
-        layer=layer,
-        year=year,
-        month=month
-    )
+    # Extraire année et mois
+    year, month = extract_year_month_int(vision)
+
+    # Construire le chemin : {container}{data_root}/{layer}/{year}/{month}
+    path = f"{container}{data_root}/{layer}/{year}/{month:02d}"
 
     return path
+
 
 
 def build_log_filename(vision: str) -> str:
@@ -336,22 +340,14 @@ def write_to_layer(
     """
 
     # Résolution configuration
-    base_path = config.get("datalake.base_path")
-    path_template = config.get("datalake.path_template")
     output_format = config.get("output.format", "delta").lower()
     compression = config.get("output.compression", "snappy")
     mode = config.get("output.mode", "overwrite").lower()
     vacuum_hours = config.get("output.vacuum_hours", 168)
     clean = config.get("output.clean", False)  # Suppression avant écriture
 
-    # Construction du chemin
-    year, month = extract_year_month_int(vision)
-    layer_path = path_template.format(
-        base_path=base_path,
-        layer=layer,
-        year=year,
-        month=f"{month:02d}"
-    )
+    # Construction du chemin avec la nouvelle fonction
+    layer_path = build_layer_path(config, layer, vision)
 
     # Delta = dossier, autres = fichier avec extension
     if output_format == "delta":
@@ -481,7 +477,7 @@ def write_to_layer(
 def upload_log_to_datalake(
     spark,
     local_log_path: str,
-    datalake_base_path: str
+    config
 ) -> bool:
     """
     Téléverse un fichier de log local vers le conteneur 'bronze/logs' du Data Lake.
@@ -493,22 +489,28 @@ def upload_log_to_datalake(
         Session Spark active
     local_log_path : str
         Chemin local du fichier de log
-    datalake_base_path : str
-        Chemin racine du Data Lake
+    config : ConfigLoader
+        Configuration chargée contenant environment.container et datalake.data_root
 
     RETOUR :
     -------
     bool
         True si succès, False sinon
     """
+    import os
+    
     try:
         local_path = Path(local_log_path)
         
         if not local_path.exists():
             return False
         
+        # Construire le chemin avec la nouvelle structure
+        container = os.getenv('DATALAKE_CONTAINER') or config.get('environment.container')
+        data_root = config.get('datalake.data_root')
+        datalake_log_path = f"{container}{data_root}/bronze/logs/{local_path.name}"
+        
         print(f"Chemin local du fichier log : {local_path}")
-        datalake_log_path = f"{datalake_base_path}/bronze/logs/{local_path.name}"
         print(f"Chemin cible sur le Data Lake : {datalake_log_path}")
         
         # Lecture du fichier local

@@ -213,7 +213,9 @@ class BronzeReader:
 
         # Charger le schéma de colonnes si spécifié
         # Le schéma définit les types de données attendus (texte, nombre, date, etc.)
-        schema = self.get_schema(schema_name) if schema_name else None
+        from pyspark.sql.types import _parse_datatype_string
+        raw_schema = self.get_schema(schema_name) if schema_name else None
+        schema = _parse_datatype_string(raw_schema) if raw_schema else None
 
         # =====================================================================
         # ÉTAPE 3 : Lire tous les fichiers fragment par fragment
@@ -273,16 +275,39 @@ class BronzeReader:
                 fragments.append(df_part)
 
             except Exception as e:
-                # Si un fichier ne peut pas être lu, on le signale et on continue
+                # Si un fichier ne peut pas être lu, on le signale avec des détails détaillés
                 if self.logger:
-                    self.logger.debug(f"[BronzeReader] Pattern {pattern} ignoré : {e}")
+                    self.logger.warning(
+                        f"[BronzeReader] Impossible de lire le fichier\n"
+                        f"  Groupe       : {file_group}\n"
+                        f"  Pattern      : {pattern}\n"
+                        f"  Chemin complet : {full_pattern}\n"
+                        f"  Erreur       : {type(e).__name__}: {str(e)}"
+                    )
                 continue
 
         # Vérifier qu'au moins un fichier a été trouvé
         if not fragments:
-            raise FileNotFoundError(
-                f"Aucun fichier trouvé pour les patterns {file_patterns} dans {bronze_path}"
+            error_msg = (
+                f"\n{'='*80}\n"
+                f"ERREUR : Aucun fichier trouvé pour le groupe '{file_group}'\n"
+                f"{'='*80}\n"
+                f"DÉTAILS DU DIAGNOSTIC :\n"
+                f"  - Groupe de fichiers : {file_group}\n"
+                f"  - Vision             : {vision}\n"
+                f"  - Type de location   : {location_type}\n"
+                f"  - Chemin recherché   : {bronze_path}\n"
+                f"  - Patterns essayés   : {', '.join(file_patterns)}\n"
+                f"\n"
+                f"VÉRIFICATIONS SUGGÉRÉES :\n"
+                f"  1. Le chemin Azure existe-t-il ? Vérifiez : {bronze_path}\n"
+                f"  2. Les fichiers ont-ils le bon format de nom ?\n"
+                f"  3. La vision {vision} est-elle correcte ?\n"
+                f"  4. Le conteneur est-il accessible ? ({container})\n"
+                f"  5. Vérifiez reading_config.json pour le groupe '{file_group}'\n"
+                f"{'='*80}\n"
             )
+            raise FileNotFoundError(error_msg)
 
         # =====================================================================
         # ÉTAPE 4 : Fusionner tous les fragments en un seul DataFrame
@@ -844,23 +869,48 @@ class SilverReader:
         output_format = self.config.get('output.format', 'parquet').lower()
         
         # Lire selon le format
-        if output_format == "delta":
-            # Delta Lake : le fichier est en fait un répertoire avec métadonnées
-            full_path = f"{silver_path}/{filename}"
-            df = self.spark.read.format("delta").load(full_path)
-            
-        elif output_format == "parquet":
-            # Parquet : fichier unique avec extension .parquet
-            full_path = f"{silver_path}/{filename}.parquet"
-            df = self.spark.read.parquet(full_path)
-            
-        elif output_format == "csv":
-            # CSV : fichier texte avec séparateur point-virgule
-            full_path = f"{silver_path}/{filename}.csv"
-            df = self.spark.read.option("header", True).option("delimiter", ";").csv(full_path)
-            
-        else:
-            raise ValueError(f"Format Silver non supporté : {output_format}")
+        try:
+            if output_format == "delta":
+                # Delta Lake : le fichier est en fait un répertoire avec métadonnées
+                full_path = f"{silver_path}/{filename}"
+                df = self.spark.read.format("delta").load(full_path)
+                
+            elif output_format == "parquet":
+                # Parquet : fichier unique avec extension .parquet
+                full_path = f"{silver_path}/{filename}.parquet"
+                df = self.spark.read.parquet(full_path)
+                
+            elif output_format == "csv":
+                # CSV : fichier texte avec séparateur point-virgule
+                full_path = f"{silver_path}/{filename}.csv"
+                df = self.spark.read.option("header", True).option("delimiter", ";").csv(full_path)
+                
+            else:
+                raise ValueError(f"Format Silver non supporté : {output_format}")
+        
+        except Exception as e:
+            error_msg = (
+                f"\n{'='*80}\n"
+                f"ERREUR : Impossible de lire le fichier Silver '{filename}'\n"
+                f"{'='*80}\n"
+                f"DÉTAILS DU DIAGNOSTIC :\n"
+                f"  - Fichier demandé    : {filename}\n"
+                f"  - Vision             : {vision}\n"
+                f"  - Format configuré   : {output_format}\n"
+                f"  - Répertoire Silver  : {silver_path}\n"
+                f"  - Chemin complet     : {full_path}\n"
+                f"  - Type d'erreur      : {type(e).__name__}\n"
+                f"  - Message d'erreur   : {str(e)}\n"
+                f"\n"
+                f"VÉRIFICATIONS SUGGÉRÉES :\n"
+                f"  1. Le fichier existe-t-il à cet emplacement ?\n"
+                f"  2. Le processeur précédent a-t-il bien écrit ce fichier ?\n"
+                f"  3. Le format configuré ({output_format}) est-il correct ?\n"
+                f"  4. Avez-vous les permissions de lecture sur {silver_path} ?\n"
+                f"  5. La vision {vision} a-t-elle été traitée précédemment ?\n"
+                f"{'='*80}\n"
+            )
+            raise FileNotFoundError(error_msg) from e
         
         # S'assurer que les colonnes sont en minuscules
         # (normalement déjà fait lors de l'écriture Silver, mais on vérifie)

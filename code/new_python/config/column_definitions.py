@@ -269,13 +269,20 @@ isic_local STRING, isic_global STRING
 # Référence destinations construction
 # Source: do_dest.csv | 2 colonnes
 DO_DEST_SCHEMA = """
-dest_loc STRING, desti_isic STRING
+nopol STRING, destinat STRING
 """
 
 # Référence segmentation AZEC MML
-# Source: table_segmentation_azec_mml.csv | 4 colonnes
+# Source: table_segmentation_azec_mml.csv | 8 colonnes
 TABLE_SEGMENTATION_AZEC_MML_SCHEMA = """
-cdprod STRING, segment STRING, segment2 STRING, type_produit_2 STRING
+produit STRING, segment STRING, cmarch STRING, cseg STRING, cssseg STRING,
+lmarch STRING, lseg STRING, lssseg STRING
+"""
+
+# Référence types de produits (TYPRD_2)
+# Source: typrd_2.csv | 1 colonne
+TYPRD_2_SCHEMA = """
+type_produit STRING
 """
 
 # Référence émissions ONE BI
@@ -290,145 +297,67 @@ cd_cat_min STRING, cd_gar_princ STRING, cd_gar_prospctiv STRING, nu_ex_ratt_cts 
 # COUCHE GOLD - Colonnes de sortie
 # =============================================================================
 
-# PTF_MVT Gold Columns (AZ + AZEC + Consolidation)
-# Based on actual SAS output: CUBE.MVT_PTF&vision. (110 columns)
+# Colonnes de sortie pour PTF_MVT (Mouvements de Portefeuille)
+# Contient les mouvements d'affaires nouvelles, résiliations et portfolio pour les canaux AZ et AZEC
+# Total : 110 colonnes
 GOLD_COLUMNS_PTF_MVT = [
-    # Core Identifiers (7)
-    'nopol', 'dircom', 'noint', 'cdpole', 'cdprod', 'cmarch', 'cseg',
-    'cssseg', 'nopolli1', 'dtcrepol',
-    
-    # Risk Location (6)
+    'nopol', 'dircom', 'noint', 'cdpole', 'cdprod', 'cmarch', 'cseg', 'cssseg', 'nopolli1', 'dtcrepol',
     'posacta_ri', 'rueacta_ri', 'cediacta_ri',
-    
-    # Dates - Echeance (2)
     'mois_echeance', 'jour_echeance',
-    
-    # Dates - Additional (2)
     'dtresilp', 'dttraar',
-    
-    # Policy Attributes (7)
     'cdnatp', 'cdsitp', 'ptgst', 'cdreg', 'cdgecent',
-    
-    # Business Data (5)
     'mtca', 'cdnaf', 'cdtre', 'cdcoass', 'coass',
-    
-    # Flags (2)
     'top_coass', 'type_affaire',
-    
-    # Premiums - Portfolio (4)
     'primes_ptf_intemp', 'primes_ptf_100_intemp', 'part_cie', 'primes_ptf',
-    
-    # Movement Indicators (2)
     'nbptf', 'expo_ytd',
-    
-    # Exposures (3)
     'expo_gli', 'top_temp',
-    
-    # Termination (3)
     'cdmotres', 'cdcasres', 'cdpolrvi',
-    
-    # Vision (4)
     'vision', 'exevue', 'moisvue',
-    
-    # Client Info (10)
-    'noclt', 'nmclt', 'cdfract', 'quarisq', 'nmrisq',
-    'nmsrisq', 'resrisq', 'ruerisq', 'lidirisq', 'posrisq',
-    'vilrisq',
-    
-    # Movements AFN/RES (6)
-    'nbafn', 'nbres', 'nbafn_anticipe', 'nbres_anticipe',
-    'primes_afn', 'primes_res',
-    
-    # Segment & Product Type (3)
-    'upper_mid', 'dt_deb_expo', 'dt_fin_expo',
-    'segment2', 'type_produit_2',
-    
-    # IRD Risk Data (12)
-    'ctdeftra', 'dstcsc', 'dtouchan', 'dtrectrx',
-    'dtrcppr', 'lbqltsou', 'dteffan', 'dttraan',
-    'actprin', 'ctprvtrv', 'mtsmpr', 'lbnattrv',
-    
-    # Revision (5)
+    'noclt', 'nmclt', 'cdfract', 'quarisq', 'nmrisq', 'nmsrisq', 'resrisq', 'ruerisq', 'lidirisq', 'posrisq', 'vilrisq',
+    'nbafn', 'nbres', 'nbafn_anticipe', 'nbres_anticipe', 'primes_afn', 'primes_res',
+    'upper_mid', 'dt_deb_expo', 'dt_fin_expo', 'segment2', 'type_produit_2',
+    'ctdeftra', 'dstcsc', 'dtouchan', 'dtrectrx', 'dtrcppr', 'lbqltsou', 'dteffan', 'dttraan', 'actprin', 'ctprvtrv', 'mtsmpr', 'lbnattrv',
     'top_revisable', 'critere_revision', 'cdgrev',
-    
-    # Additional Movements (4)
     'nbrpt', 'nbrpc', 'primes_rpc', 'primes_rpt',
-    
-    # Additional Capitals (3)
     'mtcaenp', 'mtcasst', 'mtcavnt',
-    
-    # IRD Additional (1)
     'dtreffin',
-    
-    # Client Enrichment (3)
     'cdsiret', 'cdsiren', 'note_euler',
-    
-    # Destination (1)
     'destinat',
-    
-    # Activity Type (1)
     'typeact',
-    
-    # NAF Codes (4)
     'cdnaf08_w6', 'cdnaf03_cli', 'cdnaf2008',
-    
-    # ISIC Codes (9)
     'isic_code_sui', 'destinat_isic', 'isic_code', 'origine_isic',
-    'hazard_grades_fire', 'hazard_grades_bi', 'hazard_grades_rca',
-    'hazard_grades_rce', 'hazard_grades_trc', 'hazard_grades_rcd',
-    'hazard_grades_do', 'isic_code_gbl',
-    
-    # Partnership Flags (2)
+    'hazard_grades_fire', 'hazard_grades_bi', 'hazard_grades_rca', 'hazard_grades_rce', 'hazard_grades_trc', 'hazard_grades_rcd', 'hazard_grades_do', 'isic_code_gbl',
     'top_berlioz', 'top_partenariat'
 ]
 
-# Capitaux Gold Columns (AZ + AZEC Consolidated)
-# Based on SAS CUBE.AZ_AZEC_CAPITAUX_&vision.
+# Colonnes de sortie pour CAPITAUX (Capitaux Assurés)
+# Contient les capitaux assurés avec indexation pour les canaux AZ et AZEC consolidés
+# Total : 15 colonnes
 GOLD_COLUMNS_CAPITAUX = [
-    # Identifiers
     'dircom', 'nopol', 'cdpole', 'cdprod',
-    
-    # Segmentation
     'cmarch', 'cseg', 'cssseg',
-    
-    # Capitals WITH indexation (_IND suffix)
-    'value_insured_100_ind',    # Valeur assurée (PE + RD) indexed
-    'perte_exp_100_ind',         # Perte d'exploitation indexed
-    'risque_direct_100_ind',     # Risque direct indexed
-    'smp_100_ind',               # SMP (Sinistre Maximum Possible) indexed
-    'lci_100_ind',               # LCI (Limite Contractuelle Indemnité) indexed
-    'limite_rc_100_par_sin',     # RC par sinistre
-    'limite_rc_100_par_an',      # RC par an
-    'limite_rc_100',             # RC max
-    
-    # Capitals WITHOUT indexation (only for AZ, NULL for AZEC)
-    'value_insured_100',         # Valeur assurée (PE + RD) non-indexed
-    'perte_exp_100',             # Perte d'exploitation non-indexed
-    'risque_direct_100',         # Risque direct non-indexed
-    'smp_100',                   # SMP non-indexed
-    'lci_100'                    # LCI non-indexed
+    'value_insured_100_ind', 'perte_exp_100_ind', 'risque_direct_100_ind', 'smp_100_ind', 'lci_100_ind',
+    'limite_rc_100_par_sin', 'limite_rc_100_par_an', 'limite_rc_100',
+    'value_insured_100', 'perte_exp_100', 'risque_direct_100', 'smp_100', 'lci_100'
 ]
 
-# Emissions Gold Columns - POL_GARP (by guarantee)
-# Based on SAS CUBE.PRIMES_EMISES&vision._POL_GARP
+# Colonnes de sortie pour EMISSIONS_POL_GARP (Primes Émises par Garantie)
+# Contient les primes émises détaillées par police et garantie
+# Total : 14 colonnes
 GOLD_COLUMNS_EMISSIONS_POL_GARP = [
     'vision', 'dircom', 'cdpole', 'nopol', 'cdprod', 'noint', 'cgarp',
     'cmarch', 'cseg', 'cssseg', 'cd_cat_min',
     'primes_x', 'primes_n', 'mtcom_x'
 ]
 
-# Emissions Gold Columns - POL (aggregated by policy)
-# Based on SAS CUBE.PRIMES_EMISES&vision._POL
+# Colonnes de sortie pour EMISSIONS_POL (Primes Émises Agrégées par Police)
+# Contient les primes émises agrégées au niveau police
+# Total : 12 colonnes
 GOLD_COLUMNS_EMISSIONS_POL = [
     'vision', 'dircom', 'nopol', 'noint', 'cdpole', 'cdprod',
     'cmarch', 'cseg', 'cssseg',
     'primes_x', 'primes_n', 'mtcom_x'
 ]
-
-# Legacy aliases for backwards compatibility
-PTF_MVT_OUTPUT_COLUMNS = GOLD_COLUMNS_PTF_MVT
-CAPITAUX_OUTPUT_COLUMNS = GOLD_COLUMNS_CAPITAUX
-EMISSIONS_OUTPUT_COLUMNS = GOLD_COLUMNS_EMISSIONS_POL
 
 # =============================================================================
 # Registre des schémas (pour mapping automatique)
@@ -475,6 +404,7 @@ SCHEMA_REGISTRY = {
     'isic_lg': ISIC_LG_SCHEMA,
     'do_dest': DO_DEST_SCHEMA,
     'table_segmentation_azec_mml': TABLE_SEGMENTATION_AZEC_MML_SCHEMA,
+    'typrd_2': TYPRD_2_SCHEMA,
     'rf_fr1_prm_dtl_midcorp_m': RF_FR1_PRM_DTL_MIDCORP_M_SCHEMA,
 }
 

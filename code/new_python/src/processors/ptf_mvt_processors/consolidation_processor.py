@@ -685,3 +685,79 @@ class ConsolidationProcessor(BaseProcessor):
         """
         # ... Logique spécifique W6 si nécessaire ...
         return df
+
+    def _enrich_do_dest(self, df: DataFrame, vision: str) -> DataFrame:
+        """
+        Enrichit avec DESTINAT depuis le référentiel DO_DEST.
+        
+        DO_DEST est une table de RÉFÉRENCE (pas vision-dépendante).
+        
+        LOGIQUE :
+        --------
+        - Lit do_dest.csv (version fixe, remplace DO_DEST202110 de SAS)
+        - Jointure LEFT sur NOPOL
+        - Remplace TOUJOURS destinat par la valeur du référentiel
+        
+        PARAMÈTRES :
+        -----------
+        df : DataFrame
+            Données consolidées
+        vision : str
+            Vision (non utilisée, DO_DEST est une référence)
+            
+        RETOUR :
+        -------
+        DataFrame
+            Données avec colonne destinat enrichie
+        """
+        from pyspark.sql.functions import to_date, lit, coalesce
+        from pyspark.sql.types import DateType, StringType
+
+        try:
+            reader = BronzeReader(self.spark, self.config)
+            # DO_DEST est une table de référence (pas mensuelle)
+            do_dest_df = reader.read_file_group("do_dest", "ref")
+
+            if do_dest_df is None:
+                # Si table absente, garantir existence de la colonne
+                if "destinat" not in df.columns:
+                    df = df.withColumn("destinat", lit(None).cast(StringType()))
+                self.logger.warning("Référentiel DO_DEST non disponible")
+                return df
+
+            # Vérifier colonnes requises
+            if "nopol" not in do_dest_df.columns or "destinat" not in do_dest_df.columns:
+                if "destinat" not in df.columns:
+                    df = df.withColumn("destinat", lit(None).cast(StringType()))
+                self.logger.warning("DO_DEST : colonnes requises manquantes")
+                return df
+
+            # Préparer référence (déduplication sur NOPOL)
+            do_dest_ref = (
+                do_dest_df
+                .select(
+                    col("nopol").alias("nopol_ref"),
+                    col("destinat").cast(StringType()).alias("destinat_ref")
+                )
+                .dropDuplicates(["nopol_ref"])
+            )
+
+            if "nopol" not in df.columns:
+                if "destinat" not in df.columns:
+                    df = df.withColumn("destinat", lit(None).cast(StringType()))
+                self.logger.warning("Colonne NOPOL manquante dans données principales")
+                return df
+
+            # Jointure LEFT
+            df_join = df.join(do_dest_ref, df.nopol == col("nopol_ref"), "left")
+
+            # TOUJOURS utiliser la valeur du référentiel (comportement SAS)
+            df_final = df_join.withColumn("destinat", col("destinat_ref"))
+
+            return df_final.drop("nopol_ref", "destinat_ref")
+
+        except Exception as e:
+            self.logger.warning(f"Échec enrichissement DO_DEST : {e}")
+            if "destinat" not in df.columns:
+                df = df.withColumn("destinat", lit(None).cast(StringType()))
+            return df

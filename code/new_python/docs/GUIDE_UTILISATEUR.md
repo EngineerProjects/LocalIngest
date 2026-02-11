@@ -108,6 +108,28 @@ Le pipeline utilise des définitions de colonnes centralisées dans `config/colu
     *   Ajoutez le nom et le type dans la chaîne DDL : `nom_colonne TYPE,` (ex: `nouvelle_col STRING,`).
     *   **Attention** : Le nom doit correspondre EXACTEMENT (insensible à la casse) au nom dans le fichier CSV.
 
+**Exemple concret** :
+
+Fichier : `config/column_definitions.py`
+```python
+IPF_SCHEMA = """
+    cdpole STRING,
+    nopol STRING,
+    dtcrepol DATE,
+    nouvelle_colonne STRING  -- Ajoutée ici
+"""
+```
+
+Le pipeline lira maintenant `nouvelle_colonne` depuis les fichiers IPF.
+    *   Trouvez la définition du schéma (ex: `IPF_SCHEMA = "..."`).
+    *   Supprimez la colonne de la chaîne de caractères (format DDL SQL).
+    *   Le lecteur ignorera désormais cette colonne lors de la lecture.
+
+2.  **Pour ajouter une colonne existante dans le CSV** :
+    *   Allez dans `config/column_definitions.py`.
+    *   Ajoutez le nom et le type dans la chaîne DDL : `nom_colonne TYPE,` (ex: `nouvelle_col STRING,`).
+    *   **Attention** : Le nom doit correspondre EXACTEMENT (insensible à la casse) au nom dans le fichier CSV.
+
 ### ✨ Fonctionnalité Avancée : Colonnes Dynamiques
 
 C'est une fonctionnalité puissante qui permet d'ajouter des informations qui ne sont **pas dans le fichier**, mais qui dépendent du **nom du fichier**.
@@ -232,7 +254,7 @@ Pour tester sur un environnement local ou voir les logs en détail :
 | --------------------------------------- | ------------------------------------------------- |
 | Changer un chemin de fichier            | `config/config.yml`                               |
 | Changer le format d'un fichier d'entrée | `config/reading_config.json`                      |
-| Ajouter une colonne lue                 | `config/schemas.py`                               |
+| Ajouter une colonne lue                 | `config/column_definitions.py`                    |
 | Changer une règle de calcul métier      | `config/transformations/*.json`                   |
 | Changer la mémoire Spark                | `config/config.yml`                               |
 | Ajouter un nouveau flux                 | Créer un nouveau processor dans `src/processors/` |
