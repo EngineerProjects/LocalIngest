@@ -1,9 +1,7 @@
 # Workflow Emissions (Calcul des Primes)
 
 > **Documentation technique du flux de calcul des Primes Émises**  
-> **Object
-
-if** : Calculer les primes et commissions par police et garantie  
+> **Objectif** : Calculer les primes et commissions par police et garantie  
 > **Vision** : 202512 (Décembre 2025)
 
 ---

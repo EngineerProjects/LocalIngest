@@ -84,7 +84,7 @@ new_python/
 
 | Document                                                      | Description                          |
 | ------------------------------------------------------------- | ------------------------------------ |
-| [Flux PTF_MVT](docs/workflows/PTF_MVT_Workflow.md)            | Mouvements de portefeuille           |
+| [Flux PTF_MVT](docs/workflows/ptf_mvt_workflow.md)            | Mouvements de portefeuille           |
 | [Flux Capitaux](docs/workflows/Capitaux_Workflow.md)          | Extraction de capitaux               |
 | [Flux Émissions](docs/workflows/Emissions_Workflow.md)        | Émissions de primes                  |
 | [Guide de Configuration](docs/configs/Configuration_Guide.md) | Référence de configuration           |
