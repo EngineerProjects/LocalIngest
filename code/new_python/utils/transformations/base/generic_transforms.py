@@ -6,7 +6,7 @@ qui fonctionnent pour tous les domaines et processeurs.
 """
 
 from pyspark.sql import DataFrame # type: ignore
-from pyspark.sql.functions import col, when, lit, coalesce, expr # type: ignore
+from pyspark.sql.functions import col, when, lit, coalesce, expr as sql_expr # type: ignore
 from typing import Dict, Any, List, Optional
 import re
 from utils.loaders import get_default_loader
@@ -46,20 +46,33 @@ def apply_conditional_transform(
     for cond in conditions:
         cond_expr = build_condition(df, cond)
 
-        # Déterminer la valeur du résultat
         if 'result' in cond:
             result_expr = lit(cond['result'])
+
         elif 'result_value' in cond:
             result_expr = lit(cond['result_value'])
+
         elif 'result_col' in cond:
             result_col = cond['result_col'].lower()
             result_expr = col(result_col) if result_col in df.columns else lit(None)
+
         elif 'result_expr' in cond:
-            result_expr_str = cond['result_expr'].lower()
-            for c in df.columns:
-                if c in result_expr_str:
-                    result_expr_str = result_expr_str.replace(c, f'col("{c}")')
-            result_expr = eval(result_expr_str)
+            result_expr_str = cond['result_expr']
+
+            # Remplacement robuste des noms de colonnes par col("...")
+            for c in sorted(df.columns, key=len, reverse=True):
+                result_expr_str = re.sub(
+                    rf'\b{re.escape(c)}\b',
+                    f'col("{c}")',
+                    result_expr_str,
+                    flags=re.IGNORECASE
+                )
+
+            # Eval contrôlé
+            safe_globals = {"__builtins__": {}}
+            safe_locals = {"col": col, "lit": lit, "when": when, "coalesce": coalesce}
+            result_expr = eval(result_expr_str, safe_globals, safe_locals)
+
         else:
             result_expr = lit(None)
 
@@ -68,10 +81,7 @@ def apply_conditional_transform(
         else:
             expr = expr.when(cond_expr, result_expr)
 
-    if default is not None:
-        expr = expr.otherwise(lit(default))
-    else:
-        expr = expr.otherwise(lit(None))
+    expr = expr.otherwise(lit(default)) if default is not None else expr.otherwise(lit(None))
 
     return df.withColumn(target_col.lower(), expr)
 
@@ -148,60 +158,109 @@ def _build_expression_from_string(
     context: dict
 ) -> Any:
     """
-    Construit une expression PySpark à partir d'une chaîne avec substitution de colonnes et de contexte.
+    Construit une expression PySpark (Column) à partir d'une chaîne de configuration.
 
-    Gère :
-    - Noms de colonnes -> col("nom_colonne")
-    - Variables de contexte -> leurs valeurs
-    - Opérateurs : ==, !=, >, <, >=, <=, and, or, in, not
-    - Fonctions : is null, is not null, contains
+    Objectif :
+    - Permettre d'écrire des conditions "lisibles" dans les JSON (legacy),
+      puis de les transformer en expressions PySpark utilisables dans withColumn/when/filter.
+
+    IMPORTANT :
+    - On NE DOIT PAS faire expr_str.lower() car cela casse les littéraux :
+      ex: '4A6160' deviendrait '4a6160' => mauvais matching.
+    - On normalise seulement les références aux colonnes.
+
+    Fonctionnalités supportées :
+    - Remplacement des colonnes : noint -> col("noint")
+    - Remplacement de variables de contexte : VALID_CATS -> ['A','B']
+    - Null checks : "colX is null" / "colX is not null"
+    - Opérateurs logiques : and / or / not
+    - contains("xxx")
 
     Paramètres :
-        expr_str : Chaîne d'expression
-        columns : Liste des noms de colonnes du DataFrame
-        context : Dictionnaire de contexte avec variables
+        expr_str : expression en texte (issue du JSON)
+        columns : liste des colonnes existantes du DataFrame
+        context : variables/constantes utilisables dans les expressions
 
-    Retourne :
-        Expression de colonne PySpark
-
-    Exemple :
-        >>> expr = _build_expression_from_string(
-        ...     "price > 100 and category in VALID_CATS",
-        ...     ['price', 'category'],
-        ...     {'VALID_CATS': ['A', 'B']}
-        ... )
+    Retour :
+        Une expression PySpark de type Column
     """
-    expr_work = expr_str.lower()
+    # 0) Base de travail : on garde la chaîne telle quelle (sans lower-case global)
+    expr_work = expr_str
 
-    # Remplacer les variables de contexte d'abord
-    for key, value in context.items():
-        pattern = re.compile(re.escape(key), re.IGNORECASE)
-        expr_work = pattern.sub(repr(value), expr_work)
+    # 1) Substitution des variables de contexte (si présent)
+    # Exemple : "category in VALID_CATS" avec context={"VALID_CATS": ["A","B"]}
+    if context:
+        for key, value in context.items():
+            expr_work = re.sub(
+                re.escape(key),
+                repr(value),
+                expr_work,
+                flags=re.IGNORECASE
+            )
 
-    # Remplacer les noms de colonnes par des appels col()
+    # 2) Substitution des noms de colonnes en col("...")
+    # On trie par longueur décroissante pour éviter qu'une colonne courte
+    # remplace partiellement une colonne plus longue.
     sorted_cols = sorted(columns, key=len, reverse=True)
+
     for c in sorted_cols:
-        pattern = rf'\\b{re.escape(c)}\\b'
-        expr_work = re.sub(pattern, f'col("{c}")', expr_work)
+        # \b = frontière de mot (évite de remplacer des sous-parties)
+        expr_work = re.sub(
+            rf'\b{re.escape(c)}\b',
+            f'col("{c}")',
+            expr_work,
+            flags=re.IGNORECASE
+        )
 
-    # Remplacer les vérifications de null AVANT les opérateurs logiques
-    # Sinon 'is not null' devient 'is ~ null' à cause du remplacement ' not ' -> ' ~ '
-    expr_work = re.sub(r'(col\\(["\'][^"\']+["\']\\))\\s+is\\s+not\\s+null', r'\\1.isNotNull()', expr_work, flags=re.IGNORECASE)
-    expr_work = re.sub(r'(col\\(["\'][^"\']+["\']\\))\\s+is\\s+null', r'\\1.isNull()', expr_work, flags=re.IGNORECASE)
+    # 3) Gestion des tests de nullité AVANT la conversion and/or/not
+    # Sinon "is not null" peut être cassé si on remplace "not" trop tôt.
+    expr_work = re.sub(
+        r'(col\(["\'][^"\']+["\']\))\s+is\s+not\s+null',
+        r'\1.isNotNull()',
+        expr_work,
+        flags=re.IGNORECASE
+    )
+    expr_work = re.sub(
+        r'(col\(["\'][^"\']+["\']\))\s+is\s+null',
+        r'\1.isNull()',
+        expr_work,
+        flags=re.IGNORECASE
+    )
 
-    # Remplacer les opérateurs logiques APRÈS les vérifications de null
-    expr_work = expr_work.replace(' and ', ' & ')
-    expr_work = expr_work.replace(' or ', ' | ')
-    expr_work = expr_work.replace(' not ', ' ~ ')
+    # 4) Conversion des opérateurs logiques texte vers opérateurs PySpark
+    # (en respectant les frontières de mots)
+    expr_work = re.sub(r'\band\b', '&', expr_work, flags=re.IGNORECASE)
+    expr_work = re.sub(r'\bor\b', '|', expr_work, flags=re.IGNORECASE)
+    expr_work = re.sub(r'\bnot\b', '~', expr_work, flags=re.IGNORECASE)
 
-    # Remplacer contains
-    expr_work = re.sub(r'\\.contains\\s*\\(\\s*["\']([^"\']+)["\']\\s*\\)', r'.contains("\\1")', expr_work)
+    # 5) Normalisation de contains (optionnel, mais utile si config hétérogène)
+    # Exemple: col("nmclt").contains('abc') -> col("nmclt").contains("abc")
+    expr_work = re.sub(
+        r'\.contains\s*\(\s*["\']([^"\']+)["\']\s*\)',
+        r'.contains("\1")',
+        expr_work,
+        flags=re.IGNORECASE
+    )
 
-    # Évaluer et retourner
+    # 6) Évaluation contrôlée
+    # On limite l'espace de noms exposé à eval() pour éviter des surprises.
+    # (Toujours préférable de migrer vers condition_sql à terme.)
+    safe_globals = {"__builtins__": {}}
+    safe_locals = {
+        "col": col,
+        "lit": lit,
+        "when": when,
+        "coalesce": coalesce
+    }
+
     try:
-        return eval(expr_work)
+        return eval(expr_work, safe_globals, safe_locals)
     except Exception as e:
-        raise ValueError(f"Échec de la construction de l'expression depuis '{expr_str}': {e}\\nTraité : {expr_work}")
+        raise ValueError(
+            f"Échec de la construction de l'expression depuis '{expr_str}': {e}\n"
+            f"Traité : {expr_work}"
+        )
+
 
 def apply_transformations(
     df: DataFrame,
@@ -291,8 +350,12 @@ def apply_transformations(
             df = df.withColumn(col_name, expr)
 
         elif transform_type == 'flag':
-            condition = transform['condition']
-            cond_expr = _build_expression_from_string(condition, df.columns, context)
+            if transform.get('condition_sql'):
+                cond_expr = sql_expr(transform['condition_sql'])
+            else:
+                condition = transform['condition']
+                cond_expr = _build_expression_from_string(condition, df.columns, context)
+
             df = df.withColumn(col_name, when(cond_expr, lit(1)).otherwise(lit(0)))
 
         elif transform_type == 'mapping':

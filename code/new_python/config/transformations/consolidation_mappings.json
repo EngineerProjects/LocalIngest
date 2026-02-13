@@ -216,12 +216,12 @@
         {
           "column": "top_partenariat",
           "type": "flag",
-          "condition": "noint.isin(['4A6160', '4A6947', '4A6956'])"
+          "condition_sql": "noint IN ('4A6160', '4A6947', '4A6956')"
         },
         {
           "column": "top_berlioz",
           "type": "flag",
-          "condition": "noint == '4A5766'"
+          "condition_sql": "noint = '4A5766'"
         }
       ]
     }
