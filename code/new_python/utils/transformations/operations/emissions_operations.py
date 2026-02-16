@@ -62,7 +62,7 @@ def calculate_exercice_split(
     year_int, _ = extract_year_month_int(vision)
 
     df = df.withColumn('exercice',
-        when(col(year_col) >= lit(str(year_int)), lit('cou'))
+        when(col(year_col) >= lit(year_int), lit('cou'))
         .otherwise(lit('ant'))
     )
     return df
