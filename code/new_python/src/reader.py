@@ -653,7 +653,18 @@ class BronzeReader:
                 
             else:
                 # Autres types (Integer, Double, etc.) : conversion standard
-                select_exprs.append(col(c).cast(dtype).alias(c))
+                # IMPORTANT : Pour les nombres décimaux au format européen (virgule),
+                # remplacer la virgule par un point avant conversion
+                from pyspark.sql.types import DoubleType, FloatType, DecimalType
+                
+                if isinstance(dtype, (DoubleType, FloatType, DecimalType)):
+                    # Remplacer les virgules par des points pour les décimaux
+                    # Ex: "6,41" → "6.41" puis → 6.41 (double)
+                    col_cleaned = regexp_replace(col(c), ",", ".")
+                    select_exprs.append(col_cleaned.cast(dtype).alias(c))
+                else:
+                    # Pour les autres types (INT, etc.), conversion directe
+                    select_exprs.append(col(c).cast(dtype).alias(c))
 
         # Appliquer toutes les conversions en une seule opération
         return df.select(*select_exprs)

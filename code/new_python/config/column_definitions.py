@@ -286,11 +286,12 @@ type_produit STRING
 """
 
 # Référence émissions ONE BI
-# Source: rf_fr1_prm_dtl_midcorp_m_*.csv | 15 colonnes
+# Source: rf_fr1_prm_dtl_midcorp_m.csv | 68 colonnes au total, on garde uniquement celles nécessaires
 RF_FR1_PRM_DTL_MIDCORP_M_SCHEMA = """
-cd_niv_2_stc STRING, cd_int_stc STRING, nu_cnt_prm STRING, cd_prd_prm STRING, cd_statu_cts STRING,
-dt_cpta_cts STRING, dt_emis_cts DATE, dt_annu_cts DATE, mt_ht_cts DOUBLE, mt_cms_cts DOUBLE,
-cd_cat_min STRING, cd_gar_princ STRING, cd_gar_prospctiv STRING, nu_ex_ratt_cts INT, cd_marche STRING
+cd_niv_2_stc STRING, cd_int_stc STRING, nu_cnt_prm STRING, cd_prd_prm STRING, cd_marche STRING,
+cd_gar_prospctiv STRING, cd_cat_min STRING, cd_gar_princ STRING, cd_statu_cts STRING,
+dt_emis_cts DATE, dt_cpta_cts STRING, nu_ex_ratt_cts INT,
+mt_ht_cts DOUBLE, mt_cms_cts DOUBLE, dt_annu_cts DATE
 """
 
 # =============================================================================
