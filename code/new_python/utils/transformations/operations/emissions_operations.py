@@ -204,7 +204,9 @@ def aggregate_by_policy_guarantee(
 
     Logique :
     - Regroupe par vision, dircom, cdpole, nopol, cdprod, noint, cgarp, cmarch, cseg, cssseg, cd_cat_min
-    - Somme : primes_x, primes_n, mtcom_x
+    - Somme : mt_ht_cts → primes_x, mtcom → mtcom_x
+    - Max  : primes_n (déjà agrégé par le self-join exercice courant, même valeur
+              sur toutes les lignes du groupe → max = first = valeur correcte)
 
     Paramètres :
         df : DataFrame en entrée avec les données de primes
@@ -213,11 +215,11 @@ def aggregate_by_policy_guarantee(
     Retourne :
         DataFrame agrégé
     """
-    from pyspark.sql.functions import sum as _sum
+    from pyspark.sql.functions import sum as _sum, max as _max
 
     df_agg = df.groupBy(*group_cols).agg(
         _sum('mt_ht_cts').alias('primes_x'),
-        _sum('primes_n').alias('primes_n'),
+        _max('primes_n').alias('primes_n'),     # MAX et non SUM : évite la double agrégation
         _sum('mtcom').alias('mtcom_x')
     )
 

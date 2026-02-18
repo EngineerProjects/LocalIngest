@@ -167,28 +167,33 @@ class AZCapitauxProcessor(BaseProcessor):
         # self.logger.info(f"Après filtres : {df.count():,} enregistrements")
 
         self.logger.step(1, "Application des filtres métier Capitaux")
-        from pyspark.sql.functions import col
-        
+        from pyspark.sql.functions import col, trim, upper
+
         count_before = df.count()
-        
-        # Liste des intermédiaires fictifs à exclure (identique SAS)
+        self.logger.info(f"Données brutes : {count_before:,} enregistrements")
+
         EXCLUDED_NOINT = [
-            'H90061', '482001', '489090', '102030', 'H90036', 'H90059',
-            'H99045', 'H99059', '5B2000', '446000', '5R0001', '446118',
-            '4F1004', '4A1400', '4A1500', '4A1600', '4A1700', '4A1800',
-            '4A1900', '4F1004', '4L1010'
+            'H90061','482001','489090','102030','H90036','H90059',
+            'H99045','H99059','5B2000','446000','5R0001','446118',
+            '4F1004','4A1400','4A1500','4A1600','4A1700','4A1800',
+            '4A1900','4F1004','4L1010'
         ]
-        
+
+        # Normalisation légère (utile si espaces / casse)
+        cdri    = upper(trim(col("cdri")))
+        cdsitp  = trim(col("cdsitp"))
+        cdnatp  = upper(trim(col("cdnatp")))
+        cdprod  = trim(col("cdprod"))
+        noint   = trim(col("noint"))
+
         df = df.filter(
-            (col('cdri') != 'X') &                          # Exclusion risques X
-            (col('cdsitp') != '5') &                         # Exclusion situation 5
-            (~col('noint').isin(EXCLUDED_NOINT)) &            # Exclusion inter. fictifs
-            (col('cdprod') != '01073') &                      # Exclusion produit 01073
-            (col('cdnatp').isin('R', 'O', 'T')) &             # Natures R/O/T uniquement
-            (col('cmarch') == '6') &                          # Marché Construction
-            (col('csegt') == '2')                             # Segment type 2
+            (col("cdri").isNull()   | (cdri != "X")) &
+            (col("cdsitp").isNull() | (cdsitp != "5")) &
+            (col("noint").isNull()  | (~noint.isin(EXCLUDED_NOINT))) &
+            (col("cdprod").isNull() | (cdprod != "01073")) &
+            (col("cdnatp").isNull() | cdnatp.isin("R", "O", "T"))
         )
-        
+
         count_after = df.count()
         self.logger.info(
             f"Filtres Capitaux AZ : {count_before:,} → {count_after:,} "
@@ -306,6 +311,24 @@ class AZCapitauxProcessor(BaseProcessor):
         # Ajouter les segments commerciaux
         # AZ nécessite une jointure sur Code Produit + Code Pôle
         df = enrich_segmentation(df, reader, vision, include_cdpole=True, logger=self.logger)
+        
+        # --- Étape 8 : Filtres marché/segment post-segmentation ---
+        # cmarch et cseg viennent de la table de segmentation (source autoritaire)
+        # Le SAS filtre sur cmarch='6' + csegt='2' depuis le raw IPF,
+        # mais les parquets Python n'ont pas les mêmes valeurs brutes.
+        self.logger.step(8, "Filtre Marché Construction + Segment après segmentation")
+        from config.constants import MARKET_CODE
+        
+        count_before_seg_filter = df.count()
+        df = df.filter(
+            (col('cmarch') == MARKET_CODE.MARKET) &    # Marché Construction = '6'
+            (col('cseg') == '2')                        # Segment type 2
+        )
+        count_after_seg_filter = df.count()
+        self.logger.info(
+            f"Filtre marché/segment : {count_before_seg_filter:,} → {count_after_seg_filter:,} "
+            f"({count_before_seg_filter - count_after_seg_filter:,} exclues)"
+        )
         
         self.logger.success("Transformations Capitaux AZ terminées")
         return df
