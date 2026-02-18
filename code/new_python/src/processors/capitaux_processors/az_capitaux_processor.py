@@ -160,11 +160,40 @@ class AZCapitauxProcessor(BaseProcessor):
             capital_config = json.load(f)
         
         # --- Étape 1 : Filtres métier ---
-        self.logger.step(1, "Application des filtres métier")
-        from utils.transformations import apply_business_filters
-        filters = az_config.get('business_filters', {}).get('filters', [])
-        df = apply_business_filters(df, {'filters': filters}, self.logger)
-        self.logger.info(f"Après filtres : {df.count():,} enregistrements")
+        # self.logger.step(1, "Application des filtres métier")
+        # from utils.transformations import apply_business_filters
+        # filters = az_config.get('business_filters', {}).get('filters', [])
+        # df = apply_business_filters(df, {'filters': filters}, self.logger)
+        # self.logger.info(f"Après filtres : {df.count():,} enregistrements")
+
+        self.logger.step(1, "Application des filtres métier Capitaux")
+        from pyspark.sql.functions import col
+        
+        count_before = df.count()
+        
+        # Liste des intermédiaires fictifs à exclure (identique SAS)
+        EXCLUDED_NOINT = [
+            'H90061', '482001', '489090', '102030', 'H90036', 'H90059',
+            'H99045', 'H99059', '5B2000', '446000', '5R0001', '446118',
+            '4F1004', '4A1400', '4A1500', '4A1600', '4A1700', '4A1800',
+            '4A1900', '4F1004', '4L1010'
+        ]
+        
+        df = df.filter(
+            (col('cdri') != 'X') &                          # Exclusion risques X
+            (col('cdsitp') != '5') &                         # Exclusion situation 5
+            (~col('noint').isin(EXCLUDED_NOINT)) &            # Exclusion inter. fictifs
+            (col('cdprod') != '01073') &                      # Exclusion produit 01073
+            (col('cdnatp').isin('R', 'O', 'T')) &             # Natures R/O/T uniquement
+            (col('cmarch') == '6') &                          # Marché Construction
+            (col('csegt') == '2')                             # Segment type 2
+        )
+        
+        count_after = df.count()
+        self.logger.info(
+            f"Filtres Capitaux AZ : {count_before:,} → {count_after:,} "
+            f"({count_before - count_after:,} exclues)"
+        )
         
         # --- Étape 2 : Configuration des colonnes ---
         self.logger.step(2, "Standardisation des colonnes")
