@@ -187,7 +187,7 @@ def calculate_az_movements(
     # --- NBPTF ---
     nbptf_cond = (
         ~col('cssseg').isin(['5']) &  # Null-safe explicite (exclut les NULLs)
-        (col('cdnatp').isin('R', 'O')) &
+        (col('cdnatp').isin('R', 'O') & col('cdnatp').isNotNull()) &
         (
             ((col('cdsitp') == '1') & (col(creation_date) <= dtfin)) |
             ((col('cdsitp') == '3') & (col(termination_date) >  dtfin))
@@ -291,12 +291,12 @@ def calculate_azec_movements(
     # Conditions de base
     base_afn = (
         (col("etatpol") == "R") &
-        (~col("produit").isin("CNR", "DO0")) &
+        (~col("produit").isin("CNR", "DO0") & col("produit").isNotNull()) &
         (col("nbptf_non_migres_azec") == 1)
     )
     base_res = (
         (col("etatpol") == "R") &
-        (~col("produit").isin("CNR", "DO0")) &
+        (~col("produit").isin("CNR", "DO0") & col("produit").isNotNull()) &
         (col("nbptf_non_migres_azec") == 1)
     )
 
@@ -330,7 +330,7 @@ def calculate_azec_movements(
         (year_func(col("datresil")) == lit(annee))
     )
     res_not_in_list = (
-        ~col("produit").isin(AZEC_PRODUIT_LIST) &
+        (~col("produit").isin(AZEC_PRODUIT_LIST) & col("produit").isNotNull()) &
         (
             (
                 col("datfin").isNotNull() & col("datresil").isNotNull() &
@@ -360,7 +360,7 @@ def calculate_azec_movements(
             (col("etatpol") == "E") |
             ((col("etatpol") == "R") & (col("datfin") >= dtfinmn))
         ) &
-        (~col("produit").isin("DO0", "TRC", "CTR", "CNR"))
+        (~col("produit").isin("DO0", "TRC", "CTR", "CNR") & col("produit").isNotNull())
     )
     df = df.withColumn("nbptf", when(nbptf_cond, lit(1)).otherwise(lit(0)))
 
@@ -478,6 +478,7 @@ def calculate_exposures_azec(
     year_end = _to_date_lit(str(int(dates['dtdeb_an'][:4]) + 0) + "-12-31")  # annee = dtdeb_an.year
     denom_ytd = (datediff(year_end, dtdeb_an) + 1)
     denom_gli = datediff(dtfin, dtfinmn1)  # nb jours dans le mois courant
+    # Note: denom_gli is already correct (excludes dtfinmn1, includes dtfin)
 
     # Numérateurs (inclusif +1)
     num_ytd = (datediff(least(col("datfin"), dtfin), greatest(col("effetpol"), dtdeb_an)) + 1)

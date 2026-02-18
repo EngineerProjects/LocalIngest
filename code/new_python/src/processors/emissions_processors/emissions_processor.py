@@ -229,6 +229,7 @@ class EmissionsProcessor(BaseProcessor):
         
         # --- Étape 7 : Enrichissement Segmentation ---
         self.logger.step(7, "Enrichissement avec la segmentation")
+        
         from src.reader import BronzeReader
         from pathlib import Path
         
@@ -242,11 +243,6 @@ class EmissionsProcessor(BaseProcessor):
         # Ajouter les segments commerciaux via jointure
         # Note : Émissions nécessite une jointure sur cdprod ET cdpole spécifique
         df = enrich_segmentation(df, reader, vision, include_cdpole=True, logger=self.logger)
-        
-        # Filtrer pour ne garder que le marché Construction (Code 6)
-        if 'cmarch' in df.columns:
-            df = df.filter(col('cmarch') == MARKET_CODE.MARKET)
-            self.logger.info(f"Filtre marché Construction appliqué : reste {df.count():,} lignes")
         
         # --- Étape 8 : Agrégations finales ---
         self.logger.step(8, "Création des fichiers de sortie agrégés")

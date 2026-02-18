@@ -77,9 +77,9 @@ def extract_guarantee_code(
     Extrait le code de garantie du champ de garantie prospective.
 
     Logique :
-    - Extrait les caractères 3 à 5 de cd_gar_prospctiv
+    - Extrait les caractères 3 à 5 de cd_gar_prospctiv (pour CGARP)
     - Supprime les espaces (compress)
-
+    
     Paramètres :
         df : DataFrame en entrée
         source_col : Nom de la colonne source
