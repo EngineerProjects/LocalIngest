@@ -12,7 +12,7 @@ Logique métier :
 from pyspark.sql import DataFrame # type: ignore
 from pyspark.sql.functions import ( # type: ignore
     col, when, lit, year, month, dayofmonth, current_date,
-    date_format, concat, lpad, to_date, coalesce, substring
+    date_format, concat, lpad, to_date, coalesce, substring, datediff
 )
 from typing import Optional, Any, Dict
 
@@ -147,22 +147,52 @@ def index_capitals(
             # CAS 1 : Utiliser les coefficients PRPRVC existants
             # ═════════════════════════════════════════════════════════════════
             if index_col in df.columns:
-                # Ces sont les "coefficients d'évolution" = indices 1ère année
+                # Indice d'origine = PRPRVC
                 df = df.withColumn(
                     index_origin_col,
                     coalesce(col(index_col), lit(1.0))
                 )
-                # Pas de recherche d'indice cible dans ce cas
-                # Cible est implicitement 1.0 (montant indexé = original / prprvc)
-                df = df.withColumn(
-                    index_target_col,
-                    lit(1.0)
-                )
+
+                # Indice cible = lookup dans INDICES via CDPRVB + PUT(DATE, Z5.)
+                if index_table_df is not None and nature_col in df.columns:
+                    # Construire la clé cible au format SAS Z5
+                    df = df.withColumn(
+                        f"_temp_target_key_{i}",
+                        concat(
+                            col(nature_col),
+                            lpad(
+                                datediff(col(f"_temp_target_date_{i}"), lit("1960-01-01")).cast("string"),
+                                5, "0"
+                            )
+                        )
+                    )
+
+                    # Jointure pour l'indice cible
+                    _idx_tgt_alias = f"idx_target_cas1_{i}"
+                    df = df.join(
+                        index_table_df.select(
+                            col("index_key").alias(f"_target_key_cas1_{i}"),
+                            col("index_value").alias(_idx_tgt_alias)
+                        ),
+                        df[f"_temp_target_key_{i}"] == col(f"_target_key_cas1_{i}"),
+                        "left"
+                    ).drop(f"_target_key_cas1_{i}")
+
+                    df = df.withColumn(
+                        index_target_col,
+                        when(
+                            substring(col(nature_col), 1, 1) == "0",
+                            coalesce(col(_idx_tgt_alias), lit(1.0))
+                        ).otherwise(lit(1.0))
+                    ).drop(_idx_tgt_alias, f"_temp_target_key_{i}")
+                else:
+                    # Pas de table INDICES disponible — défaut à 1.0
+                    df = df.withColumn(index_target_col, lit(1.0))
 
                 if logger:
-                    logger.debug(f"{capital_col}: CAS 1 - Utilisation directe de PRPRVC{i} (pas de recherche INDICES)")
+                    logger.debug(f"{capital_col}: CAS 1 - INDXORIG=PRPRVC{i}, INDXINTG=lookup INDICES")
             else:
-                # Pas de données d'indice disponibles - utiliser ratio de 1.0 (pas d'indexation)
+                # Pas de données d'indice disponibles
                 df = df.withColumn(index_origin_col, lit(1.0))
                 df = df.withColumn(index_target_col, lit(1.0))
 
@@ -181,7 +211,10 @@ def index_capitals(
                 f"_temp_origin_key_{i}",
                 concat(
                     col(nature_col),
-                    date_format(col(contract_start_col), "MMddyy")  # TODO: Vérifier le format
+                    lpad(
+                        datediff(col(contract_start_col), lit("1960-01-01")).cast("string"),
+                        5, "0"
+                    )
                 )
             )
 
@@ -190,7 +223,10 @@ def index_capitals(
                 f"_temp_target_key_{i}",
                 concat(
                     col(nature_col),
-                    date_format(col(f"_temp_target_date_{i}"), "MMddyy")  # TODO: Vérifier le format
+                    lpad(
+                        datediff(col(f"_temp_target_date_{i}"), lit("1960-01-01")).cast("string"),
+                        5, "0"
+                    )
                 )
             )
 

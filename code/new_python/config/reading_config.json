@@ -266,6 +266,21 @@
             "filters": [],
             "location_type": "monthly"
         },
+        "rf_fr1_prm_dtl_midcorp_m": {
+            "description": "One BI Premium Detail - Construction market reference data",
+            "file_patterns": [
+                "rf_fr1_prm_dtl_midcorp_m_{vision}.csv"
+            ],
+            "schema": "rf_fr1_prm_dtl_midcorp_m",
+            "read_options": {
+                "sep": "|",
+                "header": true,
+                "encoding": "LATIN9",
+                "dateFormat": "dd/MM/yyyy"
+            },
+            "filters": [],
+            "location_type": "monthly"
+        },
         "_comment_ref": "FICHIERS DE RÉFÉRENCE : Données stables ou versionnées (stockées dans bronze/ref/)",
         "w6_basecli_inv": {
             "description": "Base client cumulative : répertoire des clients et leurs informations",
@@ -644,21 +659,6 @@
                 "sep": "|",
                 "header": true,
                 "encoding": "LATIN9"
-            },
-            "filters": [],
-            "location_type": "reference"
-        },
-        "rf_fr1_prm_dtl_midcorp_m": {
-            "description": "One BI Premium Detail - Construction market reference data",
-            "file_patterns": [
-                "rf_fr1_prm_dtl_midcorp_m.csv"
-            ],
-            "schema": "rf_fr1_prm_dtl_midcorp_m",
-            "read_options": {
-                "sep": "|",
-                "header": true,
-                "encoding": "LATIN9",
-                "dateFormat": "dd/MM/yyyy"
             },
             "filters": [],
             "location_type": "reference"

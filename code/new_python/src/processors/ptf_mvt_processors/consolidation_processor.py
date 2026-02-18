@@ -659,60 +659,169 @@ class ConsolidationProcessor(BaseProcessor):
 
         Ces tables contiennent des informations d'activité spécifiques pour certains produits
         qui ne sont pas dans le flux standard.
+
+        LOGIQUE:
+        - Charge IPFM0024, IPFM63, IPFM99 (Pôle 1 et 3 chacun)
+        - Harmonise vers colonnes : NOPOL, NOINT, CDPROD, CDPOLE, CDACTCONST, CDACTCONST2, CDNAF, MTCA_RIS
+        - Union (OUTER UNION CORR) de toutes les sources
+        - Jointure LEFT sur (NOPOL, CDPROD) avec les données principales
+        - TypeAct = "Multi" si CDACTCONST2 non vide, sinon "Mono"
+        - TOUJOURS crée TypeAct, même si TABSPEC est vide
         """
+        from pyspark.sql.functions import substring as spark_substring
+
         reader = BronzeReader(self.spark, self.config)
 
         try:
             # Construction du référentiel TABSPEC par union successive
-            df_tabspec = None
+            tabspec_parts = []
 
-            # Liste des sources à fusionner (Pôle 1 et 3 pour chaque type)
-            # IPFM0024 : Produits 0024
-            # IPFM63 : Produits 63
-            # IPFM99 : Produits 99
+            # ---------------------------------------------------------------
+            # IPFM0024 : cdactprf01 → CDACTCONST, cdactprf02 → CDACTCONST2
+            # CDNAF = NULL, MTCA_RIS = NULL
+            # ---------------------------------------------------------------
+            for file_group in ["ipfm0024_1", "ipfm0024_3"]:
+                try:
+                    df_src = reader.read_file_group(file_group, vision)
+                    if df_src is not None and df_src.count() > 0:
+                        df_part = df_src.select(
+                            col("nopol"),
+                            col("noint"),
+                            col("cdprod"),
+                            col("cdpole"),
+                            col("cdactprf01").alias("cdactconst"),
+                            col("cdactprf02").alias("cdactconst2"),
+                            lit(None).cast("string").alias("cdnaf_tabspec"),
+                            lit(None).cast("double").alias("mtca_ris"),
+                        )
+                        tabspec_parts.append(df_part)
+                        self.logger.debug(f"TABSPEC: {file_group} chargé ({df_src.count()} lignes)")
+                except Exception as e:
+                    self.logger.debug(f"TABSPEC: {file_group} non disponible : {e}")
 
-            # (Le code de chargement détaillé est masqué pour brièveté, mais la logique est :)
-            # 1. Lire chaque fichier
-            # 2. Harmoniser les colonnes (CDACTCONST, CDNAF...)
-            # 3. Union dans df_tabspec
+            # ---------------------------------------------------------------
+            # IPFM63 : actprin → CDACTCONST, actsec1 → CDACTCONST2
+            # cdnaf → CDNAF_TABSPEC, mtca1 → MTCA_RIS
+            # ---------------------------------------------------------------
+            for file_group in ["ipfm63_1", "ipfm63_3"]:
+                try:
+                    df_src = reader.read_file_group(file_group, vision)
+                    if df_src is not None and df_src.count() > 0:
+                        df_part = df_src.select(
+                            col("nopol"),
+                            col("noint"),
+                            col("cdprod"),
+                            col("cdpole"),
+                            col("actprin").alias("cdactconst"),
+                            col("actsec1").alias("cdactconst2"),
+                            col("cdnaf").alias("cdnaf_tabspec"),
+                            col("mtca1").cast("double").alias("mtca_ris"),
+                        )
+                        tabspec_parts.append(df_part)
+                        self.logger.debug(f"TABSPEC: {file_group} chargé ({df_src.count()} lignes)")
+                except Exception as e:
+                    self.logger.debug(f"TABSPEC: {file_group} non disponible : {e}")
 
-            # --- IMPLÉMENTATION SIMPLIFIÉE POUR LISIBILITÉ ---
-            # Dans la réalité, le code itère sur IPFM0024_1, _3, IPFM63_1, _3, etc.
-            # et fait l'union.
+            # ---------------------------------------------------------------
+            # IPFM99 : substr(cdacpr1, 1, 4) → CDACTCONST, cdacpr2 → CDACTCONST2
+            # CDNAF = NULL, mtca → MTCA_RIS
+            # ---------------------------------------------------------------
+            for file_group in ["ipfm99_1", "ipfm99_3"]:
+                try:
+                    df_src = reader.read_file_group(file_group, vision)
+                    if df_src is not None and df_src.count() > 0:
+                        df_part = df_src.select(
+                            col("nopol"),
+                            col("noint"),
+                            col("cdprod"),
+                            col("cdpole"),
+                            spark_substring(col("cdacpr1"), 1, 4).alias("cdactconst"),
+                            col("cdacpr2").alias("cdactconst2"),
+                            lit(None).cast("string").alias("cdnaf_tabspec"),
+                            col("mtca").cast("double").alias("mtca_ris"),
+                        )
+                        tabspec_parts.append(df_part)
+                        self.logger.debug(f"TABSPEC: {file_group} chargé ({df_src.count()} lignes)")
+                except Exception as e:
+                    self.logger.debug(f"TABSPEC: {file_group} non disponible : {e}")
 
-            # Si df_tabspec est vide, on sort
-            if df_tabspec is None or df_tabspec.count() == 0:
-                return df
+            # ---------------------------------------------------------------
+            # Union de toutes les parties et nettoyage (SAS : delete if missing(nopol))
+            # ---------------------------------------------------------------
+            if tabspec_parts:
+                from functools import reduce
 
-            # Jointure sur (NOPOL, CDPROD, CDPOLE)
-            df = df.join(df_tabspec, on=["nopol", "cdprod", "cdpole"], how="left")
-
-            # Mise à jour des colonnes avec les valeurs TABSPEC si présentes
-            # Actprin2 = Coalesce(Tabspec.ActConst, Original.ActPrin)
-            df = df.withColumn("actprin2", coalesce(col("cdactconst"), col("actprin")))
-
-            # cdnaf2 = Coalesce(Tabspec.cdnaf, Original.cdnaf)
-            df = df.withColumn("cdnaf2", coalesce(col("cdnaf_tabspec"), col("cdnaf")))
-
-            # TypeAct = "Multi" ou "Mono"
-            df = df.withColumn(
-                "typeact",
-                when(col("cdactconst2").isNotNull(), lit("Multi")).otherwise(
-                    lit("Mono")
-                ),
-            )
-
-            # Écrasement final
-            df = (
-                df.withColumn("actprin", col("actprin2"))
-                .withColumn("cdnaf", col("cdnaf2"))
-                .drop(
-                    "actprin2", "cdnaf2", "cdactconst", "cdactconst2", "cdnaf_tabspec"
+                df_tabspec = reduce(
+                    lambda a, b: a.unionByName(b, allowMissingColumns=True),
+                    tabspec_parts,
                 )
-            )
+                df_tabspec = df_tabspec.filter(col("nopol").isNotNull())
+
+                if df_tabspec.count() > 0:
+                    self.logger.info(f"TABSPEC construit : {df_tabspec.count()} enregistrements")
+
+                    # Jointure LEFT sur (NOPOL, CDPROD) — SAS ligne 515
+                    # NB : SAS joint sur (NOPOL, CDPROD) seulement, PAS CDPOLE
+                    df = df.join(
+                        df_tabspec.select(
+                            col("nopol").alias("_ts_nopol"),
+                            col("cdprod").alias("_ts_cdprod"),
+                            "cdactconst",
+                            "cdactconst2",
+                            "cdnaf_tabspec",
+                        ),
+                        (df["nopol"] == col("_ts_nopol"))
+                        & (df["cdprod"] == col("_ts_cdprod")),
+                        how="left",
+                    ).drop("_ts_nopol", "_ts_cdprod")
+
+                    # Mise à jour des colonnes avec les valeurs TABSPEC
+                    # Actprin2 = Coalesce(Tabspec.ActConst, Original.ActPrin)
+                    df = df.withColumn(
+                        "actprin2", coalesce(col("cdactconst"), col("actprin"))
+                    )
+
+                    # cdnaf2 = Coalesce(Tabspec.cdnaf_tabspec, Original.cdnaf)
+                    df = df.withColumn(
+                        "cdnaf2", coalesce(col("cdnaf_tabspec"), col("cdnaf"))
+                    )
+
+                    # TypeAct = "Multi" ou "Mono"
+                    df = df.withColumn(
+                        "typeact",
+                        when(col("cdactconst2").isNotNull(), lit("Multi")).otherwise(
+                            lit("Mono")
+                        ),
+                    )
+
+                    # Écrasement final
+                    df = (
+                        df.withColumn("actprin", col("actprin2"))
+                        .withColumn("cdnaf", col("cdnaf2"))
+                        .drop(
+                            "actprin2",
+                            "cdnaf2",
+                            "cdactconst",
+                            "cdactconst2",
+                            "cdnaf_tabspec",
+                        )
+                    )
+                else:
+                    self.logger.info("TABSPEC vide — typeact initialisé à 'Mono'")
+                    df = df.withColumn("typeact", lit("Mono"))
+            else:
+                # Aucun fichier IPFSPE disponible — typeact = "Mono" par défaut
+                # SAS crée TOUJOURS typeact même si TABSPEC est vide
+                self.logger.info(
+                    "Aucune source IPFSPE disponible — typeact initialisé à 'Mono'"
+                )
+                df = df.withColumn("typeact", lit("Mono"))
 
         except Exception as e:
             self.logger.warning(f"Enrichissement Activités Spéciales ignoré : {e}")
+            # Garantir que typeact existe même en cas d'erreur
+            if "typeact" not in df.columns:
+                df = df.withColumn("typeact", lit("Mono"))
 
         return df
 
@@ -803,6 +912,8 @@ class ConsolidationProcessor(BaseProcessor):
                         col("cdnaf").alias("cdnaf03_cli_3"),
                     ).dropDuplicates(["_c3_noclt"])
 
+                    df = df.withColumnRenamed("cdnaf03_cli", "_cdnaf03_cli_prev")
+
                     df = (
                         df.alias("a")
                         .join(
@@ -813,9 +924,10 @@ class ConsolidationProcessor(BaseProcessor):
                         .select(
                             "a.*",
                             coalesce(
-                                col("a.cdnaf03_cli"), col("c3.cdnaf03_cli_3")
+                                col("a._cdnaf03_cli_prev"), col("c3.cdnaf03_cli_3")
                             ).alias("cdnaf03_cli"),
                         )
+                        .drop("_cdnaf03_cli_prev")
                     )
 
                 self.logger.debug("Enrichissement Client (CDNAF03) effectué")

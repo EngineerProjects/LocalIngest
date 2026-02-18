@@ -18,7 +18,7 @@ vision:
 
 # Paramètres d'exécution
 runtime:
-  vision_: "202512"
+  vision_: "202601"
 
 # Configuration environnement (Dev/Prod)
 environment:
@@ -48,11 +48,11 @@ output:
 # Composants du pipeline
 components:
   ptf_mvt:
-    enabled: false
+    enabled: true
     description: "Mouvements de portefeuille (AZ + AZEC)"
 
   capitaux:
-    enabled: false
+    enabled: true
     description: "Extraction capitaux (SMP/LCI)"
 
   emissions:

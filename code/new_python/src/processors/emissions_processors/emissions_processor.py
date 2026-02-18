@@ -244,6 +244,17 @@ class EmissionsProcessor(BaseProcessor):
         # Note : Émissions nécessite une jointure sur cdprod ET cdpole spécifique
         df = enrich_segmentation(df, reader, vision, include_cdpole=True, logger=self.logger)
         
+        # Re-filtrage CMARCH='6' après segmentation
+        # La segmentation peut réattribuer un marché différent du cd_marche initial.
+        count_before = df.count()
+        df = df.filter(col('cmarch') == MARKET_CODE.MARKET)
+        count_after = df.count()
+        if count_before != count_after:
+            self.logger.info(
+                f"Re-filtre CMARCH='6' après segmentation : "
+                f"{count_before:,} → {count_after:,} ({count_before - count_after:,} exclues)"
+            )
+        
         # --- Étape 8 : Agrégations finales ---
         self.logger.step(8, "Création des fichiers de sortie agrégés")
         

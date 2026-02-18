@@ -188,9 +188,7 @@ class CapitauxConsolidationProcessor(BaseProcessor):
             # allowMissingColumns gère les différences mineures de schéma
             df_consolidated = df_az.unionByName(df_azec, allowMissingColumns=True)
             
-            # Déduplication : conserver une seule ligne par police
-            # On trie par police et pôle pour être déterministe
-            df_consolidated = df_consolidated.orderBy("nopol", "cdpole").dropDuplicates(["nopol"])
+            df_consolidated = df_consolidated.orderBy("nopol", "cdpole")
         else:
             # Si pas de données AZEC, la consolidation est égale aux données AZ
             df_consolidated = df_az
