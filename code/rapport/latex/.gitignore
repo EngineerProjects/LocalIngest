@@ -1,0 +1,22 @@
+# Fichiers de compilation LaTeX
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
+*.bcf
+*.run.xml
+
+# Fichiers générés par l'éditeur
+*.swp
+*~
+.vscode/
+
+# PDF généré (optionnel, on l'ignore généralement pour ne garder que le code source sur Git)
+*.pdf

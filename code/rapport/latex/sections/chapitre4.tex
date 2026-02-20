@@ -1,0 +1,177 @@
+\chapter{PRÉSENTATION ET ANALYSE DES RÉSULTATS}
+
+\section{Architecture finale implémentée}
+
+L'architecture médaillon définie en phase de conception a été intégralement déployée dans Azure Data Lake Storage selon la hiérarchie suivante :
+
+\begin{verbatim}
+{conteneur_datalake}/
+|-- bronze/
+|   |-- {YYYY}/{MM}/    <- données mensuelles (ipf16.csv, capitaux, primes...)
+|   `-- ref/            <- référentiels stables (ISIC, NAF, FFB, IRD Risk, SIRET)
+|-- silver/
+|   `-- {YYYY}/{MM}/    <- résultats intermédiaires par pipeline
+`-- gold/
+    `-- {YYYY}/{MM}/    <- cubes finaux consommables par la BI
+\end{verbatim}
+
+Le partitionnement temporel (\texttt{\{YYYY\}/\{MM\}/}) permet un traitement incrémental par vision mensuelle, en s'appuyant sur quarante-trois \textit{file groups} configurés avec des schémas Spark stricts.
+
+\section{Résultats par pipeline}
+
+Au total, l'architecture produit \textbf{sept fichiers Parquet distincts} par vision mensuelle traitée, répartis entre les tables intermédiaires (Silver) et les cubes finaux exploités par la BI (Gold).
+
+    \vspace{0.3cm}
+    \noindent\fbox{
+        \begin{minipage}{\textwidth}
+            \vspace{0.2cm}
+            \begin{center}
+                \textbf{\large Fichiers de sortie produits par vision mensuelle}
+            \end{center}
+            \vspace{0.1cm}
+            \begin{itemize}
+                \item \textbf{PTF Mouvements}
+                \begin{itemize}
+                    \item \textit{Silver} : \texttt{mvt\_const\_ptf\_\{vision\}.parquet} (Mouvements de portefeuille AZ)
+                    \item \textit{Silver} : \texttt{azec\_ptf\_\{vision\}.parquet} (Mouvements de portefeuille AZEC)
+                    \item \textbf{Gold} : \texttt{az\_azec\_ptf\_\{vision\}.parquet} (Cube consolidé PTF complet)
+                \end{itemize}
+                \item \textbf{Capitaux}
+                \begin{itemize}
+                    \item \textit{Silver} : \texttt{capitaux\_az\_\{vision\}.parquet} (Capitaux AZ avec indexation FFB)
+                    \item \textit{Silver} : \texttt{capitaux\_azec\_\{vision\}.parquet} (Capitaux AZEC avec indexation FFB)
+                    \item \textbf{Gold} : \texttt{az\_azec\_capitaux\_\{vision\}.parquet} (Cube consolidé Capitaux)
+                \end{itemize}
+                \item \textbf{Émissions}
+                \begin{itemize}
+                    \item \textbf{Gold} : \texttt{primes\_emises\_\{vision\}.parquet} (Primes par police et par garantie)
+                \end{itemize}
+            \end{itemize}
+            \vspace{0.2cm}
+        \end{minipage}
+    }
+    \vspace{0.3cm}
+
+\subsection{Pipeline PTF Mouvements}
+
+C'est le pipeline le plus complexe : il implique les canaux AZ et AZEC, quatorze étapes de transformation, et des enrichissements multiples. Il produit les tables Silver filtrées, puis les consolide dans le cube Gold. 
+Sur la vision de référence (décembre 2025), il ingère 70~907 lignes AZ et 16~124 lignes AZEC, pour produire \textbf{87~012 lignes consolidées} (Gold). Le fichier généré pèse \textasciitilde 23,4 Mo pour un temps d'exécution de huit minutes. La distribution du portefeuille par pôle (Tableau \ref{tab:distrib_ptf}) valide la bonne répartition post-consolidation.
+
+\begin{table}[H]
+    \centering
+    \caption{Distribution du portefeuille par pôle (pipeline PTF Mouvements, vision 202512)}
+    \label{tab:distrib_ptf}
+    \vspace{0.2cm}
+    \begin{tabularx}{\textwidth}{@{}l l X X X@{}}
+        \toprule
+        \textbf{Pôle} & \textbf{Canal} & \textbf{Polices Python} & \textbf{Polices SAS} & \textbf{Écart} \\
+        \midrule
+        Pôle 1 (Agent) & AZ & 32 319 & 32 319 & 0,00\% \\
+        Pôle 3 (Courtage) & AZ + AZEC & 54 693 & 54 693 & 0,00\% \\
+        \midrule
+        \textbf{Total} & & \textbf{87 012} & \textbf{87 012} & \textbf{0,00\%} \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+\subsection{Pipeline Capitaux}
+
+Ce pipeline extrait et applique l'indexation FFB financière aux garanties de construction. Sur la vision 202512, il traite 242~927 lignes AZ et 9~588 lignes AZEC, pour générer \textbf{248~438 lignes consolidées} (Gold) avec l'indexation intégralement appliquée, en environ cinq minutes.
+
+\subsection{Pipeline Émissions}
+
+Ce pipeline filtre les données de primes issues de One BI. Sur la vision 202512, les 1~173~238 lignes brutes sont réduites à \textbf{273~796} après exclusions métier (réduction de plus de 75\%). Le temps d'exécution est d'environ trois minutes. Les primes séparent correctement l'exercice courant (N) et les rappels antérieurs (X).
+
+\section{Validation de la parité fonctionnelle}
+
+La validation des sorties Python par rapport à SAS cible la période de référence 202512. La démarche (décrite précisément au chapitre 3) opère un contrôle graduel.
+
+\subsection{Résultats de validation structurelle}
+
+La validation structurelle vérifie l'existence des fichiers de sortie, la conformité des schémas (colonnes et types) et la cohérence globale des volumes. L'ensemble des tableaux de sortie Python présente les colonnes attendues avec les types corrects, sans valeur nulle inattendue sur les colonnes obligatoires.
+
+Un exemple détaillé de validation de la correction critique \texttt{CDPOLE} illustre le niveau de rigueur appliqué :
+
+\begin{table}[H]
+    \centering
+    \caption{Impact de la correction de l'assignation CDPOLE sur la distribution du portefeuille (vision 202512)}
+    \label{tab:correction_cdpole}
+    \vspace{0.2cm}
+    \begin{tabularx}{\textwidth}{@{}l X X X l@{}}
+        \toprule
+        \textbf{Pôle} & \textbf{Avant correction} & \textbf{Après correction} & \textbf{Référence SAS} & \textbf{Statut} \\
+        \midrule
+        Pôle 1 : Agent & 32 319 & 32 319 & 32 319 & Match \\
+        Pôle 3 : Courtage & 38 569 & \textbf{54 693} & 54 693 & Match \\
+        Sans cdpole (AZEC non assigné) & \textbf{16 124} & 0 & 0 & Corrigé \\
+        \midrule
+        \textbf{Total} & \textbf{87 012} & \textbf{87 012} & \textbf{87 012} & \textbf{Match} \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+Avant correction, les seize mille cent vingt-quatre polices du canal AZEC n'avaient aucune valeur pour la colonne \texttt{cdpole} : le processor AZEC Python créait bien les colonnes de résultats mais omettait d'assigner le code pôle, contrairement à SAS qui le fait explicitement dans la macro de consolidation en affectant systématiquement la valeur \texttt{"3"} à toutes les lignes AZEC. Après correction, ces lignes sont intégralement rattachées au Pôle 3 (Courtage), conformément à la logique SAS. La sortie finale ne contient donc aucune valeur manquante sur \texttt{cdpole}.
+
+\subsection{Résultats de validation fonctionnelle (KPI)}
+
+La validation fonctionnelle s'appuie sur le fichier \texttt{kpis\_results.xlsx} qui centralise les comparaisons SAS vs Python pour chaque indicateur métier, décomposé par code produit (\texttt{CDPROD}). Les tests sont conduits sur dix visions mensuelles distinctes.
+
+\textbf{Pipeline PTF Mouvements} : sur la vision 202512, la parité est totale, 87~012 polices en SAS, 87~012 en Python, zéro écart sur l'ensemble des KPI métier (NBPTF, NBAFN, NBRES, NOPOL) pour chaque code produit testé. Le nombre de colonnes est également identique, 110 colonnes en SAS, 110 en Python. Les captures d'écran de la feuille KPI PTF du fichier \texttt{kpis\_results.xlsx} illustrent ce résultat sur plusieurs visions concurrentes.
+
+\textbf{Pipelines Capitaux et Émissions} : les grilles de comparaison identiques sont établies pour les indicateurs \texttt{VALUE\_INSURED}, \texttt{RISQUE\_DIRECT} (Capitaux) et \texttt{Primes\_N}, \texttt{Primes\_X}, \texttt{MTCOM\_X} (Émissions). Ces comparaisons sont en cours sur les dix visions prévues ; les résultats complets sont consignés dans \texttt{kpis\_results.xlsx}.
+
+\subsection{Statut de la validation complète et point d'attention Émissions}
+
+La validation structurelle et les KPI de volume sont intégralement confirmés sur la vision de référence 202512. Pour les pipelines PTF Mouvements et Capitaux, les tables de sortie Python présentent exactement le même nombre de lignes que les tables SAS de référence, les mêmes distributions par code pôle (\texttt{cdpole}) et par code produit (\texttt{cdprod}), et une structure colonne identique. Cette parité, obtenue sur l'ensemble des indicateurs de volume et de structure, atteste de la rigueur de l'implémentation et de la fidélité de la migration par rapport au comportement SAS original. La validation de parité sur dix visions historiques distinctes, couvrant les sorties Capitaux et Émissions sur des périodes supplémentaires, est en cours et fera l'objet d'un rapport de validation complet dans le fichier \texttt{kpis\_results.xlsx}.
+
+\section{Analyse de la structure du code Python produit}
+
+\subsection{Modularité et réutilisabilité}
+
+L'un des critères d'évaluation de la migration, au-delà de la parité fonctionnelle, est la qualité du code produit et sa capacité à être étendu aux autres marchés du programme SAS EXIST. Sur ce point, la structure adoptée présente plusieurs atouts significatifs.
+
+Le \textbf{module de lecture} (\texttt{src/reader.py}) est entièrement générique : il lit n'importe quel file group défini dans \texttt{reading\_config.json}, gère les partitionnements mensuels et référentiels, et valide les schémas automatiquement. Il est directement réutilisable sans modification pour les futurs datamarts.
+
+Les \textbf{fonctions utilitaires} (\texttt{utils/transformations/}) encapsulent les traitements métier les plus récurrents, filtres de marché, calcul des expositions, extraction des capitaux, enrichissement ISIC, sous forme de fonctions paramétrées. La configuration externalisée en JSON permet d'adapter ces fonctions à un autre marché (Auto, Habitation) en modifiant uniquement les fichiers de configuration, sans réécriture de logique.
+
+Le \textbf{logger personnalisé} (\texttt{utils/logger.py}) offre des méthodes dédiées aux points de contrôle (\texttt{step()}, \texttt{section()}, \texttt{success()}) qui produisent des logs structurés incluant systématiquement les comptages de lignes. Ces logs ont joué un rôle central dans le diagnostic des anomalies lors de la validation.
+
+\subsection{Configuration externalisée}
+
+La totalité des paramètres métier susceptibles d'évoluer est externalisée en dehors du code applicatif : définition des 43 \textit{file groups} avec schémas et chemins (\texttt{reading\_config.json}), constantes métier (\texttt{constants.py}), filtres et mappings de colonnes (\texttt{transformations/*.json}), et schémas Spark formalisés (\texttt{column\_definitions.py}). Le détail de l'organisation des fichiers de configuration est documenté dans le dépôt GitHub.
+
+Cette architecture de configuration garantit qu'une modification des règles métier (ajout d'un intermédiaire exclu, changement d'un seuil de filtrage) n'implique aucune modification du code Python et peut être réalisée par un analyste dont la maîtrise du code ne serait pas nécessairement approfondie.
+
+\subsection{Comparaison qualitative SAS vs Python}
+
+Au-delà de la parité fonctionnelle des résultats, la migration apporte des améliorations qualitatives structurelles au regard du système source :
+
+    \vspace{0.3cm}
+    \noindent\fbox{
+        \begin{minipage}{\textwidth}
+            \vspace{0.2cm}
+            \begin{center}
+                \textbf{\large Comparaison qualitative : SAS vs Python (Maintenabilité)}
+            \end{center}
+            \vspace{0.1cm}
+            \begin{itemize}
+                \item \textbf{Versionnement du code et Documentation}
+                \begin{itemize}
+                    \item \textit{SAS} : Versioning manuel, documentation absente ou externe.
+                    \item \textbf{Python} : Intégration Git complète, double documentation (technique et fonctionnelle).
+                \end{itemize}
+                \item \textbf{Modularité et Configuration}
+                \begin{itemize}
+                    \item \textit{SAS} : Macros monolithiques ($\sim$500 à 1 000 lignes), paramètres codés en dur.
+                    \item \textbf{Python} : Modules isolés ($\sim$150 lignes), configuration externalisée et modifiable (JSON).
+                \end{itemize}
+                \item \textbf{Traçabilité, Testabilité et Scalabilité}
+                \begin{itemize}
+                    \item \textit{SAS} : Logs limités, tests complexes, infrastructure rigide.
+                    \item \textbf{Python} : Logs structurés avec comptages, tests unitaires, exécution élastique via Spark.
+                \end{itemize}
+            \end{itemize}
+            \vspace{0.2cm}
+        \end{minipage}
+    }
+    \vspace{0.3cm}

@@ -1,0 +1,267 @@
+\documentclass[11pt,a4paper]{report}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage[left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm]{geometry}
+\usepackage{eso-pic}
+\usepackage{tikz}
+\usepackage{lmodern}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{float}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{setspace}
+\usepackage{tocloft}
+\usepackage{enumitem}
+\renewcommand{\cftchapleader}{\cftdotfill{\cftdotsep}}
+
+\usepackage{xurl}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    citecolor=black,
+    urlcolor=midBlue,
+    linktoc=all
+}
+
+% --- Réduction de l'espace au-dessus des chapitres ---
+\titleclass{\chapter}{straight}
+\titleformat{\chapter}[block]{\normalfont\LARGE\bfseries\color{darkBlue}}{\chaptertitlename\ \thechapter\ .\ }{0pt}{\LARGE}
+\titleformat{name=\chapter,numberless}[block]{\normalfont\LARGE\bfseries\color{darkBlue}}{}{0pt}{\LARGE}
+\titlespacing*{\chapter}{0pt}{40pt}{20pt}
+\titlespacing*{name=\chapter,numberless}{0pt}{40pt}{20pt}
+
+%% ─── Palette ──────────────────────────────────────────────────────────────────
+\definecolor{darkBlue}{RGB}{0, 38, 100}
+\definecolor{midBlue}{RGB}{0, 90, 170}
+\definecolor{bgPage}{RGB}{247, 249, 252}
+\definecolor{boxBorder}{RGB}{180, 210, 240}
+\definecolor{footBg}{RGB}{235, 240, 248}
+
+%% ─── Hauteurs ─────────────────────────────────────────────────────────────────
+\newlength{\headerH} \setlength{\headerH}{3.8cm}
+\newlength{\footH}   \setlength{\footH}{2.8cm}
+
+\begin{document}
+
+\newgeometry{left=0cm,right=0cm,top=0cm,bottom=0cm}
+\begin{titlepage}
+
+%% ── Fonds de page ─────────────────────────────────────────────────────────────
+\AddToShipoutPicture*{%
+    % Fond gris doux sur toute la page
+    \AtPageLowerLeft{%
+        \color{bgPage}\rule{\paperwidth}{\paperheight}%
+    }%
+    % Bande blanche en haut pour les logos
+    \AtPageUpperLeft{%
+        \raisebox{-\headerH}{%
+            \color{white}\rule{\paperwidth}{\headerH}%
+        }%
+    }%
+    % Séparateur bleu foncé fin sous la bande blanche
+    \AtPageUpperLeft{%
+        \raisebox{-\headerH}{%
+            \raisebox{-0.18cm}{%
+                \color{darkBlue}\rule{\paperwidth}{0.18cm}%
+            }%
+        }%
+    }%
+    % Bande footer colorée en bas
+    \AtPageLowerLeft{%
+        \color{footBg}\rule{\paperwidth}{\footH}%
+    }%
+    % Séparateur bleu foncé fin au-dessus du footer
+    \AtPageLowerLeft{%
+        \raisebox{\footH}{%
+            \color{darkBlue}\rule{\paperwidth}{0.18cm}%
+        }%
+    }%
+}
+
+\vspace*{0pt}
+
+%% ── HEADER : logos sur fond blanc ─────────────────────────────────────────────
+\noindent
+\begin{minipage}[c][\headerH][c]{\paperwidth}
+    \hspace{1.8cm}%
+    \begin{minipage}[c]{0.38\paperwidth}
+        \raggedright
+        \includegraphics[height=2.0cm,keepaspectratio]{images/logo_ecole_junia.png}
+    \end{minipage}%
+    \hfill
+    \begin{minipage}[c]{0.38\paperwidth}
+        \raggedleft
+        \includegraphics[height=1.8cm,keepaspectratio]{images/logo_allianz.png}
+    \end{minipage}%
+    \hspace{1.8cm}
+\end{minipage}
+
+\vspace{0.18cm}% séparateur
+
+%% ── CORPS ─────────────────────────────────────────────────────────────────────
+\noindent\hspace{1.8cm}%
+\begin{minipage}[t]{\dimexpr\paperwidth - 3.6cm\relax}
+
+    \vspace{1.3cm}
+
+    %----- Étiquette
+    \begin{center}
+        {\color{midBlue}\Large\bfseries\sffamily\MakeUppercase{Rapport de Stage}}
+    \end{center}
+
+    \vspace{0.6cm}
+
+    %----- Filet supérieur
+    \noindent{\color{midBlue}\rule{\linewidth}{1.2pt}}
+
+    \vspace{0.8cm}
+
+    %----- Titre
+    \begin{center}
+        {\color{darkBlue}\fontsize{23}{30}\selectfont\bfseries\sffamily
+         Migration du Datamart Construction\\[8pt]
+         de SAS vers PySpark}
+    \end{center}
+
+    \vspace{0.8cm}
+
+    %----- Filet inférieur
+    \noindent{\color{midBlue}\rule{\linewidth}{1.2pt}}
+
+    \vspace{1.0cm}
+
+    %----- Mention
+    \begin{center}
+        {\color{midBlue}\large\itshape
+         Pour la validation du stage de fin d'études}
+    \end{center}
+
+    \vspace{1.8cm}
+
+    %----- Encadré Informations
+    \noindent
+    \begin{tikzpicture}
+        \node[
+            draw=boxBorder,
+            fill=white,
+            line width=1pt,
+            rounded corners=7pt,
+            inner sep=0pt,
+            text width=\linewidth - 2pt
+        ]{%
+            % En-tête
+            \noindent\colorbox{darkBlue}{%
+                \begin{minipage}{\dimexpr\linewidth - 2\fboxsep\relax}
+                    \vspace{0.22cm}\centering
+                    {\color{white}\large\bfseries\sffamily\MakeUppercase{Informations}}
+                    \vspace{0.22cm}
+                \end{minipage}%
+            }%
+            \vspace{0.55cm}
+            % Contenu
+            \begin{minipage}{\dimexpr\linewidth - 2cm\relax}
+                \hspace{1cm}%
+                \begin{minipage}{\dimexpr\linewidth - 3cm\relax}
+                    \setlength{\baselineskip}{2.4em}
+                    \large  % texte plus grand dans la boîte
+                    {\color{darkBlue}\bfseries\sffamily Auteur :}
+                        ~O. A. Stephane KPOVIESSI\\
+                    {\color{darkBlue}\bfseries\sffamily Formation :}
+                        ~BIG DATA \textemdash{} Promotion 2025\\[0.5cm]
+                    {\color{darkBlue}\bfseries\sffamily Entreprise d'accueil :}
+                        ~Allianz France\\
+                    {\hspace{4.8cm}\normalsize\color{gray}%
+                        Direction P4D \textemdash{} Pôle Advanced Data \& Climate}\\[0.5cm]
+                    {\color{darkBlue}\bfseries\sffamily Encadrant entreprise :}
+                        ~M. ROMEO TOHOUN\\
+                    {\color{darkBlue}\bfseries\sffamily Enseignant référent :}
+                        ~Madame Feryal WINDAL
+                \end{minipage}
+            \end{minipage}
+            \vspace{0.65cm}
+        };
+    \end{tikzpicture}
+
+\end{minipage}
+
+\vfill
+
+%% ── FOOTER : même structure que le header ─────────────────────────────────────
+\noindent
+\begin{minipage}[c][\footH][c]{\paperwidth}
+    \hspace{1.8cm}%
+    %----- Adresse JUNIA à gauche (miroir du logo JUNIA)
+    \begin{minipage}[c]{0.30\paperwidth}
+        \raggedright
+        {\color{darkBlue}\small\sffamily
+            \textbf{JUNIA ISEN Lille}\\
+            41 boulevard Vauban\\
+            59000 Lille}
+    \end{minipage}%
+    \hfill
+    %----- Date au centre
+    \begin{minipage}[c]{0.20\paperwidth}
+        \centering
+        {\color{darkBlue}\large\bfseries\sffamily Avril 2025}
+    \end{minipage}%
+    \hfill
+    %----- Adresse Allianz à droite (miroir du logo Allianz)
+    \begin{minipage}[c]{0.30\paperwidth}
+        \raggedleft
+        {\color{darkBlue}\small\sffamily
+            \textbf{Allianz France}\\
+            1 cours Michelet, CS 30051\\
+            92076 Paris La Défense Cedex}
+    \end{minipage}%
+    \hspace{1.8cm}
+\end{minipage}
+
+\end{titlepage}
+\restoregeometry
+
+\cleardoublepage
+
+\input{sections/resume}
+
+\cleardoublepage
+\input{sections/remerciements}
+
+\cleardoublepage
+\input{sections/lexique}
+
+% ==========================================
+% SOMMAIRE (Table des matières)
+% ==========================================
+\cleardoublepage
+\phantomsection
+\addcontentsline{toc}{chapter}{Sommaire}
+\renewcommand{\contentsname}{Sommaire}
+\tableofcontents
+
+\cleardoublepage
+
+\input{sections/introduction}
+
+\input{sections/chapitre1}
+
+\input{sections/chapitre2}
+
+\input{sections/chapitre3}
+
+\input{sections/chapitre4}
+
+\input{sections/chapitre5}
+
+\cleardoublepage
+\input{sections/conclusion}
+
+\cleardoublepage
+\input{sections/bibliographie}
+
+\end{document}
