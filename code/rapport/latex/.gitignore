@@ -19,4 +19,4 @@
 .vscode/
 
 # PDF généré (optionnel, on l'ignore généralement pour ne garder que le code source sur Git)
-*.pdf
+# *.pdf
