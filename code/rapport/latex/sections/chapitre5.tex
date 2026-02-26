@@ -4,49 +4,42 @@
 
 \subsection*{Ce qui a bien fonctionné}
 
-Le résultat le plus concret est simple : les trois pipelines tournent, les sorties PTF et Capitaux sont identiques au SAS, et la documentation existait. Aucun de ces trois points n'était acquis au départ.
+Le résultat le plus concret est simple : les trois pipelines tournent, les sorties PTF et Capitaux sont identiques au SAS, et une documentation complète existe désormais. Aucun de ces trois points n’était acquis au départ.
 
-Le choix d'\textbf{analyser avant de coder} a été le bon. Deux semaines investies dans l'analyse du code SAS ont évité des erreurs d'interprétation qui auraient pu passer inaperçues jusqu'à la validation finale. C'est contre-intuitif pour un développeur, mais sur un projet de migration sans documentation initiale, c'est indispensable.
+Le choix d’\textbf{analyser avant de coder} a été déterminant. Les deux semaines initiales consacrées à la lecture du code SAS ont évité de nombreuses erreurs d’interprétation qui auraient été difficiles à rattraper en fin de projet. Sur une migration sans documentation initiale, c’était indispensable.
 
-L'\textbf{architecture médaillon} a aussi montré son utilité pendant la validation : chaque couche étant persistée, il a été possible d'inspecter les données à chaque étape et d'isoler précisément l'origine d'une divergence. Sans cette séparation, déboguer la correction \texttt{cdpole} aurait été bien plus laborieux.
+L’\textbf{architecture médaillon} a aussi été un vrai avantage pendant la validation. Comme chaque couche est persistée, il est possible de vérifier les données étape par étape et d’identifier précisément l’origine d’une divergence. Sans cette séparation, déboguer la correction \texttt{cdpole} aurait été beaucoup plus complexe.
 
-La \textbf{configuration externalisée} s'est révélée très pratique à l'usage. Corriger un filtre d'exclusion ou ajouter un code produit n'implique pas de toucher au code Python, juste modifier un fichier JSON. C'est une vraie différence par rapport au SAS où les paramètres étaient éparpillés dans le code.
+Enfin, la \textbf{configuration externalisée} s’est révélée très pratique : corriger un filtre ou ajouter un code produit ne nécessite pas de modifier le code Python, seulement un fichier JSON. C’est l’opposé de SAS, où les paramètres étaient éparpillés dans le code.
 
 \subsection*{Ce qui a été difficile}
 
-La principale contrainte a été \textbf{l'absence totale de documentation SAS}. Toute la logique de traitement résidait dans le code, dans des macros imbriquées et des noms de variables peu expressifs. Cela a ralenti le démarrage et a créé un risque résiduel : malgré le soin apporté à l'analyse, il est impossible d'exclure complètement des règles implicites qui auraient pu passer inaperçues.
+La difficulté principale a été \textbf{l’absence totale de documentation SAS}. Toute la logique se trouvait dans des macros imbriquées, avec des variables peu explicites. Cela a ralenti le démarrage et laisse toujours un risque résiduel : certaines règles implicites peuvent exister sans être visibles dans le code.
 
-L'\textbf{accès aux données de test} a aussi été compliqué. Les protocoles de sécurité Azure d'Allianz sont stricts, et plusieurs transformations ont dû être développées sans données réelles. Le délai entre une demande d'accès et sa réalisation effective a parfois allongé les cycles de correction de plusieurs jours. C'est une contrainte inhérente au contexte industriel, mais elle doit être anticipée dans le planning des migrations futures.
+L’\textbf{accès aux données de test} a également été un défi. Les règles de sécurité Azure d’Allianz sont strictes et l’obtention d’extraits réels pouvait prendre du temps. Plusieurs transformations ont dû être codées sans données réelles, puis ajustées une fois l’accès obtenu.
 
 \section{Positionnement par rapport aux pratiques de l'industrie}
 
-La solution s'aligne bien avec les standards actuels du data engineering. L'architecture médaillon est aujourd'hui la recommandation centrale de Databricks pour les projets lakehouse, et le choix d'Azure Databricks correspond à la stratégie cloud du groupe Allianz, qui a standardisé ses infrastructures sur Azure depuis 2022.
+La solution développée est cohérente avec les standards actuels du data engineering. L’architecture médaillon est la recommandation de référence pour les architectures \textit{lakehouse}, et le choix d’Azure Databricks correspond à la stratégie cloud d’Allianz.
 
-Par rapport à d'autres approches observées dans l'assurance, notamment les migrations vers Pandas qui atteignent leurs limites sur des volumes de quelques gigaoctets, PySpark garantit la capacité à traiter des volumes bien supérieurs au datamart Construction actuel sans refonte. Le respect des conventions PEP 8, des types Python et d'une structure modulaire représente aussi une rupture nette avec le code SAS d'origine, qui ne suivait aucune convention formelle.
+Par rapport à d’autres approches observées dans l’assurance, notamment celles basées sur Pandas qui atteignent vite leurs limites, PySpark permet de traiter des volumes bien supérieurs. La structure modulaire du code, conforme aux conventions Python, marque aussi une vraie rupture avec le SAS d’origine.
 
 \section{Ce que ça apporte à Allianz France}
 
-Trois gains concrets sont attendus :
+Trois bénéfices concrets ressortent :
 
 \begin{itemize}
-    \item \textbf{Réduction des coûts de licences} : SAS est un logiciel propriétaire coûteux. Le passage à une stack Python open source sur une infrastructure Azure déjà en place supprime ce poste de dépense récurrent.
-    \item \textbf{Scalabilité} : là où le serveur SAS est une ressource à capacité fixe, un cluster Spark sur Azure s'adaptte dynamiquement au volume à traiter. L'ajout de nouvelles visions historiques ou l'augmentation du périmètre n'impliquent aucun investissement supplémentaire en infrastructure.
-    \item \textbf{Capitalisation documentaire} : avant ce projet, la connaissance du datamart Construction était uniquement contenue dans un code non maintenu. Elle est maintenant dans plusieurs documents accessibles à toute l'équipe. Cet actif est durable, indépendamment du sort du projet de migration.
+    \item \textbf{Réduction des coûts} : la migration permet à terme de réduire les licences SAS.
+    \item \textbf{Scalabilité} : Spark s’adapte automatiquement aux volumes croissants, ce qui n’est pas le cas de l’environnement SAS actuel.
+    \item \textbf{Capitalisation documentaire} : avant le projet, la connaissance du datamart Construction était uniquement dans le code SAS. Elle est maintenant formalisée dans plusieurs documents utilisables par toute l’équipe.
 \end{itemize}
 
-Deux points de vigilance méritent d'être mentionnés. Le \textbf{double environnement}, SAS et Python coexistant tant que la validation n'est pas complète, a un coût opérationnel qui doit être provisionné. Et la \textbf{montée en compétences PySpark} pour les profils historiquement SAS demande un accompagnement qui ne peut pas être improvisé.
+Deux points de vigilance se dégagent également : la période de coexistence SAS/Python, qui a un coût opérationnel, et la montée en compétences PySpark des équipes, qui doit être accompagnée.
 
 \section{Perspectives}
 
-\textbf{Court terme} : finaliser la validation de parité sur dix visions historiques pour les pipelines Capitaux et Émissions. Une fois cette étape franchie, le pipeline PTF Mouvements est prêt pour une mise en production.
+\textbf{Court terme} : finaliser la validation des dix visions historiques pour les pipelines Capitaux et Émissions. Le pipeline PTF Mouvements est déjà stabilisé.
 
-\textbf{Moyen terme} : le framework développé, module de lecture, logger, configuration JSON, structure de projet, est directement réutilisable pour les quatre marchés suivants (Auto, Habitation, Santé, Épargne). Les prochaines migrations pourront se concentrer sur les règles métier spécifiques à chaque marché, sans repartir de zéro pour les briques communes. Quatre recommandations découlent de l'expérience de ce premier prototype :
+\textbf{Moyen terme} : réutiliser le framework développé (module de lecture, logger, configuration JSON, structure de projet) pour les quatre marchés suivants : Auto, Habitation, Santé et Épargne. Les prochaines migrations pourront se concentrer sur les règles métier spécifiques plutôt que sur les briques techniques.
 
-\begin{enumerate}
-    \item Commencer par la documentation fonctionnelle avant tout développement.
-    \item Intégrer les délais d'accès aux données Azure dans le planning prévisionnel.
-    \item Réutiliser les modules génériques sans les réécrire.
-    \item Organiser des revues de parité intermédiaires tout au long du développement.
-\end{enumerate}
-
-\textbf{Long terme} : quand tous les marchés seront migrés et validés, l'infrastructure SAS pourra être désengagée. L'évolution vers Delta Lake, format ACID avec \textit{time travel}, est une amélioration naturelle à envisager pour les marchés suivants.
+\textbf{Long terme} : lorsque tous les marchés auront été migrés, l’infrastructure SAS pourra être désactivée. Une évolution naturelle sera l’utilisation avancée de Delta Lake (ACID, time travel) pour les marchés futurs.

@@ -13,12 +13,12 @@ Le datamart Construction alimente trois types d'analyses principales. Les \textb
 
 Les utilisateurs principaux de ce datamart sont les actuaires de la direction P4D, les équipes de pricing qui calibrent les tarifs commerciaux, les contrôleurs de gestion qui suivent la rentabilité du marché, et les équipes de pilotage qui produisent les reportings pour la direction générale et les autorités de régulation. La disponibilité et la fiabilité de ce datamart sont donc critiques pour le fonctionnement quotidien de l'entreprise.
 
-La figure \ref{fig:general_sas} ci-dessous illustre la vue d'ensemble du datamart Construction en SAS : les trois sources de données principales (IMS pour le portefeuille AZ et AZEC, OneBI pour les émissions, et les référentiels métier) alimentent trois pipelines distincts produisant trois cubes analytiques finaux.
+La figure \ref{fig:general_sas} ci-dessous illustre la vue d'ensemble du datamart Construction en SAS : les trois sources de données principales (IMS pour le portefeuille AZ et AZEC, OneBI pour les émissions, et les référentiels métier) alimentent trois pipelines distincts produisant trois sorties analytiques finaux.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.8\textwidth]{schemas/general_sas_architecture.png}
-    \caption{Vue d'ensemble de l'architecture du datamart Construction : sources de données, transformations et cubes analytiques produits (Source : documentation interne Allianz France, 2024)}
+    \caption{Vue d'ensemble de l'architecture du datamart Construction : sources de données, transformations et sorties analytiques produits}
     \label{fig:general_sas}
 \end{figure}
 
@@ -28,12 +28,12 @@ L'implémentation actuelle du datamart Construction repose sur une architecture 
 
 L'architecture SAS suit un modèle monolithique où toutes les transformations sont enchaînées dans un flux linéaire. Les données brutes, stockées sous forme de fichiers CSV sur des serveurs partagés, sont lues par les premiers fichiers SAS qui appliquent des filtres métier de base (marché Construction, exclusion des polices annulées). Les fichiers suivants enrichissent progressivement ces données : extraction des capitaux depuis des champs texte, calculs des mouvements de portefeuille, jointures avec des tables de référence (nomenclatures NAF, codes ISIC, données IRD), calculs d'indexation, et enfin agrégation pour produire les tables finales.
 
-Comme le montre la figure \ref{fig:sas_detail}, l'architecture détaillée du datamart décompose les traitements en trois pipelines indépendants. Le \textbf{pipeline Capitaux} (partie gauche) extrait les capitaux historiques et actuels, applique l'indexation à valeur économique par rapport aux indices FFB, puis consolide les données AZ et AZEC en un cube final. Le \textbf{pipeline Portefeuille et Mouvements} (partie centrale) réalise l'extraction des données de portefeuille, le nettoyage et l'harmonisation des structures AZ/AZEC, la fusion intelligente des deux canaux de distribution, l'enrichissement métier (segmentation produits, indicateurs AFN/RES, codes ISIC), et enfin l'enrichissement DataRisk pour produire les cubes PTF finaux. Le \textbf{pipeline Émissions} (partie droite) centralise les données One BI, applique un nettoyage et une validation, réalise la segmentation et la classification produits, et agrège les primes par police et par garantie.
+Comme le montre la figure \ref{fig:sas_detail}, l'architecture détaillée du datamart décompose les traitements en trois pipelines indépendants. Le \textbf{pipeline Capitaux} (partie gauche) extrait les capitaux historiques et actuels, applique l'indexation à valeur économique par rapport aux indices FFB, puis consolide les données AZ et AZEC en un sortie final. Le \textbf{pipeline Portefeuille et Mouvements} (partie centrale) réalise l'extraction des données de portefeuille, le nettoyage et l'harmonisation des structures AZ/AZEC, la fusion intelligente des deux canaux de distribution, l'enrichissement métier (segmentation produits, indicateurs AFN/RES, codes ISIC), et enfin l'enrichissement DataRisk pour produire les sorties PTF finaux. Le \textbf{pipeline Émissions} (partie droite) centralise les données One BI, applique un nettoyage et une validation, réalise la segmentation et la classification produits, et agrège les primes par police et par garantie.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=1\textwidth]{schemas/sas_detail_architecture_flow.png}
-    \caption{Architecture détaillée des flux de données : sources, transformations par étape et tables de sortie des trois pipelines du datamart Construction (Source : documentation interne Allianz France, 2024)}
+    \caption{Architecture détaillée des flux de données : sources, transformations par étape et tables de sortie des trois pipelines du datamart Construction}
     \label{fig:sas_detail}
 \end{figure}
 
@@ -81,7 +81,7 @@ Comme l'illustre la figure \ref{fig:python_archi}, les données transitent de la
 \begin{figure}[H]
     \centering
     \includegraphics[width=1\textwidth]{schemas/python_architecture.png}
-    \caption{Architecture médaillon implémentée : flux de données des sources vers les couches Bronze, Silver et Gold stockées dans Azure Data Lake Storage (ADLS), traitées par Apache Spark et PySpark (Source : documentation interne Allianz France, 2024)}
+    \caption{Architecture médaillon implémentée : flux de données des sources vers les couches Bronze, Silver et Gold stockées dans Azure Data Lake Storage (ADLS), traitées par Apache Spark et PySpark}
     \label{fig:python_archi}
 \end{figure}
 
@@ -89,7 +89,7 @@ La \textbf{couche Bronze} constitue la zone d'ingestion brute. Les données y ar
 
 La \textbf{couche Silver} est la couche de transformation métier. Les données brutes de Bronze y sont nettoyées (correction des encodages, standardisation des types de données, gestion des valeurs nulles), filtrées selon les règles métier (marché Construction, exclusion des polices annulées), et enrichies (calculs des mouvements AFN/RES/PTF, extraction des capitaux, calculs d'indexation). Le format Parquet est utilisé pour cette couche, garantissant des performances optimales pour les lectures ultérieures.
 
-La \textbf{couche Gold} est la couche de consommation finale. Elle contient les données consolidées, prêtes pour l'analyse et la Business Intelligence. Pour le datamart Construction, la couche Gold réalise notamment la fusion des données AZ et AZEC, les enrichissements complets (IRD Risk, données clients, codes ISIC), et produit les trois cubes analytiques finaux (PTF\_MVT, AZ\_AZEC\_CAPITAUX, PRIMES\_EMISES).
+La \textbf{couche Gold} est la couche de consommation finale. Elle contient les données consolidées, prêtes pour l'analyse et la Business Intelligence. Pour le datamart Construction, la couche Gold réalise notamment la fusion des données AZ et AZEC, les enrichissements complets (IRD Risk, données clients, codes ISIC), et produit les trois sorties analytiques finaux (PTF\_MVT, AZ\_AZEC\_CAPITAUX, PRIMES\_EMISES).
 
 Le tableau \ref{tab:comparison} synthétise les différences principales entre l'architecture SAS existante et l'architecture médaillon cible :
 
@@ -122,9 +122,9 @@ Ce tableau comparatif confirme que la migration vers PySpark et l'architecture m
 
 \subsection{Tendances de migration dans l'industrie}
 
-La migration des infrastructures SAS vers des technologies open source est une tendance de fond observée dans de nombreux secteurs, en particulier dans les services financiers et l'assurance. Les principales motivations identifiées sont la réduction des coûts de licences, la montée en popularité de Python auprès des nouvelles générations de data scientists, et l'adoption généralisée du cloud computing (Numeum, 2024).
+La migration des infrastructures SAS vers des technologies open source est une tendance de fond observée dans de nombreux secteurs, en particulier dans les services financiers et l'assurance. Les principales motivations identifiées sont la réduction des coûts de licences, la montée en popularité de Python auprès des nouvelles générations de data scientists, et l'adoption généralisée du cloud computing.
 
-Dans le secteur de l'assurance spécifiquement, les contraintes réglementaires (Solvabilité II, IFRS 17) ont conduit les acteurs à moderniser leurs chaînes de traitement de données pour améliorer la traçabilité, l'auditabilité et la reproductibilité des calculs actuariels. L'architecture médaillon, telle que décrite par Databricks (2024), répond précisément à ces exigences en garantissant une séparation claire entre les données brutes, les transformations intermédiaires et les résultats finaux.
+Dans le secteur de l'assurance spécifiquement, les contraintes réglementaires (Solvabilité II, IFRS 17) ont conduit les acteurs à moderniser leurs chaînes de traitement de données pour améliorer la traçabilité, l'auditabilité et la reproductibilité des calculs actuariels. L'architecture médaillon, telle que décrite par Databricks, répond précisément à ces exigences en garantissant une séparation claire entre les données brutes, les transformations intermédiaires et les résultats finaux.
 
 \subsection{Défis techniques connus}
 

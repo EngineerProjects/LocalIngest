@@ -33,7 +33,7 @@ Le tableau \ref{tab:methodologie} présente la vue d'ensemble des cinq phases et
 
 \subsection{Équipe et cadre de travail}
 
-Le projet s'est déroulé au sein d'une équipe restreinte composée du stagiaire et de son maître de stage, M. Romeo TOHOUN, expert data du pôle Advanced Data \& Climate. Des points d'avancement hebdomadaires ont permis de valider les choix techniques, de lever les ambiguïtés métier et d'orienter les priorités de développement. La collaboration avec M. Alain VOSS, expert assurance de l'équipe, a été essentielle pour comprendre les mécanismes assurantiels sous-jacents aux règles métier codées en SAS.
+Le projet s'est déroulé au sein d'une équipe restreinte composée du stagiaire et de son maître de stage, Romeo TOHOUN, data scientist et sa responsable hiérarchique Caroline BOUCHON dans le pôle Advanced Data \& Climate. Des points d'avancement hebdomadaires ont permis de valider les choix techniques, de lever les ambiguïtés métier et d'orienter les priorités de développement. La collaboration avec M. Alain VOSS, expert assurance de l'équipe, a été essentielle pour comprendre les mécanismes assurantiels sous-jacents aux règles métier codées en SAS.
 
 \section{Phase 1 : Analyse et documentation du code SAS existant}
 
@@ -65,11 +65,9 @@ La \textbf{version technique détaillée}, destinée aux développeurs, document
 
 \subsection{Évaluation des options architecturales}
 
-Suite à l'analyse du code SAS, trois options d'architecture ont été évaluées et présentées lors d'une réunion de cadrage avec le maître de stage.
+Suite à l'analyse du code SAS, deux options d'architecture ont été évaluées et présentées lors d'une réunion de cadrage avec le maître de stage.
 
 La \textbf{réplication à l'identique} aurait consisté à reproduire la structure SAS en Python (un script Python par fichier SAS). Cette option présentait l'avantage d'être simple à valider par comparaison directe, mais elle aurait conservé l'ensemble des défauts de l'architecture monolithique source : séquentialité, couplage fort entre les modules, absence de séparation des responsabilités.
-
-L'\textbf{architecture hybride Bronze/Gold}, sans couche Silver intermédiaire, aurait simplifié l'implémentation mais au prix d'une perte des avantages de traçabilité : en cas d'erreur, il aurait fallu recommencer les traitements depuis les données brutes sans avoir de point de contrôle intermédiaire.
 
 L'\textbf{architecture médaillon complète} (Bronze/Silver/Gold), standard de l'industrie tel que décrit dans le chapitre 2, a été retenue. Cette option nécessitait un effort de développement initial plus important, mais offrait les garanties de qualité, de traçabilité et d'évolutivité requises pour un système en production.
 
@@ -98,12 +96,12 @@ Les choix technologiques ont été validés en cohérence avec l'infrastructure 
         \toprule
         \textbf{Composant} & \textbf{Technologie} & \textbf{Rôle} \\
         \midrule
-        Langage & Python 3.9+ & Développement des pipelines \\
+        Langage & Python 3.11+ & Développement des pipelines \\
         Framework de traitement & PySpark 3.x & Traitement distribué des DataFrames \\
         Format de stockage & Parquet & Optimisation lectures/écritures \\
         Configuration & JSON / YAML & Externalisation des règles métier \\
         Versioning & Git & Traçabilité du code \\
-        Environnement de dev & Local Spark & Tests et mise au point \\
+        Environnement de dev & ADP (tout pré‑installé) & Tests et mise au point \\
         \bottomrule
     \end{tabularx}
 \end{table}
@@ -116,15 +114,15 @@ Avant de démarrer toute implémentation, un effort systématique de recensement
 
 \subsection{Fichier 1 : inventaire des règles de gestion}
 
-Le premier fichier Excel (\texttt{REGLES\_GESTION\_CONSTRUCTION.xlsx}) recense l'ensemble des règles métier du datamart, soit \textbf{soixante-douze règles} réparties sur les trois pipelines. Chaque règle est documentée avec un identifiant unique, le pipeline concerné, une description de la règle, la référence précise au code SAS source (fichier et numéro de ligne), l'implémentation Python correspondante et un statut de suivi (À faire / En cours / Fait / Validé).
+Le premier fichier Excel (\texttt{datamart\_construction\_regle\_de\_gestion.xlsx}) recense l'ensemble des règles métier du datamart, soit \textbf{soixante-douze règles} réparties sur les trois pipelines. Chaque règle est documentée avec un identifiant unique, le pipeline concerné, une description de la règle, la référence précise au code SAS source (fichier et numéro de ligne) et l'implémentation Python correspondante.
 
 Ce fichier a rempli un double rôle : \textbf{checklist d'implémentation} pendant la phase de développement (chaque règle étant cochée après implémentation et validation), et \textbf{base de traçabilité} permettant de vérifier après coup que chaque comportement SAS est bien couvert par le code Python.
 
 \subsection{Fichier 2 : recensement des datasets sources}
 
-Le second fichier Excel (\texttt{DATASETS\_SOURCES\_CONSTRUCTION.xlsx}) inventorie l'ensemble des sources de données du datamart. Au total, \textbf{quarante-cinq groupes de fichiers} (\textit{file groups}) ont été identifiés, couvrant les données mensuelles de portefeuille (fichiers IPF), les données de capitaux et garanties (POLIC\_CU, CAPITXCU), les référentiels métier (segmentation, ISIC, NAF, FFB), et les données de primes (One BI). Pour chaque dataset, le fichier précise la table SAS source, le fichier SAS qui l'utilise, le type (mensuel ou référentiel), le format, et sa disponibilité dans le datalake Azure.
+La seconde feuille du même fichier inventorie l'ensemble des sources de données du datamart. Au total, \textbf{quarante-cinq groupes de fichiers} (\textit{file groups}) ont été identifiés, couvrant les données mensuelles de portefeuille (fichiers IPF), les données de capitaux et garanties (POLIC\_CU, CAPITXCU), les référentiels métier (segmentation, ISIC, NAF, FFB), et les données de primes (One BI). Pour chaque dataset, le fichier précise la table SAS source, le fichier SAS qui l'utilise, la version (mensuel ou référentiel) et le type (entrée source ou sortie).
 
-Cette dernière information s'est révélée particulièrement précieuse : plusieurs datasets référencés dans le code SAS n'étaient pas disponibles dans le datalake au moment du projet (\texttt{cproduit.csv}, \texttt{prdcap.csv}, \texttt{lob.csv}). Leur identification précoce a permis de les déclarer optionnels en Python et de gérer leur absence de manière gracieuse, évitant des blocages lors de l'exécution.
+Cette dernière information s'est révélée particulièrement précieuse : plusieurs datasets référencés dans le code SAS n'étaient pas disponibles dans le datalake au moment du projet (\texttt{cproduit.csv}, \texttt{prdcap.csv}, \texttt{lob.csv}, ...). Leur identification précoce a permis de les déclarer optionnels en Python et de gérer leur absence de manière gracieuse, évitant des blocages lors de l'exécution.
 
 \section{Phase 4 : Implémentation des pipelines Python}
 
@@ -219,51 +217,35 @@ L'ensemble des travaux du stage a produit quatre catégories de livrables :
         \begin{minipage}{\textwidth}
             \vspace{0.2cm}
             \begin{center}
-                \textbf{\large Synthèse des livrables produits lors du stage}
+                {\large \textbf{Synthèse des livrables produits lors du stage}}
             \end{center}
-            \vspace{0.1cm}
-            \begin{itemize}
-                \item \textbf{Documentation fonctionnelle}
-                \begin{itemize}
-                    \item \texttt{SAS\_DOCUMENTATION.md} : Explication complète du code SAS.
-                    \item \texttt{REGLES\_GESTION\_CONSTRUCTION.xlsx} : $\sim$72 règles métier tracées et référencées.
-                    \item \texttt{DATASETS\_SOURCES\_CONSTRUCTION.xlsx} : 45 datasets inventoriés.
-                \end{itemize}
-                
-                \item \textbf{Développement Logiciel (\texttt{github allianz})}
-                \begin{itemize}
-                    \item Code Python complet ($\sim$15 000 lignes) organisé en modules.
-                    \item 3 pipelines finaux (PTF Mouvements, Capitaux, Émissions).
-                    \item Boilerplate/Framework réutilisable pour les futurs datamarts.
-                \end{itemize}
-                
-                \item \textbf{Assurance Qualité}
-                \begin{itemize}
-                    \item Rapports de validation : Comparaisons strictes (KPI) Python vs SAS.
-                \end{itemize}
+            \vspace{0.4em}
+
+            \textbf{1. Documentation Fonctionnelle \& Analyse SAS}
+            \begin{itemize}[leftmargin=1.2em]
+                \item \texttt{general\_sas\_architecture.drawio} — \emph{Architecture générale SAS (datamart).}
+                \item \texttt{sas\_detail\_flow\_architecture.drawio} — \emph{Architecture détaillée des trois workflows SAS.}
+                \item \texttt{documentation\_datamart\_construction\_sas\_26112025.pptx} — \emph{Présentation complète (logique métier, traitements, organisation).}
+                \item \texttt{Architecture\_Générale\_doc\_sas.docx} — \emph{Explication de la documentation générale du code SAS.}
+                \item \texttt{Analyse de l'Architecture SAS Construction.md} — \emph{Documentation détaillée (Markdown).}
+            \end{itemize}
+
+            \textbf{2. Documentation Métier (Règles \& Datasets)}
+            \begin{itemize}[leftmargin=1.2em]
+                \item \texttt{datamart\_construction\_regle\_de\_gestion.xlsx} — \emph{72 règles métier + 45 datasets inventoriés.}
+            \end{itemize}
+
+            \textbf{3. Développement Python}
+            \begin{itemize}[leftmargin=1.2em]
+                \item \texttt{python\_architecture.excalidraw} — \emph{Architecture Medallion (Bronze $\to$ Silver $\to$ Gold), modules et pipelines.}
+                \item \emph{Pipelines Python alignés avec SAS (dépôt GitHub interne Allianz).}
+            \end{itemize}
+
+            \textbf{4. Assurance Qualité (QA)}
+            \begin{itemize}[leftmargin=1.2em]
+                \item \texttt{kpis\_results.xlsx} — \emph{Comparaisons SAS vs Python (KPI, écarts, performances).}
             \end{itemize}
             \vspace{0.2cm}
         \end{minipage}
     }
     \vspace{0.3cm}
-
-\subsection{Calendrier du projet}
-
-Le tableau \ref{tab:timeline} présente la répartition des activités semaine par semaine sur la durée du stage.
-
-\begin{figure}[H]
-    \centering
-    % \includegraphics[width=\textwidth]{schemas/timeline_projet.png}
-    \framebox[\textwidth]{
-        \begin{minipage}{0.9\textwidth}
-            \centering
-            \vspace{4cm}
-            Espace réservé pour l'image du calendrier \\
-            \vspace{0.5cm}
-            \textit{(Ajouter l'image sous le nom \texttt{schemas/timeline\_projet.png} puis décommenter la ligne \texttt{\textbackslash includegraphics})}
-            \vspace{4cm}
-        \end{minipage}
-    }
-    \caption{Timeline du projet : répartition des phases et livrables par semaine}
-    \label{fig:timeline}
-\end{figure}
