@@ -207,7 +207,7 @@ class PTFMVTOrchestrator(BaseOrchestrator):
         Copie les fichiers de risque IRD vers la couche Gold si activé.
         """
         # Vérifier si la copie IRD est activée (par défaut non)
-        run_ird = _get_bool_env("RUN_IRD", "0")
+        run_ird = _get_bool_env("RUN_IRD", "1")
         
         if not run_ird:
             self.logger.section("ÉTAPE 4 : Copie des fichiers IRD vers Gold (IGNORÉE)")
