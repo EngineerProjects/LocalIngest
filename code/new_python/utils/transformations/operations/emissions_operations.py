@@ -59,10 +59,13 @@ def calculate_exercice_split(
         DataFrame avec la colonne exercice ajoutée
     """
     from utils.helpers import extract_year_month_int
+    from pyspark.sql.functions import trim
+
     year_int, _ = extract_year_month_int(vision)
+    year_str = str(year_int)
 
     df = df.withColumn('exercice',
-        when(col(year_col) >= lit(year_int), lit('cou'))
+        when(trim(col(year_col).cast('string')) >= lit(year_str), lit('cou'))
         .otherwise(lit('ant'))
     )
     return df
@@ -110,8 +113,10 @@ def apply_emissions_filters(
     1. Filtre marché construction (cd_marche = '6')
     2. Filtre date comptable (dt_cpta_cts <= vision)
     3. Intermédiaires exclus
-    4. Exclusions produit/garantie
-    5. Exclusions catégories
+    4. Exclusions produit/garantie (combinaisons préfixe/code)
+    5. Garanties exclues (180, 183, 184, 185)
+    6. Produit exclu (01073)
+    7. Catégories 792/793 et garantie 00400
 
     Paramètres :
         df : DataFrame en entrée
@@ -204,9 +209,12 @@ def aggregate_by_policy_guarantee(
 
     Logique :
     - Regroupe par vision, dircom, cdpole, nopol, cdprod, noint, cgarp, cmarch, cseg, cssseg, cd_cat_min
-    - Somme : mt_ht_cts → primes_x, mtcom → mtcom_x
-    - Max  : primes_n (déjà agrégé par le self-join exercice courant, même valeur
-              sur toutes les lignes du groupe → max = first = valeur correcte)
+    - Somme : mt_ht_cts → primes_x (toutes lignes, exercice courant + antérieur)
+    - Somme : primes_n   → primes_n (exercice courant uniquement, pré-calculé en amont via jointure)
+    - Somme : mtcom → mtcom_x
+
+    Note : SUM(primes_n) est correct ici car après l'enrichissement segmentation,
+    plusieurs lignes peuvent exister par groupe — la somme les consolide correctement.
 
     Paramètres :
         df : DataFrame en entrée avec les données de primes
@@ -215,12 +223,12 @@ def aggregate_by_policy_guarantee(
     Retourne :
         DataFrame agrégé
     """
-    from pyspark.sql.functions import sum as _sum, max as _max
+    from pyspark.sql.functions import sum as _sum
 
     df_agg = df.groupBy(*group_cols).agg(
-        _sum('mt_ht_cts').alias('primes_x'),
-        _max('primes_n').alias('primes_n'),     # MAX et non SUM : évite la double agrégation
-        _sum('mtcom').alias('mtcom_x')
+        _sum('mt_ht_cts').alias('primes_x'),   # Total toutes lignes
+        _sum('primes_n').alias('primes_n'),     # Exercice courant (pré-calculé)
+        _sum('mtcom').alias('mtcom_x')          # Total commissions
     )
 
     return df_agg

@@ -1,0 +1,352 @@
+{
+    "_comment": "Mapping source ADLS → Bronze pour tous les fichiers du pipeline Construction.",
+    "_doc": "Chaque entrée correspond à un file_pattern de reading_config.json. Le script data_loader.py lit ce fichier pour savoir où charger chaque fichier si absent du Bronze.",
+    "_placeholders": "Remplacer STORAGE_ACCOUNT, SOURCE_CONTAINER et les paths par les valeurs réelles.",
+
+    "storage": {
+        "account_name":       "STORAGE_ACCOUNT.dfs.core.windows.net",
+        "bronze_container":   "bronze",
+        "source_container":   "SOURCE_CONTAINER",
+        "monthly_path":       "construction/{year}/{month}",
+        "reference_path":     "construction/ref"
+    },
+
+    "files": {
+
+        "_comment_monthly": "=== FICHIERS MENSUELS (bronze/construction/YYYY/MM/) ===",
+
+        "ipf16.csv": {
+            "description":       "Portefeuille Agents Pôle 1 (IPFE16)",
+            "source_path":       "ipfe16/ipf16.csv",
+            "location_type":     "monthly",
+            "vision_in_source":  false,
+            "optional":          false
+        },
+        "ipf36.csv": {
+            "description":       "Portefeuille Courtiers Pôle 3 (IPFE36)",
+            "source_path":       "ipfe36/ipf36.csv",
+            "location_type":     "monthly",
+            "vision_in_source":  false,
+            "optional":          false
+        },
+        "ipfm199.csv": {
+            "description":       "Montants CA produit 01099 Pôle 1",
+            "source_path":       "ipfm99/ipfm199.csv",
+            "location_type":     "monthly",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "ipfm399.csv": {
+            "description":       "Montants CA produit 01099 Pôle 3",
+            "source_path":       "ipfm99/ipfm399.csv",
+            "location_type":     "monthly",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "ipfm0024_1.csv": {
+            "description":       "Activités par produit Agents Pôle 1 (IPFM0024)",
+            "source_path":       "ipfm0024/ipfm0024_1.csv",
+            "location_type":     "monthly",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "ipfm0024_3.csv": {
+            "description":       "Activités par produit Courtiers Pôle 3 (IPFM0024)",
+            "source_path":       "ipfm0024/ipfm0024_3.csv",
+            "location_type":     "monthly",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "ipfm63_1.csv": {
+            "description":       "Activités professionnelles Agents Pôle 1 (IPFM63)",
+            "source_path":       "ipfm63/ipfm63_1.csv",
+            "location_type":     "monthly",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "ipfm63_3.csv": {
+            "description":       "Activités professionnelles Courtiers Pôle 3 (IPFM63)",
+            "source_path":       "ipfm63/ipfm63_3.csv",
+            "location_type":     "monthly",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "ipfm99_1.csv": {
+            "description":       "Activités génériques Agents Pôle 1 (IPFM99)",
+            "source_path":       "ipfm99_spe/ipfm99_1.csv",
+            "location_type":     "monthly",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "ipfm99_3.csv": {
+            "description":       "Activités génériques Courtiers Pôle 3 (IPFM99)",
+            "source_path":       "ipfm99_spe/ipfm99_3.csv",
+            "location_type":     "monthly",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "ird_risk_q45_{vision}.csv": {
+            "description":       "IRD Risk Q45 — données risques mensuelles",
+            "source_path":       "ird/ird_risk_q45_{vision}.csv",
+            "location_type":     "monthly",
+            "vision_in_source":  true,
+            "optional":          false
+        },
+        "ird_risk_q46_{vision}.csv": {
+            "description":       "IRD Risk Q46 — données risques mensuelles",
+            "source_path":       "ird/ird_risk_q46_{vision}.csv",
+            "location_type":     "monthly",
+            "vision_in_source":  true,
+            "optional":          false
+        },
+        "ird_risk_qan_{vision}.csv": {
+            "description":       "IRD Risk QAN — pour visions antérieures à 202210",
+            "source_path":       "ird/ird_risk_qan_{vision}.csv",
+            "location_type":     "monthly",
+            "vision_in_source":  true,
+            "optional":          true
+        },
+        "ird_suivi_engagements_{vision}.csv": {
+            "description":       "IRD Suivi Engagements NAF 2008",
+            "source_path":       "ird/ird_suivi_engagements_{vision}.csv",
+            "location_type":     "monthly",
+            "vision_in_source":  true,
+            "optional":          true
+        },
+        "segmentprdt_{vision}.csv": {
+            "description":       "Référentiel Segmentation Produits (mensuel)",
+            "source_path":       "referentiel/segmentprdt_{vision}.csv",
+            "location_type":     "monthly",
+            "vision_in_source":  true,
+            "optional":          false
+        },
+        "rf_fr1_prm_dtl_midcorp_m_{vision}.csv": {
+            "description":       "One BI Primes Émises — données détaillées Construction",
+            "source_path":       "onebi/rf_fr1_prm_dtl_midcorp_m_{vision}.csv",
+            "location_type":     "monthly",
+            "vision_in_source":  true,
+            "optional":          false
+        },
+
+        "_comment_ref": "=== FICHIERS DE RÉFÉRENCE (bronze/construction/ref/) ===",
+
+        "basecli_inv.csv": {
+            "description":       "Base clients cumulative W6",
+            "source_path":       "clients/basecli_inv.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "capitxcu.csv": {
+            "description":       "Capitaux AZEC par branche (SMP/LCI)",
+            "source_path":       "capitxcu/capitxcu.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          false
+        },
+        "clacent1.csv": {
+            "description":       "Données clients génération 14 — SIRET/SIREN (Pôle 1)",
+            "source_path":       "clients/clacent1.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "clacent3.csv": {
+            "description":       "Données clients génération 3 — SIRET/SIREN (Pôle 3)",
+            "source_path":       "clients/clacent3.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "constrcu.csv": {
+            "description":       "Données chantiers construction (formules et détails)",
+            "source_path":       "constrcu/constrcu.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "cproduit.csv": {
+            "description":       "Référentiel master produits",
+            "source_path":       "referentiel/cproduit.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          false
+        },
+        "do_dest.csv": {
+            "description":       "Référentiel destinations chantiers construction",
+            "source_path":       "referentiel/do_dest.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "garantcu.csv": {
+            "description":       "Référentiel garanties",
+            "source_path":       "referentiel/garantcu.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          false
+        },
+        "histo_note_risque.csv": {
+            "description":       "Historique notation risque Euler Hermes (BINSEE)",
+            "source_path":       "euler/histo_note_risque.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "import_catmin.csv": {
+            "description":       "Référentiel catégories minimales",
+            "source_path":       "referentiel/import_catmin.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          false
+        },
+        "incendcu.csv": {
+            "description":       "Données incendie AZEC (PE/RD)",
+            "source_path":       "incendcu/incendcu.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          false
+        },
+        "isic_lg_202306.csv": {
+            "description":       "Mapping ISIC Local → Global",
+            "source_path":       "isic/isic_lg_202306.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "lob.csv": {
+            "description":       "Line of Business (LOB) — référentiel",
+            "source_path":       "referentiel/lob.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "mapping_cdnaf2003_isic_202305.csv": {
+            "description":       "Mapping NAF 2003 → ISIC",
+            "source_path":       "isic/mapping_cdnaf2003_isic_202305.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "mapping_cdnaf2008_isic_202305.csv": {
+            "description":       "Mapping NAF 2008 → ISIC",
+            "source_path":       "isic/mapping_cdnaf2008_isic_202305.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "mapping_isic_const_act_202305.csv": {
+            "description":       "Mapping ISIC pour activités construction",
+            "source_path":       "isic/mapping_isic_const_act_202305.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "mapping_isic_const_cht_202305.csv": {
+            "description":       "Mapping ISIC pour destinations chantiers",
+            "source_path":       "isic/mapping_isic_const_cht_202305.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "mpacu.csv": {
+            "description":       "MPA — données polices AZEC",
+            "source_path":       "mpacu/mpacu.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "mulprocu.csv": {
+            "description":       "Multirisque professionnel AZEC",
+            "source_path":       "mulprocu/mulprocu.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "polic_cu.csv": {
+            "description":       "Master polices AZEC",
+            "source_path":       "polic_cu/polic_cu.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          false
+        },
+        "prdcap.csv": {
+            "description":       "Référentiel capitaux produits",
+            "source_path":       "referentiel/prdcap.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "prdpfa1.csv": {
+            "description":       "Segmentation produits Pôle 1 (PRDPFA1)",
+            "source_path":       "referentiel/prdpfa1.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          false
+        },
+        "prdpfa3.csv": {
+            "description":       "Segmentation produits Pôle 3 (PRDPFA3)",
+            "source_path":       "referentiel/prdpfa3.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          false
+        },
+        "ptgst_*.csv": {
+            "description":       "Points de gestion (versionné, pattern glob) — classification Upper_MID",
+            "source_path":       "referentiel/ptgst_latest.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true,
+            "_note":             "Fichier glob : le script cherche le plus récent disponible dans le dossier source."
+        },
+        "ptgst.csv": {
+            "description":       "Points de gestion (version statique) — REGION et P_NUM",
+            "source_path":       "referentiel/ptgst.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "rcentcu.csv": {
+            "description":       "RC Entreprise AZEC",
+            "source_path":       "rcentcu/rcentcu.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "ref_mig_azec_vs_ims.csv": {
+            "description":       "Mapping migration AZEC → IMS",
+            "source_path":       "referentiel/ref_mig_azec_vs_ims.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "risteccu.csv": {
+            "description":       "Risques techniques AZEC",
+            "source_path":       "risteccu/risteccu.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "table_isic_tre_naf_202305.csv": {
+            "description":       "Table ISIC avec grades de danger et codes NAF",
+            "source_path":       "isic/table_isic_tre_naf_202305.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        },
+        "table_segmentation_azec_mml.csv": {
+            "description":       "Segmentation AZEC MML",
+            "source_path":       "referentiel/table_segmentation_azec_mml.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          false
+        },
+        "typrd_2.csv": {
+            "description":       "Types de produits AZEC (TYPRD_2)",
+            "source_path":       "referentiel/typrd_2.csv",
+            "location_type":     "reference",
+            "vision_in_source":  false,
+            "optional":          true
+        }
+    }
+}

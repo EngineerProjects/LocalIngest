@@ -27,7 +27,7 @@ SORTIES (GOLD) :
 """
 
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, lit, sum as _sum, coalesce
+from pyspark.sql.functions import col, lit, sum as _sum
 from config.constants import MARKET_CODE
 from src.processors.base_processor import BaseProcessor
 from utils.helpers import extract_year_month_int
@@ -198,35 +198,44 @@ class EmissionsProcessor(BaseProcessor):
         df = df.withColumn('dircom', lit('AZ '))  # Direction commerciale (fixe)
         df = df.withColumn('vision', lit(vision))
         
-        # Calcul des primes de l'exercice courant (primes_n)
-        # Logique : On isole les lignes de l'exercice courant ('cou'), on somme,
-        # puis on rejoint avec le dataset principal.
-        
-        # 1. Isoler les mouvements de l'exercice courant
-        df_current = df.filter(col('exercice') == 'cou')
-        
-        # 2. Agréger les montants HT pour l'exercice courant
-        df_current_agg = df_current.groupBy(
-            'cdpole', 'cdprod', 'nopol', 'noint', 'cd_gar_princ', 
-            'cd_gar_prospctiv', 'cd_cat_min', 'dircom'
-        ).agg(
-            _sum('mt_ht_cts').alias('primes_n_temp')
+        # ---
+        # IMPORTANT : Calcul de PRIMES_N (exercice courant) et PRIMES_X (total)
+        # ---
+        # Logique :
+        #   - PRIMES_X = somme de MT_HT_CTS sur TOUTES les lignes (courant + antérieur)
+        #   - PRIMES_N = somme de MT_HT_CTS sur les lignes exercice courant uniquement
+        # On calcule PRIMES_N indépendamment puis on le joint au dataset principal.
+
+        self.logger.info("Calcul de PRIMES_X (total) et PRIMES_N (exercice courant uniquement)")
+
+        # Clés de regroupement pour le calcul et la jointure
+        join_keys = [
+            'cdpole', 'cdprod', 'nopol', 'noint',
+            'cd_gar_princ', 'cd_gar_prospctiv', 'cd_cat_min', 'dircom'
+        ]
+
+        # 1. Calculer PRIMES_N : somme de MT_HT_CTS sur l'exercice courant uniquement
+        df_primes_n = (
+            df.filter(col('exercice') == 'cou')
+              .groupBy(*join_keys)
+              .agg(_sum('mt_ht_cts').alias('primes_n'))
         )
-        
-        # 3. Réintégrer ce montant dans le dataset principal via jointure gauche
-        df = df.join(
-            df_current_agg,
-            on=['cdpole', 'cdprod', 'nopol', 'noint', 'cd_gar_princ', 
-                'cd_gar_prospctiv', 'cd_cat_min', 'dircom'],
-            how='left'
-        )
-        
-        # 4. Remplacer les NULL par 0 (pour les lignes sans prime exercice courant)
-        df = df.withColumn('primes_n', coalesce(col('primes_n_temp'), lit(0.0)))
-        df = df.drop('primes_n_temp')
-        
-        self.logger.info("Primes calculées : primes_x (total) et primes_n (exercice courant)")
-        
+
+        # Vérification d'unicité des clés avant jointure
+        count_agg = df_primes_n.count()
+        count_distinct = df_primes_n.dropDuplicates(join_keys).count()
+        if count_agg != count_distinct:
+            self.logger.warning(
+                f"⚠️ PRIMES_N : {count_agg - count_distinct} doublons détectés sur les clés de jointure. "
+                f"Vérifier l'intégrité des données en entrée."
+            )
+
+        # 2. Rejoindre PRIMES_N dans le dataset principal via LEFT JOIN
+        #    Les polices sans ligne exercice courant auront PRIMES_N = NULL
+        df = df.join(df_primes_n, on=join_keys, how='left')
+
+        self.logger.info("PRIMES_X = mt_ht_cts (toutes lignes) | PRIMES_N = primes_n (exercice courant, NULL si absent)")
+
         # --- Étape 7 : Enrichissement Segmentation ---
         self.logger.step(7, "Enrichissement avec la segmentation")
         

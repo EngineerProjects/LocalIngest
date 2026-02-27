@@ -140,22 +140,23 @@ class CapitauxConsolidationProcessor(BaseProcessor):
         # Marquer la provenance
         df_az = df_az.withColumn('dircom', lit('AZ'))
         
-        # Calculer le total "Valeur Assurée" (Somme PE + RD)
-        # PE = Perte d'Exploitation, RD = Risque Direct
-        
+        # Calculer le total "Valeur Assurée" = Perte d'Exploitation + Risque Direct
+        # coalesce(..., 0.0) est intentionnel : si l'un des deux termes est absent,
+        # la somme est quand même calculée avec l'autre terme (pas de propagation NULL).
+
         # Version INDEXÉE
         if all(c in df_az.columns for c in ['perte_exp_100_ind', 'risque_direct_100_ind']):
             df_az = df_az.withColumn(
                 'value_insured_100_ind',
-                coalesce(col('perte_exp_100_ind'), lit(0.0)) + 
+                coalesce(col('perte_exp_100_ind'), lit(0.0)) +
                 coalesce(col('risque_direct_100_ind'), lit(0.0))
             )
-        
+
         # Version NON INDEXÉE
         if all(c in df_az.columns for c in ['perte_exp_100', 'risque_direct_100']):
             df_az = df_az.withColumn(
                 'value_insured_100',
-                coalesce(col('perte_exp_100'), lit(0.0)) + 
+                coalesce(col('perte_exp_100'), lit(0.0)) +
                 coalesce(col('risque_direct_100'), lit(0.0))
             )
         
