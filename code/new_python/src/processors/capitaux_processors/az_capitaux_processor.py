@@ -318,24 +318,10 @@ class AZCapitauxProcessor(BaseProcessor):
         # Ajouter les segments commerciaux
         # AZ nécessite une jointure sur Code Produit + Code Pôle
         df = enrich_segmentation(df, reader, vision, include_cdpole=True, logger=self.logger)
-        
-        # --- Étape 8 : Filet de sécurité post-segmentation ---
-        # cmarch est ici celui issu du référentiel segmentation.
-        # Un filtre sur cmarch='6' en amont (fichier brut) a déjà été appliqué ;
-        # ce filtre élimine les éventuels problèmes de matching avec le référentiel.
-        self.logger.step(8, "Filet de sécurité — Filtre Marché Construction post-segmentation")
-        from config.constants import MARKET_CODE
 
-        count_before_seg_filter = df.count()
-        df = df.filter(col('cmarch') == MARKET_CODE.MARKET)    # Marché Construction = '6'
-        count_after_seg_filter = df.count()
-        self.logger.info(
-            f"Filtre marché post-seg : {count_before_seg_filter:,} → {count_after_seg_filter:,} "
-            f"({count_before_seg_filter - count_after_seg_filter:,} exclues)"
-        )
-        
         self.logger.success("Transformations Capitaux AZ terminées")
         return df
+
     
     def write(self, df: DataFrame, vision: str) -> None:
         """
