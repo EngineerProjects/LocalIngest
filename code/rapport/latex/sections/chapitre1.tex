@@ -7,7 +7,7 @@
 
 \subsection{Le groupe Allianz : un acteur mondial de l'assurance}
 
-Le groupe Allianz a été fondé en 1890 à Berlin et son siège social se trouve aujourd'hui à Munich. Avec plus de 130 ans d'existence, Allianz s'est imposé comme l'un des leaders mondiaux de l'assurance et de la gestion d'actifs. Le groupe est présent dans plus de 70 pays à travers le monde, couvrant l'ensemble des continents : Europe, Amérique du Nord, Europe centrale et orientale, et la région Asie-Pacifique.
+Le groupe Allianz a été fondé en 1890 à Berlin et son siège social se trouve aujourd'hui à Munich. Avec plus de 130 ans d'existence, Allianz s'est imposé comme l'un des leaders mondiaux de l'assurance et de la gestion d'actifs (Wikipédia, 2026). Le groupe est présent dans plus de 70 pays à travers le monde, couvrant l'ensemble des continents : Europe, Amérique du Nord, Europe centrale et orientale, et la région Asie-Pacifique.
 
 L'offre d'Allianz couvre l'ensemble des besoins assurantiels : assurances dommages (automobile, habitation, construction), assurances santé, prévoyance et assurances vie. Le groupe s'adresse aussi bien aux particuliers qu'aux professionnels, entreprises et collectivités. Au-delà de l'assurance, Allianz propose également des produits bancaires au travers de son réseau d'agents, diversifiant ainsi ses activités financières.
 
@@ -20,7 +20,7 @@ L'offre d'Allianz couvre l'ensemble des besoins assurantiels : assurances dommag
     \label{fig:allianz_global}
 \end{figure}
 
-Aujourd'hui, Allianz France, dont le siège est situé à Paris, est un fournisseur majeur de services financiers spécialisé dans l'assurance et la gestion d'actifs. Avec près de 2 500 points de vente répartis sur le territoire, elle dispose du deuxième plus grand réseau français. L'entreprise emploie environ 11 000 collaborateurs et accompagne plus de 5 millions de clients partout en France. Son offre est particulièrement diversifiée et couvre tous les besoins de la vie quotidienne : assurance automobile, bateau, habitation, construction, santé, prévoyance, assurance vie, retraite, services bancaires et protection juridique.
+Aujourd'hui, Allianz France, dont le siège est situé à Paris, est un fournisseur majeur de services financiers spécialisé dans l'assurance et la gestion d'actifs. Historiquement connue sous le nom d'AGF (Assurances Générales de France), une société française, l'entreprise a connu une évolution majeure suite à son rachat par le groupe allemand Allianz et son changement de marque en 2009. Cette intégration et le passage sous le giron d'un acteur international ont eu un impact profond sur son organisation. Avec près de 2 500 points de vente répartis sur le territoire, elle dispose du deuxième plus grand réseau français. L'entreprise emploie environ 11 000 collaborateurs et accompagne plus de 5 millions de clients partout en France. Son offre est particulièrement diversifiée et couvre tous les besoins de la vie quotidienne : assurance automobile, bateau, habitation, construction, santé, prévoyance, assurance vie, retraite, services bancaires et protection juridique (Wikipédia, 2026).
 
 Les résultats financiers du groupe témoignent de sa solidité. En 2019, Allianz France affichait un chiffre d'affaires compris entre 11 et 12 milliards d'euros, confirmant sa position de leader sur le marché français. Cette performance repose sur la qualité de ses services, son réseau étendu et la diversité de son portefeuille d'activités.
 
@@ -48,13 +48,13 @@ Le pôle ADC regroupe trois activités complémentaires :
     \item \textbf{Expertises Climatiques} : modèles de risque liés au changement climatique.
 \end{itemize}
 
-La mission s'est déroulée au sein de l'équipe Data Management, responsable des datamarts Construction, Auto, Habitation, Santé et Épargne qui alimentent les analyses de l'ensemble de la direction P4D.
+La mission s'est déroulée au sein de l'équipe Transversal Data projects, qui intervient de manière transverse sur des projets data (MicroStrategy, projets avec le groupe et avec l'IT) et a également en charge certains datamarts autour des branches Pro Midcorp. Contrairement au pôle Data Management spécialisé dans les univers Retail et Sinistres, l'équipe d'accueil ne réalise pas de modélisation actuarielle, mais se concentre sur l'ingénierie des données et la gestion des flux.
 
 \section{Contexte stratégique : le projet SAS EXIST}
 
-Tous les datamarts P\&C d'Allianz France fonctionnent aujourd'hui sur une infrastructure SAS en place depuis de nombreuses années. Ce système a bien servi l'entreprise, mais il présente désormais des limites difficiles à ignorer : coûts de licences propriétaires élevés, performances contraintes par des serveurs vieillissants, code difficile à maintenir faute de documentation, et expertise SAS de plus en plus rare sur le marché du travail. Pendant ce temps, Python et l'écosystème cloud sont devenus les standards du data engineering.
+De nombreux datamarts d'Allianz France (bien au-delà de la seule direction P\&C) fonctionnent aujourd'hui sur une infrastructure SAS en place depuis de nombreuses années (SAS Institute Inc., 2023). Ce système a bien servi l'entreprise, mais il présente désormais des limites difficiles à ignorer : coûts de licences propriétaires élevés, performances contraintes par des serveurs vieillissants, code difficile à maintenir faute de documentation, et expertise SAS de plus en plus rare sur le marché du travail. Pendant ce temps, Python et l'écosystème cloud sont devenus les standards du data engineering.
 
-C'est dans ce contexte qu'Allianz France a lancé en 2024 le projet \textbf{SAS EXIST} (SAS Exit Strategy) : une migration progressive de l'ensemble des datamarts vers Azure Databricks et PySpark. La migration se fait marché par marché, en commençant par un prototype pilote qui devra valider la démarche technique et poser les bases méthodologiques pour les migrations suivantes.
+C'est dans ce contexte qu'Allianz France a lancé en 2024 le projet \textbf{SAS EXIST} (SAS Exit Strategy) : une migration progressive des datamarts vers Azure Databricks et PySpark. La migration se fait marché par marché, en commençant par un prototype pilote qui devra valider la démarche technique et poser les bases méthodologiques pour les migrations suivantes.
 
 \section{Problématique et objectifs de la mission}
 

@@ -7,11 +7,11 @@
 
 \subsection{Rôle du datamart Construction dans l'analyse assurantielle}
 
-Le datamart Construction constitue l'un des cinq datamarts P\&C gérés par l'équipe Data Management d'Allianz France. Il agrège et structure l'ensemble des données relatives au marché de l'assurance construction, qui couvre les risques liés aux bâtiments, travaux et chantiers. Ce marché présente des spécificités métier importantes : les capitaux assurés sont généralement élevés, les sinistres peuvent être complexes et s'étaler sur plusieurs années, et l'indexation des capitaux en fonction de l'inflation dans le secteur de la construction est cruciale.
+Le datamart Construction constitue l'un des datamarts P\&C gérés par l'équipe Data Management d'Allianz France. Il agrège et structure l'ensemble des données relatives au marché de l'assurance construction, qui couvre les risques liés aux bâtiments, travaux et chantiers. Ce marché présente des spécificités métier importantes : les capitaux assurés sont généralement élevés, les sinistres peuvent être complexes et s'étaler sur plusieurs années, et l'indexation des capitaux en fonction de l'inflation dans le secteur de la construction est cruciale.
 
-Le datamart Construction alimente trois types d'analyses principales. Les \textbf{études de portefeuille} permettent de suivre l'évolution du nombre de polices, les mouvements d'affaires nouvelles et de résiliations, et la composition du portefeuille par segment de clientèle (agents, courtiers, entreprises de construction). Les \textbf{analyses de capitaux} portent sur l'évaluation de l'exposition au risque à travers les capitaux assurés (Sinistre Maximum Possible, Limite Contractuelle d'Indemnité, Perte d'Exploitation, Risque Direct) et leur indexation selon les indices de coût de construction de la Fédération Française du Bâtiment. Enfin, les \textbf{calculs de primes} agrègent les émissions de primes par police et par garantie pour alimenter les reportings financiers et réglementaires.
+Le datamart Construction alimente trois types d'analyses principales. Les \textbf{études de portefeuille} permettent de suivre l'évolution du nombre de polices, les mouvements d'affaires nouvelles et de résiliations, et la composition du portefeuille par segment de clientèle (agents, courtiers, entreprises de construction). Les \textbf{analyses de capitaux} portent sur l'évaluation de l'exposition au risque à travers les capitaux assurés (Sinistre Maximum Possible, Limite Contractuelle d'Indemnité, Perte d'Exploitation, Risque Direct) et leur indexation selon les indices de coût de construction de la Fédération Française du Bâtiment (Fédération Française du Bâtiment, 2024 ; 2025). Enfin, les \textbf{calculs de primes} agrègent les émissions de primes par police et par garantie pour alimenter les reportings financiers et réglementaires.
 
-Les utilisateurs principaux de ce datamart sont les actuaires de la direction P4D, les équipes de pricing qui calibrent les tarifs commerciaux, les contrôleurs de gestion qui suivent la rentabilité du marché, et les équipes de pilotage qui produisent les reportings pour la direction générale et les autorités de régulation. La disponibilité et la fiabilité de ce datamart sont donc critiques pour le fonctionnement quotidien de l'entreprise.
+Les utilisateurs principaux de ce datamart sont les actuaires P4D de l'équipe Midcorp / Construction, ainsi que l'unité Midcorp au sens large grâce à son exploitation via l'outil de Business Intelligence MicroStrategy. La disponibilité et la fiabilité de ce datamart sont critiques : sa fréquence d'actualisation est mensuelle, ce qui impose qu'il soit pleinement opérationnel à chaque début de mois pour garantir la continuité des activités de reporting, de tarification et d'analyse.
 
 La figure \ref{fig:general_sas} ci-dessous illustre la vue d'ensemble du datamart Construction en SAS : les trois sources de données principales (IMS pour le portefeuille AZ et AZEC, OneBI pour les émissions, et les référentiels métier) alimentent trois pipelines distincts produisant trois sorties analytiques finaux.
 
@@ -24,11 +24,9 @@ La figure \ref{fig:general_sas} ci-dessous illustre la vue d'ensemble du datamar
 
 \subsection{Architecture actuelle en SAS}
 
-L'implémentation actuelle du datamart Construction repose sur une architecture SAS développée progressivement sur plusieurs années. Le code est réparti sur \textbf{dix-neuf fichiers SAS} totalisant environ quinze mille lignes de code. Ces fichiers sont organisés selon une logique séquentielle : chaque fichier réalise une étape de transformation spécifique et produit des tables intermédiaires qui servent d'entrée au fichier suivant.
+L'implémentation actuelle du datamart Construction repose sur une architecture SAS développée progressivement sur plusieurs années. Le code est réparti sur \textbf{dix-neuf fichiers SAS} totalisant environ quinze mille lignes de code, organisés selon une logique séquentielle monolithique.
 
-L'architecture SAS suit un modèle monolithique où toutes les transformations sont enchaînées dans un flux linéaire. Les données brutes, stockées sous forme de fichiers CSV sur des serveurs partagés, sont lues par les premiers fichiers SAS qui appliquent des filtres métier de base (marché Construction, exclusion des polices annulées). Les fichiers suivants enrichissent progressivement ces données : extraction des capitaux depuis des champs texte, calculs des mouvements de portefeuille, jointures avec des tables de référence (nomenclatures NAF, codes ISIC, données IRD), calculs d'indexation, et enfin agrégation pour produire les tables finales.
-
-Comme le montre la figure \ref{fig:sas_detail}, l'architecture détaillée du datamart décompose les traitements en trois pipelines indépendants. Le \textbf{pipeline Capitaux} (partie gauche) extrait les capitaux historiques et actuels, applique l'indexation à valeur économique par rapport aux indices FFB, puis consolide les données AZ et AZEC en un sortie final. Le \textbf{pipeline Portefeuille et Mouvements} (partie centrale) réalise l'extraction des données de portefeuille, le nettoyage et l'harmonisation des structures AZ/AZEC, la fusion intelligente des deux canaux de distribution, l'enrichissement métier (segmentation produits, indicateurs AFN/RES, codes ISIC), et enfin l'enrichissement DataRisk pour produire les sorties PTF finaux. Le \textbf{pipeline Émissions} (partie droite) centralise les données One BI, applique un nettoyage et une validation, réalise la segmentation et la classification produits, et agrège les primes par police et par garantie.
+Comme le montre la figure \ref{fig:sas_detail}, l'architecture détaillée décompose les traitements en trois pipelines indépendants : le \textbf{pipeline Capitaux} (extraction et indexation FFB), le \textbf{pipeline Portefeuille et Mouvements} (nettoyage, fusion AZ/AZEC, enrichissement), et le \textbf{pipeline Émissions} (centralisation et agrégation des primes).
 
 \begin{figure}[H]
     \centering
@@ -37,9 +35,7 @@ Comme le montre la figure \ref{fig:sas_detail}, l'architecture détaillée du da
     \label{fig:sas_detail}
 \end{figure}
 
-Cette architecture présente plusieurs caractéristiques techniques notables. Le \textbf{code SAS utilise massivement les macros}, mécanisme permettant de générer dynamiquement du code SAS. Certaines macros sont imbriquées sur plusieurs niveaux, rendant la lecture du code complexe et nécessitant de dérouler mentalement l'ensemble des substitutions pour comprendre la logique réelle. Les \textbf{variables globales} sont utilisées pour partager des paramètres entre différents fichiers (chemins de données, période de traitement, codes métier), mais leur portée n'est pas toujours clairement documentée. Enfin, \textbf{l'absence de documentation initiale} oblige à une lecture exhaustive du code pour comprendre l'ensemble des traitements.
-
-Le processus d'exécution est séquentiel : les dix-neuf fichiers doivent être lancés dans un ordre précis, chaque fichier attendant que le précédent ait terminé avant de démarrer. Cette séquentialité limite les possibilités d'optimisation et allonge les temps de traitement globaux.
+Cette architecture historique présente des défis techniques : utilisation massive de macros imbriquées, variables globales au périmètre ambigu, processus d'exécution strictement séquentiel allongeant les temps de traitement, et une \textbf{absence de documentation initiale} obligeant à une lecture exhaustive du code.
 
 \subsection{Limites de l'architecture SAS existante}
 
@@ -58,23 +54,23 @@ Ces limites techniques, combinées aux enjeux stratégiques de coûts et d'exper
 
 \subsection{PySpark et Apache Spark}
 
-\textbf{PySpark} est l'interface Python d'Apache Spark. L'API de DataFrames qu'elle expose permet de manipuler des volumes massifs de données en distribuant les calculs sur un cluster de machines, une capacité absente de l'architecture SAS d'origine. PySpark supporte nativement les opérations SQL, les agrégations complexes, les jointures et les fonctions fenêtres (\textit{window functions}), couvrant ainsi tous les besoins de transformation du datamart Construction.
+\textbf{PySpark} est l'interface Python d'Apache Spark (Apache Software Foundation, 2024). L'API de DataFrames qu'elle expose permet de manipuler des volumes massifs de données en distribuant les calculs sur un cluster de machines, une capacité absente de l'architecture SAS d'origine. PySpark supporte nativement les opérations SQL, les agrégations complexes, les jointures et les fonctions fenêtres (\textit{window functions}), couvrant ainsi tous les besoins de transformation du datamart Construction.
 
 Pour ce projet, PySpark présente trois avantages décisifs : la compatibilité avec les formats modernes (Parquet, Delta, CSV), la possibilité d'exécuter le même code en local pour les tests et sur un cluster Databricks en production, et l'intégration native avec l'écosystème Azure.
 
 \subsection{Azure Databricks}
 
-\textbf{Azure Databricks} est une plateforme cloud managée qui fournit un environnement complet pour exécuter des workloads Spark : clusters gérés automatiquement, notebooks collaboratifs, intégration native avec Azure Data Lake Storage (ADLS) et support de Delta Lake. Le choix d'Azure Databricks s'aligne avec la stratégie du groupe Allianz, qui a standardisé ses infrastructures data sur Azure au niveau international (ZDNet France, 2025). Cette convergence facilite le partage de bonnes pratiques entre les entités du groupe.
+\textbf{Azure Databricks} est une plateforme cloud managée qui fournit un environnement complet pour exécuter des workloads Spark : clusters gérés automatiquement, notebooks collaboratifs, intégration native avec Azure Data Lake Storage (ADLS) et support de Delta Lake (Microsoft Corporation, 2024). Le choix d'Azure Databricks s'aligne avec la stratégie du groupe Allianz, qui a standardisé ses infrastructures data sur Azure au niveau international. Cette convergence facilite le partage de bonnes pratiques entre les entités du groupe.
 
 \subsection{Formats de stockage modernes}
 
 \textbf{Parquet} est un format de fichier binaire optimisé pour le stockage en colonnes. Il offre une compression efficace et des performances de lecture supérieures au CSV traditionnel, particulièrement pour les requêtes portant sur un sous-ensemble de colonnes. Dans le contexte du datamart Construction, le passage de CSV à Parquet permet de réduire significativement l'espace de stockage et d'accélérer les lectures.
 
-\textbf{Delta Lake}, extension de Parquet, ajoute des fonctionnalités de gestion de données avancées : transactions ACID (garanties de cohérence et d'intégrité), \textit{time travel} (accès aux versions historiques des données), et gestion de schéma avec évolution contrôlée. Ces fonctionnalités améliorent la qualité et la traçabilité des données, répondant à des exigences réglementaires croissantes dans le secteur de l'assurance.
+\textbf{Delta Lake}, extension de Parquet, ajoute des fonctionnalités de gestion de données avancées : transactions ACID (garanties de cohérence et d'intégrité), \textit{time travel} (accès aux versions historiques des données), et gestion de schéma avec évolution contrôlée (Delta Lake Project, 2024). Ces fonctionnalités améliorent la qualité et la traçabilité des données, répondant à des exigences réglementaires croissantes dans le secteur de l'assurance.
 
 \subsection{L'architecture médaillon : standard de l'industrie}
 
-L'\textbf{architecture médaillon} (\textit{medallion architecture}) est un pattern d'organisation des données popularisé par Databricks et adopté comme standard de l'industrie pour les architectures \textit{lakehouse}. Elle organise les données en trois couches successives, chacune représentant un niveau croissant de qualité et de transformation.
+L'\textbf{architecture médaillon} (\textit{medallion architecture}) est un pattern d'organisation des données popularisé par Databricks et adopté comme standard de l'industrie pour les architectures \textit{lakehouse} (Databricks, 2024). Elle organise les données en trois couches successives, chacune représentant un niveau croissant de qualité et de transformation.
 
 Comme l'illustre la figure \ref{fig:python_archi}, les données transitent de la couche Bronze vers la couche Silver, puis vers la couche Gold, en suivant un flux unidirectionnel traité par Apache Spark et Python.
 
@@ -132,12 +128,12 @@ La littérature technique identifie plusieurs défis récurrents lors des migrat
 
 La \textbf{compatibilité des formats de dates} est un autre défi documenté : SAS stocke les dates en formats spécifiques (numéro de jours depuis le 1er janvier 1960, ou chaînes de caractères comme "14MAY1991:00:00:00") qui nécessitent des fonctions de conversion explicites en PySpark. Les \textbf{macros SAS} n'ont pas d'équivalent direct en Python et doivent être refactorisées en fonctions Python paramétrables, ce qui constitue souvent la partie la plus complexe de la migration.
 
-Enfin, la \textbf{validation de la parité fonctionnelle} est reconnue comme une étape critique et chronophage. La comparaison des résultats SAS et Python ligne par ligne, indicateur par indicateur, nécessite une méthodologie rigoureuse et un outillage adapté (Armbrust et al., 2020).
+Enfin, la \textbf{validation de la parité fonctionnelle} est reconnue comme une étape critique et chronophage. La comparaison des résultats SAS et Python ligne par ligne, indicateur par indicateur, nécessite une méthodologie rigoureuse et un outillage adapté.
 
 \subsection{Bonnes pratiques identifiées}
 
 Les retours d'expérience disponibles convergent autour de plusieurs bonnes pratiques pour mener à bien une telle migration. La \textbf{documentation exhaustive du code source} avant de commencer à coder est unanimement identifiée comme un prérequis indispensable, particulièrement lorsque le code SAS n'est pas documenté initialement. Le \textbf{recensement systématique des règles métier} dans un format structuré (tableur ou base de données) permet de garantir l'exhaustivité de la migration et de fournir une base pour les tests de validation.
 
-L'\textbf{adoption d'une architecture modulaire} facilite les tests unitaires et la maintenance. La \textbf{séparation de la configuration et du code} (externalisation des règles métier dans des fichiers JSON ou YAML) rend le code plus lisible et plus facilement évolutif. Enfin, la \textbf{validation incrémentale} (tester chaque module immédiatement après son implémentation) permet de détecter et corriger les erreurs au plus tôt, évitant l'accumulation de bugs difficiles à tracer (Zaharia et al., 2010).
+L'\textbf{adoption d'une architecture modulaire} facilite les tests unitaires et la maintenance. La \textbf{séparation de la configuration et du code} (externalisation des règles métier dans des fichiers JSON ou YAML) rend le code plus lisible et plus facilement évolutif. Enfin, la \textbf{validation incrémentale} (tester chaque module immédiatement après son implémentation) permet de détecter et corriger les erreurs au plus tôt, évitant l'accumulation de bugs difficiles à tracer.
 
 Ces bonnes pratiques ont directement inspiré la méthodologie adoptée pour la migration du datamart Construction, détaillée dans le chapitre suivant.

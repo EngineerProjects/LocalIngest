@@ -37,29 +37,15 @@ Le projet s'est déroulé au sein d'une équipe restreinte composée du stagiair
 
 \section{Phase 1 : Analyse et documentation du code SAS existant}
 
-\subsection{Objectifs et situation initiale}
+\subsection{Objectifs et démarche d'analyse}
 
-La phase d'analyse a démarré dans un contexte particulièrement contraint : dix-neuf fichiers SAS totalisant environ quinze mille lignes de code, sans documentation initiale centralisée, avec des macros imbriquées sur plusieurs niveaux et des noms de variables souvent cryptiques (\texttt{AH0}, \texttt{AMN0}, \texttt{dtechann}, etc.). L'objectif de cette phase était de comprendre en profondeur la logique métier existante avant d'entreprendre toute action de migration.
+La phase d'analyse a démarré dans un contexte contraint : un code SAS historique volumineux, non documenté, et techniquement complexe (macros imbriquées, absence de rigueur dans le nommage). L'objectif était de comprendre la logique métier existante avant de concevoir la solution cible.
 
-\subsection{Démarche d'analyse systématique}
+L'analyse a suivi une méthode \textit{top-down} : étude des fichiers d'orchestration pour le flux global, décryptage des macros métier (cœur des transformations et règles de calcul), puis analyse des fichiers utilitaires. Cette démarche a permis de cartographier de manière exhaustive les sources de données, les transformations, et les tables de sortie pour chaque pipeline, constituant ainsi la base des schémas architecturaux.
 
-L'analyse du code SAS a suivi une progression structurée, en commençant par les fichiers d'orchestration pour comprendre l'ordre d'exécution global, puis en descendant vers les macros métier qui contiennent la logique de traitement, et enfin les fichiers utilitaires spécialisés.
+\subsection{Livrables produits}
 
-Les fichiers d'orchestration constituent le point d'entrée de chaque pipeline. Ils définissent les paramètres globaux (période de traitement, chemins des données, codes marchés) et appellent séquentiellement les macros métier dans l'ordre requis. Leur lecture a permis d'identifier les dépendances entre fichiers et de cartographier le flux d'exécution général.
-
-Les macros métier constituent le cœur de la logique de traitement. Pour chaque pipeline et chaque canal de distribution (AZ et AZEC), elles encodent les filtres de sélection, les calculs des indicateurs, les jointures avec les référentiels et les règles d'agrégation. Ces macros présentent les principales difficultés d'analyse : substitutions de variables, logique conditionnelle complexe, réutilisation de code via des paramètres dynamiques.
-
-Le fichier \texttt{CODIFICATION\_ISIC\_CONSTRUCTION.sas}, avec ses vingt-cinq mille lignes de code dédiées à la classification sectorielle des risques, a constitué le défi d'analyse le plus important. Une approche ciblée sur la logique globale de fallback (\textit{CDNAF2008 $\to$ CDNAF2003 $\to$ ACTPRIN}) a été privilégiée, plutôt qu'une analyse ligne par ligne, en validant la compréhension avec le maître de stage.
-
-Pour chaque pipeline analysé, le flux de données a été systématiquement tracé en identifiant : les \textbf{sources de données} (libnames SAS et tables correspondantes), les \textbf{transformations appliquées} (filtres, calculs, jointures), et les \textbf{tables de sortie} (cubes analytiques finaux). Cette cartographie a fourni la base des schémas architecturaux présentés au chapitre 2.
-
-\subsection{Livrables de la phase 1}
-
-La phase d'analyse a produit une \textbf{documentation fonctionnelle SAS} complète, structurée en deux versions complémentaires.
-
-La \textbf{version synthétique}, destinée à l'équipe, présente une vue d'ensemble des trois pipelines, des schémas de flux de données et des tableaux récapitulatifs des transformations clés. Elle constitue un document de référence pérenne, indépendant de l'environnement SAS, garantissant la capitalisation de la connaissance métier même après l'arrêt définitif du système source.
-
-La \textbf{version technique détaillée}, destinée aux développeurs, documente chaque transformation SAS, explique les calculs complexes, cartographie les macros et leurs paramètres, et traite les cas limites identifiés lors de l'analyse. Elle a servi de référence directe pendant la phase d'implémentation Python pour vérifier la fidélité de chaque transformation.
+Cette analyse a abouti à la création d'une documentation SAS complète, structurée en un volet synthétique (pour la vision managériale et la pérennité de la connaissance) et un volet technique détaillé décrivant chaque transformation pour guider l'implémentation Python et les futurs tests de parité.
 
 \section{Phase 2 : Conception de l'architecture cible Python}
 
@@ -168,9 +154,18 @@ Le choix d'aborder d'abord le pipeline le plus complexe présente un avantage st
 
 \subsection{Architecture des processors}
 
-Chaque pipeline est implémenté selon un pattern de classe Python orientée objet, avec trois méthodes principales : \texttt{read()} pour la lecture des données sources depuis la couche Bronze, \texttt{transform()} pour l'application des transformations métier, et \texttt{write()} pour l'écriture des résultats en couche Silver ou Gold.
+Chaque pipeline est implémenté selon un pattern de classe Python orienté objet, structuré autour de trois méthodes principales : \texttt{read()} pour l'ingestion depuis la couche Bronze, \texttt{transform()} pour l'application des règles métier, et \texttt{write()} pour l'écriture des résultats en couche Silver ou Gold.
 
-Le pipeline PTF Mouvements illustre la complexité maximale de cette implémentation. Le processor AZ réalise quatorze étapes de transformation successives et indépendantes, depuis les filtres de sélection du marché Construction jusqu'à la déduplication finale. Le processor AZEC, spécifique aux entreprises de courtage construction, gère sept jointures avec des tables de référence propres à ce canal et applique une logique de calcul des mouvements différente de celle utilisée pour AZ. Le processor de consolidation fusionne ensuite les données des deux canaux, après harmonisation de leurs schémas respectifs (les colonnes portent des noms différents selon le canal : \texttt{POLICE} en AZ vs \texttt{NOPOL} en AZEC, par exemple), puis applique les enrichissements finaux (IRD Risk, données clients, codification ISIC) pour produire le cube Gold.
+L'architecture détaillée des flux de données, illustrée par la figure \ref{fig:python_process_architecture}, permet de visualiser de manière synthétique l'enchaînement des opérations pour les trois pipelines.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{schemas/python_process_architecture.png}
+    \caption{Architecture fonctionnelle détaillée des trois pipelines PySpark (Capitaux, Mouvements, Émissions), illustrant le cheminement des données de la couche Bronze à Gold.}
+    \label{fig:python_process_architecture}
+\end{figure}
+
+Cette représentation met en évidence la modularité des traitements, particulièrement visible pour le pipeline \textit{Portefeuille et Mouvements}. Ce dernier nécessite l'exécution d'étapes de nettoyage propres à chaque canal de distribution (AZ et AZEC), suivies d'une consolidation complexe (harmonisation des schémas, union, et enrichissements en cascade via des référentiels externes).
 
 \section{Phase 5 : Validation et tests de parité fonctionnelle}
 
@@ -186,19 +181,16 @@ La \textbf{validation par échantillonnage} compare champ par champ un échantil
 
 \subsection{Défis techniques rencontrés lors de la validation}
 
-La confrontation des résultats Python et SAS a mis en lumière plusieurs défis techniques qui ont nécessité des investigations approfondies et des corrections ciblées du code. Chaque défi a suivi le même processus de résolution : diagnostic précis par analyse du code SAS source, implémentation de la correction en Python, rejeu du pipeline sur la vision de test, et vérification de la convergence des résultats. Six problèmes principaux sont détaillés ci-dessous.
+La confrontation des résultats Python et SAS a soulevé plusieurs défis techniques ayant nécessité des investigations poussées. L'approche est restée la même : diagnostic via le code SAS, correction en Python, puis rejeu du pipeline pour vérifier la convergence. Voici les principaux problèmes résolus :
 
-\textbf{Disponibilité et accès aux données de test.} L'un des défis les plus structurants du projet a été l'accès aux données nécessaires pour tester le code en continu. Les données de production du datamart Construction sont stockées dans l'infrastructure Azure d'Allianz, avec des droits d'accès stricts. Obtenir des jeux de données de test représentatifs a demandé un temps significatif entre les demandes d'accès, les validations par les équipes sécurité, et la mise à disposition effective des fichiers. Cette contrainte a imposé de travailler parfois « à l'aveugle » sur certaines transformations, en les testant uniquement une fois les données disponibles, ce qui a parfois allongé les cycles de détection et de correction des erreurs.
-
-\textbf{Colonne CDPOLE absente pour le canal AZEC.} Lors de la consolidation des données AZ et AZEC, une divergence frappante est apparue : le nombre de polices avec \texttt{cdpole = 3} (courtage) était significativement inférieur en Python par rapport à SAS. L'analyse du code SAS source (\texttt{PTF\_MVTS\_CONSOLIDATION\_MACRO.sas}) a révélé que SAS assigne explicitement la valeur \texttt{"3"} à la colonne \texttt{cdpole} lors de la consolidation AZEC via une instruction littérale dans la macro. Le processor AZEC Python créait bien la colonne \texttt{dircom} (canal de distribution) mais omettait de créer \texttt{cdpole}, laissant seize mille lignes avec une valeur nulle. L'ajout d'une seule instruction dans le processor AZEC a suffi à rétablir la parité complète sur cet indicateur.
-
-\textbf{Traitement de la colonne \texttt{dtechann} pour l'indexation.} La colonne \texttt{dtechann}, qui représente la date d'échéance annuelle d'une police, est stockée dans les fichiers sources sous forme de chaîne de caractères avec un format variable selon l'ancienneté de la donnée : certaines polices historiques utilisent un format à quatre chiffres (MMJJ), d'autres un format à six chiffres (MMJJAA), et d'autres encore un format complet. Plutôt que de tenter une conversion vers un type date natif, opération qui échouait sur les cas non standards, la solution retenue a consisté à lire cette colonne systématiquement en type \texttt{String} et à reproduire en Python la logique SAS : extraire le mois et le jour par découpage de la chaîne en tenant compte du nombre de caractères, puis reconstituer la date dans un format normalisé. Cette approche, fidèle à la façon dont SAS traite ces données, a permis de couvrir l'intégralité des cas sans exception.
-
-\textbf{Dates au format SAS datetime pour les enrichissements IRD.} Les trois tables d'enrichissement IRD Risk (Q45, Q46, QAN) contiennent des dates stockées au format SAS datetime : une chaîne du type \texttt{'14MAY1991:00:00:00'} qui ne correspond à aucun format standard reconnu par la fonction \texttt{to\_date()} de Spark. Chaque tentative de conversion directe produisait des valeurs nulles, ce qui annulait silencieusement les jointures d'enrichissement. La solution a consisté à développer un helper dédié (\texttt{parse\_sas\_datetime()}) qui extrait la partie date de la chaîne (le segment situé avant le premier séparateur \texttt{:}) et la convertit ensuite vers un format standard. Ce type de problème, invisible à la compilation car il ne génère pas d'erreur Python, ne pouvait être détecté que par la comparaison des résultats avec le SAS sans compter que plusieurs autres tables présentaient des problèmes similaires avec des formats différentes.
-
-\textbf{Structure de configuration des filtres pour le pipeline Émissions.} Le pipeline Émissions applique plusieurs catégories de filtres d'exclusion (intermédiaires exclus, garanties exclues, produits hors périmètre, etc.) dont les valeurs sont stockées dans des fichiers de configuration JSON. Ces configurations avaient été structurées sous la forme d'objets enrichis \texttt{\{"description": "...", "values": [...]\}} pour faciliter la documentation. Or, lorsque Spark tentait de convertir directement cet objet en littéral pour une clause \texttt{isin()}, il générait une erreur : Spark ne sait pas comment interpréter un dictionnaire comme une liste de valeurs. La correction a consisté à extraire explicitement la liste \texttt{values} avant d'en créer le littéral Spark, sans modifier la structure de configuration qui reste plus lisible avec sa description.
-
-\textbf{Harmonisation des schémas AZ et AZEC.} La consolidation des données des deux canaux de distribution suppose que leurs colonnes soient compatibles pour un \texttt{UNION}. Or, plusieurs colonnes portent des noms différents selon le canal d'origine : la clé de police s'appelle \texttt{POLICE} en AZ et \texttt{NOPOL} en AZEC, l'intermédiaire s'appelle \texttt{INTERMED} d'un côté et \texttt{NOINT} de l'autre, et ainsi de suite pour une dizaine de colonnes. Reproduire manuellement ces mappings dans le code Python aurait rendu le code rigide et difficile à maintenir. La solution retenue a consisté à externaliser l'ensemble de ces correspondances dans un fichier de configuration JSON, permettant d'appliquer automatiquement tous les renommages nécessaires avant la consolidation.
+\begin{itemize}
+    \item \textbf{Disponibilité des données de test :} L'accès aux données de production sur Azure nécessitait des validations de sécurité strictes. Ces délais m'ont souvent obligé à coder "à l'aveugle" en attendant de pouvoir tester sur des données réelles, ce qui rallongeait les cycles de correction.
+    \item \textbf{Colonne CDPOLE absente en AZEC :} Lors de la consolidation, Python trouvait moins de polices Courtage (pôle 3) que SAS. L'analyse a montré que SAS forçait l'assignation \texttt{cdpole = "3"} via une macro dédiée. Un simple ajout dans mon processor AZEC a rétabli la parité.
+    \item \textbf{Formats de dates hétérogènes (\texttt{dtechann}) :} La date d'échéance annuelle mélangeait plusieurs formats historiques (MMJJ, MMJJAA, formats complets). Plutôt que d'utiliser un type Date natif qui plantait sur les anomalies, j'ai reproduit la logique SAS en traitant la colonne comme du texte pour extraire et recombiner les caractères, couvrant ainsi 100\% des cas.
+    \item \textbf{Dates au format SAS datetime (IRD) :} Les tables IRD Risk contenaient des chaînes complexes (ex: \texttt{'14MAY1991:00:00:00'}) incomprises par PySpark, produisant des valeurs nulles silencieuses. J'ai dû développer un helper \texttt{parse\_sas\_datetime()} pour extraire et convertir spécifiquement la partie date.
+    \item \textbf{Configurations JSON capricieuses :} Pour le filtrage des Émissions métier, j'avais organisé un JSON lisible avec descriptions et valeurs. Cependant, utiliser ce dictionnaire directement dans un \texttt{isin()} PySpark déclenchait une erreur. J'ai dû extraire explicitement la liste des valeurs en Python pour que Spark l'accepte sans broncher.
+    \item \textbf{Harmonisation AZ vs AZEC :} Les deux canaux avaient des noms de colonnes différents (ex: \texttt{POLICE} vs \texttt{NOPOL}). Pour éviter un code rigide rempli de \texttt{withColumnRenamed}, j'ai externalisé tout le mapping dans un JSON dédié, permettant de renommer les colonnes dynamiquement avant l'union.
+\end{itemize}
 
 \section{Outils, environnement et livrables finaux}
 
@@ -208,44 +200,45 @@ Le développement a été réalisé dans un environnement cloud ADP (Allianz Dat
 
 La gestion du code source a été assurée via Git, avec un dépôt versionné permettant de tracer l'ensemble des modifications et de revenir en cas de régression. Cette pratique, absente du système SAS source, constitue l'une des améliorations fondamentales apportées par la migration.
 
+\enlargethispage{2cm} % Ajuste la valeur (1cm, 2cm, etc.) pour gagner de la place en bas
 \subsection{Synthèse des livrables produits}
 
-L'ensemble des travaux du stage a produit quatre catégories de livrables :
+L'ensemble des travaux réalisés au cours du stage a abouti à quatre catégories principales de livrables :
 
-    \vspace{0.3cm}
-    \noindent\fbox{
-        \begin{minipage}{\textwidth}
-            \vspace{0.2cm}
-            \begin{center}
-                {\large \textbf{Synthèse des livrables produits lors du stage}}
-            \end{center}
-            \vspace{0.4em}
+\vspace{0.3cm}
+\noindent\fbox{
+    \begin{minipage}{\textwidth}
+        \vspace{0.2cm}
+        \begin{center}
+            {\large \textbf{Synthèse des livrables produits lors du stage}}
+        \end{center}
+        \vspace{0.4em}
 
-            \textbf{1. Documentation Fonctionnelle \& Analyse SAS}
-            \begin{itemize}[leftmargin=1.2em]
-                \item \texttt{general\_sas\_architecture.drawio} — \emph{Architecture générale SAS (datamart).}
-                \item \texttt{sas\_detail\_flow\_architecture.drawio} — \emph{Architecture détaillée des trois workflows SAS.}
-                \item \texttt{documentation\_datamart\_construction\_sas\_26112025.pptx} — \emph{Présentation complète (logique métier, traitements, organisation).}
-                \item \texttt{Architecture\_Générale\_doc\_sas.docx} — \emph{Explication de la documentation générale du code SAS.}
-                \item \texttt{Analyse de l'Architecture SAS Construction.md} — \emph{Documentation détaillée (Markdown).}
-            \end{itemize}
+        \textbf{1. Documentation Fonctionnelle \& Analyse SAS}
+        \begin{itemize}[leftmargin=1.2em]
+            \item \texttt{general\_sas\_architecture.drawio} — \emph{Schéma de l'architecture générale SAS (datamart).}
+            \item \texttt{sas\_detail\_flow\_architecture.drawio} — \emph{Architecture détaillée des trois workflows SAS.}
+            \item \texttt{documentation\_datamart\_construction\_sas\_26112025.pptx} — \emph{Présentation complète incluant logique métier, traitements et organisation.}
+            \item \texttt{Architecture\_Générale\_doc\_sas.docx} — \emph{Documentation générale du code SAS et de sa structure.}
+            \item \texttt{Analyse de l'Architecture SAS Construction.md} — \emph{Documentation détaillée au format Markdown.}
+        \end{itemize}
 
-            \textbf{2. Documentation Métier (Règles \& Datasets)}
-            \begin{itemize}[leftmargin=1.2em]
-                \item \texttt{datamart\_construction\_regle\_de\_gestion.xlsx} — \emph{72 règles métier + 45 datasets inventoriés.}
-            \end{itemize}
+        \textbf{2. Documentation Métier (Règles \& Datasets)}
+        \begin{itemize}[leftmargin=1.2em]
+            \item \texttt{datamart\_construction\_regle\_de\_gestion.xlsx} — \emph{72 règles métier documentées et 45 datasets inventoriés.}
+        \end{itemize}
 
-            \textbf{3. Développement Python}
-            \begin{itemize}[leftmargin=1.2em]
-                \item \texttt{python\_architecture.excalidraw} — \emph{Architecture Medallion (Bronze $\to$ Silver $\to$ Gold), modules et pipelines.}
-                \item \emph{Pipelines Python alignés avec SAS (dépôt GitHub interne Allianz).}
-            \end{itemize}
+        \textbf{3. Développement Python}
+        \begin{itemize}[leftmargin=1.2em]
+            \item \texttt{python\_architecture.excalidraw} — \emph{Architecture Medallion (Bronze $\to$ Silver $\to$ Gold) détaillant modules et pipelines.}
+            \item \emph{Pipelines Python alignés avec les workflows SAS (dépôt GitHub interne Allianz).}
+        \end{itemize}
 
-            \textbf{4. Assurance Qualité (QA)}
-            \begin{itemize}[leftmargin=1.2em]
-                \item \texttt{kpis\_results.xlsx} — \emph{Comparaisons SAS vs Python (KPI, écarts, performances).}
-            \end{itemize}
-            \vspace{0.2cm}
-        \end{minipage}
-    }
-    \vspace{0.3cm}
+        \textbf{4. Assurance Qualité (QA)}
+        \begin{itemize}[leftmargin=1.2em]
+            \item \texttt{kpis\_results.xlsx} — \emph{Comparaison des résultats SAS vs Python (KPI, écarts et performances).}
+        \end{itemize}
+        \vspace{0.2cm}
+    \end{minipage}
+}
+\vspace{0.3cm}

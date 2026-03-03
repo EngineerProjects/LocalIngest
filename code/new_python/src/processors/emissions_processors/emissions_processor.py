@@ -27,7 +27,7 @@ SORTIES (GOLD) :
 """
 
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, lit, sum as _sum
+from pyspark.sql.functions import col, lit
 from config.constants import MARKET_CODE
 from src.processors.base_processor import BaseProcessor
 from utils.helpers import extract_year_month_int
@@ -202,39 +202,18 @@ class EmissionsProcessor(BaseProcessor):
         # IMPORTANT : Calcul de PRIMES_N (exercice courant) et PRIMES_X (total)
         # ---
         # Logique :
-        #   - PRIMES_X = somme de MT_HT_CTS sur TOUTES les lignes (courant + antérieur)
-        #   - PRIMES_N = somme de MT_HT_CTS sur les lignes exercice courant uniquement
-        # On calcule PRIMES_N indépendamment puis on le joint au dataset principal.
+        #   - PRIMES_X = SUM(MT_HT_CTS) sur TOUTES les lignes (courant + antérieur)
+        #   - PRIMES_N = SUM(MT_HT_CTS) sur les lignes exercice courant uniquement
+        #
+        # IMPORTANT : On NE fait PAS de JOIN intermédiaire.
+        # Le JOIN intermédiaire causerait un double-comptage : chaque ligne du groupe
+        # récupérerait la même valeur PRIMES_N, qui serait ensuite re-sommée N fois
+        # lors de l'agrégation finale (N = nombre de lignes dans le groupe).
+        #
+        # La colonne 'exercice' est conservée dans le DataFrame et sera utilisée
+        # directement dans aggregate_by_policy_guarantee() via une somme conditionnelle.
 
-        self.logger.info("Calcul de PRIMES_X (total) et PRIMES_N (exercice courant uniquement)")
-
-        # Clés de regroupement pour le calcul et la jointure
-        join_keys = [
-            'cdpole', 'cdprod', 'nopol', 'noint',
-            'cd_gar_princ', 'cd_gar_prospctiv', 'cd_cat_min', 'dircom'
-        ]
-
-        # 1. Calculer PRIMES_N : somme de MT_HT_CTS sur l'exercice courant uniquement
-        df_primes_n = (
-            df.filter(col('exercice') == 'cou')
-              .groupBy(*join_keys)
-              .agg(_sum('mt_ht_cts').alias('primes_n'))
-        )
-
-        # Vérification d'unicité des clés avant jointure
-        count_agg = df_primes_n.count()
-        count_distinct = df_primes_n.dropDuplicates(join_keys).count()
-        if count_agg != count_distinct:
-            self.logger.warning(
-                f"⚠️ PRIMES_N : {count_agg - count_distinct} doublons détectés sur les clés de jointure. "
-                f"Vérifier l'intégrité des données en entrée."
-            )
-
-        # 2. Rejoindre PRIMES_N dans le dataset principal via LEFT JOIN
-        #    Les polices sans ligne exercice courant auront PRIMES_N = NULL
-        df = df.join(df_primes_n, on=join_keys, how='left')
-
-        self.logger.info("PRIMES_X = mt_ht_cts (toutes lignes) | PRIMES_N = primes_n (exercice courant, NULL si absent)")
+        self.logger.info("PRIMES_X = sum(mt_ht_cts, toutes lignes) | PRIMES_N = sum(mt_ht_cts, exercice='cou' uniquement)")
 
         # --- Étape 7 : Enrichissement Segmentation ---
         self.logger.step(7, "Enrichissement avec la segmentation")
@@ -268,9 +247,10 @@ class EmissionsProcessor(BaseProcessor):
         self.logger.step(8, "Création des fichiers de sortie agrégés")
         
         # Sélectionner uniquement les colonnes utiles
+        # Note : 'exercice' est conservé pour le calcul conditionnel de PRIMES_N dans l'agrégation
         df = df.select(
             'nopol', 'cdprod', 'noint', 'cgarp', 'cmarch', 'cseg', 'cssseg',
-            'cdpole', 'vision', 'dircom', 'cd_cat_min', 'mt_ht_cts', 'primes_n', 'mtcom'
+            'cdpole', 'vision', 'dircom', 'cd_cat_min', 'mt_ht_cts', 'exercice', 'mtcom'
         )
         
         # SORTIE 1 : Agrégation par Police + Garantie (POL_GARP)
@@ -293,9 +273,10 @@ class EmissionsProcessor(BaseProcessor):
             'cmarch', 'cseg', 'cssseg'
         ]
         
+        from pyspark.sql.functions import sum as _sum
         df_pol = df_pol_garp.groupBy(*group_cols_pol).agg(
             _sum('primes_x').alias('primes_x'),   # Somme totale
-            _sum('primes_n').alias('primes_n'),   # Somme exercice courant
+            _sum('primes_n').alias('primes_n'),   # Somme exercice courant (déjà correct dans POL_GARP)
             _sum('mtcom_x').alias('mtcom_x')      # Somme commissions
         )
         

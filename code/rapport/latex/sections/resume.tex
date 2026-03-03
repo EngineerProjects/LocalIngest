@@ -4,10 +4,19 @@
 \chapter*{Résumé}
 \addcontentsline{toc}{chapter}{Résumé}
 
-Ce rapport présente la migration du datamart Construction d'Allianz France, historiquement développé en SAS, vers une architecture Python/PySpark sur Azure Databricks. Ce projet s'inscrit dans le programme SAS EXIST, initiative stratégique visant à moderniser progressivement l'ensemble des datamarts P\&C de l'entreprise.
+Ce rapport présente la migration du datamart Construction d'Allianz France, historiquement développé en SAS, vers une architecture Python/PySpark. Ce projet s'inscrit dans l'initiative stratégique de modernisation des environnements technologiques P\&C de l'entreprise.
 
-La démarche a débuté par une analyse exhaustive du code SAS existant, dix-neuf fichiers, environ quinze mille lignes, sans documentation initiale ayant conduit à la production d'une documentation fonctionnelle complète. Sur cette base, une architecture médaillon (Bronze/Silver/Gold) a été conçue et validée comme standard pour les prochaines migrations. L'ensemble des règles de gestion (72) et des sources de données (43) a été recensé dans deux fichiers Excel de traçabilité avant tout développement.
+La démarche a débuté par une rétro-ingénierie complète du code source SAS existant afin de documenter de manière exhaustive les règles de gestion et flux de données. Sur cette base fonctionnelle clarifiée, une nouvelle architecture cible de type "Médaillon" (Bronze/Silver/Gold) a été conçue, privilégiant la modularité, la configuration externalisée et la traçabilité.
 
-Trois pipelines Python ont été implémentés avec PySpark : gestion du portefeuille et des mouvements (PTF Mouvements), calcul des capitaux avec indexation FFB (Capitaux), et agrégation des primes (Émissions). La validation repose sur la comparaison des KPI entre les sorties SAS de référence et les sorties Python, sur dix visions mensuelles. La parité fonctionnelle est confirmée pour les pipelines PTF Mouvements et Capitaux. La validation des Émissions est en cours.
+Les pipelines de traitement de la donnée (portefeuille, capitaux, primes) ont ensuite été implémentés en Python et validés via des tests de parité fonctionnelle très stricts, garantissant une parfaite équivalence des indicateurs métiers entre l'ancien et le nouveau système.
 
-Ce prototype établit les fondations (code, documentation, méthodologie) pour la migration des quatre marchés restants (Auto, Habitation, Santé, Épargne). Les modules développés (lecteurs génériques, système de logging, configuration externalisée) sont directement réutilisables, réduisant significativement l'investissement nécessaire pour les migrations suivantes.
+Ce premier datamart migré fait office de prototype : le socle technique, la méthodologie et les composants génériques développés lors de ce stage posent les fondations industrielles pour accélérer la migration des autres marchés P\&C à venir.
+
+\vspace{1cm}
+\textbf{Mots-clés :} Migration, Azure Databricks, PySpark, Assurance, Datamart, SAS.
+
+\vspace{0.5cm}
+\textbf{Abstract :} This report presents the migration of Allianz France's Construction datamart from a legacy SAS environment to a modern Python/PySpark architecture on Azure Databricks. As part of a broader strategic modernization initiative, the project began with a comprehensive reverse-engineering of the existing SAS codebase to document business rules. Based on this, a scalable Medallion architecture (Bronze/Silver/Gold) was designed. The data pipelines (portfolio, capital, premiums) were successfully implemented in Python and rigorously validated against SAS outputs to ensure strict functional parity. This inaugural migration serves as a foundational prototype, providing reusable components and a proven methodology to accelerate the migration of subsequent P\&C markets.
+
+\vspace{0.5cm}
+\textbf{Keywords :} Migration, Azure Databricks, PySpark, Insurance, Datamart, SAS.

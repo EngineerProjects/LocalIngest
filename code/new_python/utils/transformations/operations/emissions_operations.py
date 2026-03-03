@@ -208,27 +208,31 @@ def aggregate_by_policy_guarantee(
     Agrège les primes et commissions selon les colonnes de regroupement spécifiées.
 
     Logique :
-    - Regroupe par vision, dircom, cdpole, nopol, cdprod, noint, cgarp, cmarch, cseg, cssseg, cd_cat_min
-    - Somme : mt_ht_cts → primes_x (toutes lignes, exercice courant + antérieur)
-    - Somme : primes_n   → primes_n (exercice courant uniquement, pré-calculé en amont via jointure)
-    - Somme : mtcom → mtcom_x
+    - PRIMES_X = SUM(mt_ht_cts) — toutes les lignes (courant + antérieur)
+    - PRIMES_N = SUM(mt_ht_cts) WHERE exercice='cou' — exercice courant uniquement
+    - MTCOM_X  = SUM(mtcom)
 
-    Note : SUM(primes_n) est correct ici car après l'enrichissement segmentation,
-    plusieurs lignes peuvent exister par groupe — la somme les consolide correctement.
+    Pourquoi une somme conditionnelle et PAS un JOIN pré-calculé :
+    - L'approche JOIN (calculer PRIMES_N → attacher à toutes les lignes → re-sommer)
+      multiplie la valeur PRIMES_N par le nombre de lignes dans le groupe → double-comptage.
+    - La somme conditionnelle directe calcule correctement PRIMES_N en une seule passe
+      sans risque de multiplication des montants.
 
     Paramètres :
-        df : DataFrame en entrée avec les données de primes
+        df : DataFrame en entrée (doit contenir 'exercice', 'mt_ht_cts', 'mtcom')
         group_cols : Liste des colonnes de regroupement
 
     Retourne :
-        DataFrame agrégé
+        DataFrame agrégé avec primes_x, primes_n, mtcom_x
     """
     from pyspark.sql.functions import sum as _sum
 
     df_agg = df.groupBy(*group_cols).agg(
-        _sum('mt_ht_cts').alias('primes_x'),   # Total toutes lignes
-        _sum('primes_n').alias('primes_n'),     # Exercice courant (pré-calculé)
-        _sum('mtcom').alias('mtcom_x')          # Total commissions
+        _sum('mt_ht_cts').alias('primes_x'),
+        _sum(
+            when(col('exercice') == 'cou', col('mt_ht_cts')).otherwise(lit(0.0))
+        ).alias('primes_n'),
+        _sum('mtcom').alias('mtcom_x')
     )
 
     return df_agg

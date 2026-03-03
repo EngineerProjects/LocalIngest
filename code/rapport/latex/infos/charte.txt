@@ -1,0 +1,1956 @@
+La charte de l’écrit
+Rapports et mémoires
+Etudiants et apprentis
+
+Version 2.0
+
+Version 1.4
+
+Avant-propos
+Ce guide définit les règles retenues pour la réalisation, par les apprenants de JUNIA, de
+documents écrits de qualité professionnelle.
+Il est le résultat d’un travail collectif des enseignants de JUNIA. Il a été formalisé et mis à jour
+par un groupe de travail sous la responsabilité de la direction des programmes. Il rentre dans
+la démarche compétences de la Commission des Titres d’Ingénieur.
+Un rapport écrit est l’occasion de mettre en valeur une expérience professionnelle, un travail
+effectué dans le cadre d’un projet et des compétences acquises. Dans le cadre d’un stage, il
+offre également une occasion précieuse de prendre du recul sur les missions réalisées,
+d'analyser les succès et les éventuelles difficultés rencontrées, permettant ainsi une réflexion
+approfondie sur le cheminement personnel et professionnel. De plus, en communiquant les
+résultats obtenus et la méthodologie employée, un rapport écrit offre une visibilité concrète
+des réalisations et des contributions apportées sur un sujet donné.
+Un rapport écrit met en évidence la capacité de synthèse et de rédaction de l’apprenant,
+compétences essentielles dans le milieu professionnel. Il sert donc à valider qu’un niveau de
+compétence a été atteint et à transmettre des informations pour la suite du projet. Il est ainsi
+à la fois un document académique et professionnel. Le rapport se doit d’être un document
+rédigé qui nécessite une communication claire, structurée et professionnelle. Ce guide va vous
+présenter les différents éléments attendus dans un rapport ainsi que la forme qu’il doit
+respecter.
+Nous espérons que ce guide vous donnera les clés pour créer des rapports et des mémoires
+de qualité tout au long de votre formation chez JUNIA. Vous serez les représentants de votre
+école dans le milieu professionnel au cours de vos différents stages et, dans un avenir proche,
+lors de votre premier emploi.
+A ce titre, veillez tout particulièrement à l’orthographe et la grammaire. Un nombre trop
+important de fautes d’orthographe entraînera le rejet du document.
+Nous vous souhaitons bon courage dans la production de vos rapports et mémoires.
+Les enseignants de JUNIA
+
+Copyright ©JUNIA, Lille, 2024
+
+SOMMAIRE
+LES EXIGENCES RÉDACTIONNELLES D’UN RAPPORT ÉCRIT ................................................................................ 1
+OBLIGATION D’UTILISER UN STYLE NEUTRE, DÉPERSONNALISÉ ............................................................................ 2
+LA REDACTION ..................................................................................................................................................... 2
+L’ORTHOGRAPHE ................................................................................................................................................. 3
+LA PONCTUATION................................................................................................................................................ 4
+LE PLAGIAT .......................................................................................................................................................... 5
+LES FIGURES ET TABLEAUX .......................................................................................................................................... 6
+LA BIBLIOGRAPHIE .................................................................................................................................................... 6
+LES ÉLÉMENTS CONSTITUTIFS D’UN RAPPORT ÉCRIT ........................................................................................ 7
+FICHE A : COUVERTURE ............................................................................................................................................. 9
+FICHE B : RÉSUMÉ .................................................................................................................................................. 10
+FICHE C : REMERCIEMENTS ...................................................................................................................................... 11
+FICHE D : PRÉAMBULE ............................................................................................................................................ 12
+FICHE E : LEXIQUE .................................................................................................................................................. 13
+FICHE F : SOMMAIRE .............................................................................................................................................. 14
+FICHE G : INTRODUCTION ........................................................................................................................................ 15
+FICHE H : CADRE DE L’ÉTUDE .................................................................................................................................... 16
+FICHE I : CONTEXTE/ÉTAT DE L’ART ET PROBLÉMATIQUE ................................................................................................ 17
+FICHE J : MÉTHODOLOGIE ET MOYENS MIS EN ŒUVRE .................................................................................................... 19
+FICHE K : PRÉSENTATION ET ANALYSE DES RÉSULTATS .................................................................................................... 20
+FICHE L : DISCUSSION ET PERSPECTIVES ...................................................................................................................... 21
+FICHE M : CONCLUSION .......................................................................................................................................... 22
+FICHE N : RÉFÉRENCES BIBLIOGRAPHIQUES ................................................................................................................. 23
+FICHE O : LISTE DES ANNEXES ................................................................................................................................... 24
+FICHE P : ANNEXES................................................................................................................................................. 25
+FICHE Q : TABLE DES FIGURES ................................................................................................................................... 26
+FICHE R : TABLE DES TABLEAUX ................................................................................................................................. 27
+LA FORME D’UN RAPPORT ÉCRIT.................................................................................................................... 29
+L’ASPECT GÉNÉRAL DU DOCUMENT ............................................................................................................................ 31
+LE TEXTE ............................................................................................................................................................... 33
+LES PARAGRAPHES .................................................................................................................................................. 33
+LES TITRES ............................................................................................................................................................ 35
+LE SOMMAIRE........................................................................................................................................................ 36
+L’ÉNUMÉRATION .................................................................................................................................................... 36
+LA NOTE DE BAS DE PAGE ......................................................................................................................................... 37
+LES FIGURES, TABLEAUX ET ANNEXES .......................................................................................................................... 38
+Les figures ..................................................................................................................................................... 38
+Les tableaux .................................................................................................................................................. 40
+Les annexes ................................................................................................................................................... 42
+LA BIBLIOGRAPHIE .................................................................................................................................................. 43
+Citation des références dans le texte du rapport/mémoire .......................................................................... 43
+Rédaction des références bibliographiques ................................................................................................... 44
+
+Les exigences rédactionnelles d’un rapport écrit
+
+Les exigences
+rédactionnelles d’un
+rapport écrit
+
+1
+
+2
+
+La charte de l’écrit
+
+Cette première partie, les exigences rédactionnelles d’un rapport écrit, liste les bases de
+rédaction, d’orthographe, de ponctuation, de bibliographie que tout rapport/mémoire doit
+respecter. Elle vous alerte également sur un élément grave : le plagiat.
+
+OBLIGATION D’UTILISER UN STYLE NEUTRE,
+DÉPERSONNALISÉ
+Les rapports attendus sont des rapports scientifiques et techniques, d’études, impersonnels,
+et non des rapports rendant compte d’expériences personnelles de stage. Il s’agit d’une étude
+comme une autre, qui aurait pu être réalisée par un service de l’entreprise, un bureau
+d’études, une équipe de consultants… Ils doivent se rapprocher de ceux que produisent ces
+structures.
+En ce sens, :
+• il ne faut pas utiliser le style personnel (je, nous, on, le stagiaire…) pour chercher à
+montrer son implication, ou par facilité : l’utilisation de la 1ère personne du singulier
+(je), de la 3ème (on) ou de la 1ère du pluriel (nous), est interdite dans les écrits attendus ;
+il faut utiliser un style neutre, impersonnel : « l’étude va montrer ; il a été permis de
+… ». ;
+• de même, la référence au stage et tuteur de stage n’est pas autorisée : il faut parler
+d’une mission confiée, de l’encadrement technique accompagnant… comme s’il
+s’agissait d’une étude réalisée et rédigée par un bureau d’études tiers.
+
+LA REDACTION
+➔ La rédaction doit être claire et simple.
+➔ Les phrases doivent être courtes.
+Une phrase est composée d’un sujet, d’un verbe et de compléments. Elle contient 20 à 25 mots
+en moyenne.
+
+➔ Un nouveau paragraphe est créé à chaque changement d’idée pour améliorer la
+lisibilité du texte et pour en faciliter la lecture.
+
+➔ Les chiffres et les nombres sont écrits en lettres dans le texte quand ils sont entiers et
+compris entre 0 et 10.
+
+➔ Les chiffres et les nombres sont écrits en chiffres arabes (1, 2, 3…) quand le texte est
+technique ou mathématique.
+
+Les exigences rédactionnelles d’un rapport écrit
+
+L’ORTHOGRAPHE
+Dans le monde du travail, un écrit (rapport, lettre, mail, …) soigné et sans faute d’orthographe
+permettra au lecteur de comprendre le message sans avoir à le relire plusieurs fois et surtout
+de mal interpréter le message. A l’inverse, il est considéré comme un manque de rigueur, de
+crédibilité, voire traduire un sentiment d’incompétence.
+
+➔ Un rapport contenant plus de 10 fautes d’orthographe n’est pas professionnel et à
+ce titre n’est donc pas recevable.
+
+➔ Il est impératif de se relire et au besoin de se faire relire.
+➔ L’usage du correcteur d’orthographe n’est pas suffisant.
+➔ Il faut s’interdire l’utilisation :
+•
+•
+•
+•
+•
+
+de langage parlé et familier ;
+de jargons et expressions argotiques ;
+d’anglicismes ;
+d’abus de langage ;
+de langage ou abréviations SMS (Short Message Service).
+
+➔ Attention aux erreurs suivantes :
+•
+•
+•
+•
+•
+•
+•
+•
+•
+•
+•
+•
+•
+•
+•
+•
+•
+
+•
+•
+
+cent et vingt : ils ne prennent s que dans le cas où, multipliés par un autre nombre, ils
+terminent l’adjectif numéral. (ex : deux cents ans, Trois cent quatre-vingts pages)
+mille : toujours invariable
+chaque/chacun: toujours suivi du singulier
+chiffres d’affaires : toujours un « s » à affaires
+l’Etat : avec une majuscule quand il désigne un peuple ou une nation
+M. : et non Mr
+l’Union européenne : et non l’Union Européenne
+ci-joint : invariable lorsqu’il est placé avant un nom (ex : ci-joint les données, les données cijointes)
+compte tenu : invariable
+diagnostic : et non diagnostique
+étant donné : invariable
+etc.
+excepté : invariable s’il précède un nom (ex : excepté les schémas, les explications
+exceptées)
+fait : invariable quand il est suivi d’un verbe à l’infinitif (ex : elle s’est fait couper les cheveux)
+ou/où : « ou » peut-être remplacé par « ou bien »
+parce que
+quel que/quelque : « Quel que » est immédiatement suivi d’un verbe. Il s’accorde avec le
+nom qu’il précède (ex : quelle que soit la méthode que l’on décide…). « Quelque » est suivi
+d’un nom, d’un adjectif ou d’un adverbe (ex : quelque méthode que l’on utilise, …)
+quelque chose
+quelquefois
+
+➔ Vérifier les accords des participes passés et les accords verbaux.
+
+JUNIA © 2024
+
+3
+
+4
+
+La charte de l’écrit
+
+LA PONCTUATION
+➔ La ponctuation permet de rythmer un texte. Elle sert également à la compréhension
+par autrui. Il faut donc l’utiliser avec une grande précision.
+
+➔ Utiliser les signes de ponctuation suivants :
+•
+•
+
+•
+•
+
+•
+•
+
+Le point : il permet de signaler que l’on passe à une autre idée ou que l’exposé est terminé.
+Règle : pas d’espace avant et un espace après.
+La virgule : elle permet de séparer les éléments semblables lorsqu’ils ne sont pas séparés
+par « et », « ou » ou « ni ». Elle permet également d’encadrer ou de mettre en valeur un
+élément. Règle : pas d’espace avant et un espace après.
+Le point d’interrogation : il termine une phrase en exprimant une interrogation.
+Règle : un espace avant et un espace après.
+Le point-virgule : il permet de séparer deux aspects d’une même idée que la virgule ne
+séparerait
+pas
+suffisamment
+et
+que
+le
+point
+séparerait
+trop.
+Règle : un espace avant et un espace après.
+Les deux points : ils annoncent une citation, une énumération ou une explication.
+Règle : un espace avant et un espace après.
+Les guillemets : ils encadrent une citation de phrase(s) empruntée(s) à un autre ouvrage. Ils
+permettent ainsi de protéger l’auteur de la suspicion de plagiat. La citation doit être
+accompagnée de sa source.
+Exemple : « Bientôt une sorte de griserie lui vint de toute cette terre remuée, qui exhalait
+une odeur forte, l'odeur des coins humides où fermentent les germes.» (Emile Zola, 1887)
+Ils peuvent également signaler un dialogue.
+Il ne faut pas les utiliser pour excuser une approximation sur un mot ou une phrase.
+Règle : un espace avant et un espace après.
+
+➔ Utiliser les signes de ponctuation suivants avec parcimonie :
+•
+
+•
+
+•
+
+Les points de suspension : placés à la fin d’une phrase, ils permettent d’indiquer qu’elle est
+inachevée.
+Règle : pas d’espace avant et un espace après.
+Le point d’exclamation : il permet de marquer un étonnement, une indignation, une
+ironie,…
+Règle : un espace avant et un espace après.
+Les parenthèses : limiter leur usage car on accorde moins d’importance à ce qu’il y a à
+l’intérieur et limiter leur contenu à une ou deux lignes au maximum.
+Règle : un espace avant l’ouverture de la parenthèse et pas d’espace après. Pas d’espace
+avant la fermeture de la parenthèse et un espace après.
+
+Les exigences rédactionnelles d’un rapport écrit
+
+LE PLAGIAT
+➔ Tout le texte, toutes les données, toutes les figures (schémas, cartes, graphiques,
+illustrations et photos) et tous les tableaux contenus dans le rapport sont
+revendiqués comme votre œuvre. Dans le cas contraire, il faut indiquer la source
+pour ne pas commettre UN PLAGIAT.
+
+➔ Ne jamais copier/coller sur Internet.
+C’est un vol intellectuel. Un simple changement de style peut alerter le lecteur qui retrouvera
+facilement et rapidement le texte emprunté (logiciels de détection automatique de plagiat).
+
+➔ En cas d’emprunt, il faut indiquer la source sous la forme suivante : auteur(s) et date
+entre parenthèses. Nous retrouverons la liste complète des références en
+bibliographie.
+Si la source n’est pas connue, il faut la citer comme « anonyme » mais indiquer les références de
+l’endroit où l’on a trouvé le document.
+
+➔ Tout document doit être unique : l’auto-plagiat est interdit.
+➔ Une citation exacte doit être placée entre guillemets.
+Exemple : « Bientôt une sorte de griserie lui vint de toute cette terre remuée, qui exhalait une
+odeur forte, l'odeur des coins humides où fermentent les germes.» (Emile Zola, 1887)
+
+➔ En revanche, s’il s’agit de s’appuyer sur les travaux de quelqu’un et de reprendre en
+ses propres mots les résultats ou théories de l’auteur, une simple indication de la
+source dans le texte suffit.
+
+➔ Il est obligatoire d’indiquer la source pour chaque figure (schémas, cartes,
+graphiques, illustrations et photos) ou tableaux non personnels.
+La source est indiquée sous la légende de la figure ou du tableau.
+
+➔ Si une figure est créée en s’inspirant d’un autre auteur, il faut préciser « adapté ou
+modifié d’après » devant le nom de l’auteur.
+
+➔ Il ne faut rien indiquer en cas de source personnelle.
+➔ Attention lors de l’utilisation de figures ou tableaux provenant de sources soumises à
+copyright, il faut l’autorisation explicite des ayants droit.
+
+JUNIA © 2024
+
+5
+
+6
+
+La charte de l’écrit
+
+LES FIGURES ET TABLEAUX
+➔ Les figures (schémas, cartes, graphiques, illustrations et photos) et les tableaux
+permettent d’illustrer, aérer et synthétiser le texte et rendent la lecture plus facile.
+
+➔ Quand ils n’ont pas d’incidence sur la cohérence de la lecture, il faut les placer en
+annexe. S’ils sont dans le corps du texte, la table des figures (voir page 38) et la table
+des tableaux (voir page 40) sont obligatoires.
+
+➔ Ils doivent tenir sur une seule page (ne jamais couper un tableau ou une figure) et
+être à proximité du texte s’y rapportant. Dans le cas contraire, il faut les mettre en
+annexe.
+
+➔ Il faut ajouter une légende pour les unités et abréviations. Attention pour les cartes et
+plans, la mention de l’échelle et de l’orientation est obligatoire.
+
+➔ Les figures doivent être lisibles et compréhensibles, même imprimées en noir et
+blanc.
+
+➔ Chaque figure et chaque tableau doivent être commentés dans le texte. Non
+commentés, ils sont inutiles.
+
+LA BIBLIOGRAPHIE
+➔ La recherche bibliographique intervient à 3 niveaux :
+•
+•
+•
+
+Au début du travail : pour définir, situer le sujet et lister les recherches et
+avancées actuelles.
+Pendant le travail : pour se forger un esprit critique et s’appuyer sur des
+références fiables.
+A la fin du travail : pour discuter et comparer les résultats obtenus à d’autres
+travaux.
+
+➔ À tout moment dans le rapport, lorsque l’idée, la phrase, le tableau ou la figure n’est pas
+de vous, il est indispensable de citer la source.
+
+➔ Les références ne peuvent être constituées uniquement de sites internet. Elles doivent
+être issues au maximum de revues scientifiques et de sites Internet sûrs (centres de
+recherche, organismes officiels, …). Pour les documents trouvés sur Internet, il faut
+toujours vérifier la source et les auteurs (attention aux sources du genre Wikipédia).
+
+➔ La source doit être citée à la fois dans le texte du rapport et dans la liste des références
+bibliographiques.
+Toutes les références citées dans le texte doivent être référencées dans les références
+bibliographiques.
+A l’inverse, toutes les références bibliographiques listées doivent être citées dans le texte.
+
+Les éléments constitutifs d’un rapport écrit
+
+Les éléments
+constitutifs d’un
+rapport écrit
+
+JUNIA © 2024
+
+7
+
+8
+
+La charte de l’écrit
+
+La deuxième partie, les éléments constitutifs d’un rapport écrit, détaille le fond d’un
+rapport/mémoire. Chaque élément est décrit dans une fiche (fiche A à fiche R).
+La fiche décrit l’élément et précise s’il est obligatoire ou facultatif avec un nombre indicatif de
+pages. Attention, chaque exercice (ex : Stage de professionnalisation, Stage d’exécution, Stage
+de fin d’études…) pourra rendre des fiches obligatoires ou facultatives et indiquer un contenu
+propre à l’exercice.
+La structure générale ainsi que le contenu de chaque fiche détaillée ci-dessous peuvent être
+adaptés en fonction de la mission après l’accord de l’enseignant référent.
+Les titres des fiches peuvent être personnalisés. Attention, tout ce qui est écrit sous couvert
+d’un titre doit être clairement annoncé par le titre.
+
+Les éléments constitutifs d’un rapport écrit
+
+FICHE A : COUVERTURE
+Obligatoire
+
+Une page non numérotée
+
+La présentation est imposée et doit obligatoirement comporter les informations
+suivantes :
+
+Autre logo
+éventuel
+
+JUNIA
+2 rue Norbert Ségard
+59014 Lille cedex
+
+Logo de l’entreprise
+
+Adresse de
+l’entreprise
+
+Type rapport ou type mémoire
+
+{ titre }
+CONFIDENTIEL - X années
+
+En vue de l’obtention du diplôme dénomination ou
+Pour la validation du stage dénomination ou
+Pour la validation de l’unité d’enseignement dénomination
+Enseignant référent : Nom prénom
+Encadrant organisme d’accueil : Nom prénom
+
+Nom Prénom étudiant
+Formation-Promotion
+
+Mois Année
+
+Confidentiel est à apposer en dessous du titre et en rouge si l’entreprise exige que tout ou
+partie des informations reste confidentiel. Il faut préciser la durée en années ou « durée
+illimitée ».
+Le titre doit :
+• être court et explicite ;
+• permettre de percevoir le problème à résoudre et de comprendre la spécificité et
+le caractère unique du rapport ;
+• correspondre au contenu du rapport (chaque mot est important et centré sur
+l’étude ou la mission) ;
+• être compréhensible pour un non-initié (pas de terme spécifique à l’entreprise) ;
+• susciter l’envie de lire le document (une accroche).
+Il est possible d’illustrer la couverture à l’aide de photographies (préciser la source).
+
+JUNIA © 2024
+
+9
+
+10
+
+La charte de l’écrit
+
+FICHE B : RÉSUMÉ
+Obligatoire
+
+Une page non numérotée
+
+Le résumé (300 mots +/- 10%) permet de donner une image réduite, fidèle et intégrale du
+rapport. Une version anglaise peut être demandée par le guide propre à l’exercice.
+On y trouve :
+•
+•
+•
+•
+•
+•
+
+le rappel du cadre de l’étude (voir fiche H) ;
+le contexte/état de l’art et problématique (voir fiche I) ;
+la méthodologie et moyens mis en œuvre (voir fiche J) ;
+la présentation et analyse des résultats (voir fiche K) ;
+Une phrase de perspectives/conclusion (voir fiches L et M) ;
+5 mots clés qui permettront la classification du document en bibliothèque ou dans
+les répertoires.
+Résumé :
+
+Mots clés :
+Abstract :
+
+Keywords :
+
+Ce n’est ni une introduction, ni une conclusion mais une synthèse fidèle du rapport, tournée
+vers l’action.
+On retrouvera cette page à l’identique sur la quatrième page de couverture (dos du
+rapport).
+
+Les éléments constitutifs d’un rapport écrit
+
+FICHE C : REMERCIEMENTS
+Obligatoire
+
+Une page non numérotée
+
+Cette page est obligatoire pour tous les rapports professionnels.
+Les remerciements sont rédigés à la 1ère personne et permettent de remercier votre
+enseignant référent et votre encadrant de l’organisme d’accueil et toutes les personnes
+ayant joué un rôle important dans votre étude. Il faut indiquer le nom, la fonction de
+chaque personne et la raison de vos remerciements.
+
+Attention
+•
+•
+
+Aucune faute d’orthographe dans les noms de famille.
+Aucun jugement de valeur ou règlement de compte dans les remerciements.
+
+JUNIA © 2024
+
+11
+
+12
+
+La charte de l’écrit
+
+FICHE D : PRÉAMBULE
+Facultatif
+
+Une page non numérotée
+
+Le préambule est un avant-propos dans lequel on ne traite pas encore le sujet.
+Il permet de prévenir avec brièveté le lecteur, avant qu’il ne lise l’introduction :
+•
+•
+•
+•
+
+de certains éléments propres à la démarche suivie et présentée dans le rapport
+(ex : étude basée sur des résultats fictifs, …) ;
+des limites éventuelles du travail ;
+de l’utilisation d’un vocabulaire particulier ou d’un niveau de langage ;
+des précautions de confidentialité demandées par l’entreprise.
+
+Dans le cadre d’un stage avec plusieurs missions, le préambule permet de préciser la
+mission développée dans le rapport.
+Il évite au lecteur une mauvaise compréhension ou une confusion.
+
+Les éléments constitutifs d’un rapport écrit
+
+FICHE E : LEXIQUE
+Obligatoire
+
+Une page non numérotée
+
+C’est la liste alphabétique des termes techniques nouveaux ou difficiles, des termes en
+langue étrangère, des sigles et abréviations figurant dans le texte du rapport accompagnés
+de leur définition.
+La définition de chaque expression doit être présente dans le corps du texte entre
+parenthèses lors de son premier emploi.
+Un sigle est une suite de lettres formant une abréviation (ex : INSEE Institut National de la
+Statistique et des Etudes Economiques).
+Une abréviation est une réduction d’un mot ou d’un groupe de mots en une lettre ou un
+groupe de lettres (ex : apr. J.-C. après Jésus Christ, ha hectare, cf. confer).
+
+Attention
+•
+•
+•
+
+Lors du premier emploi d’un sigle ou d’une abréviation, on développe sa
+signification complète dans le texte et entre parenthèses.
+Pas de point dans le sigle s’il se prononce comme un mot (ex : INSEE).
+Des points dans le sigle si chaque lettre est prononcée (ex : E.D.F).
+
+LEXIQUE
+Terme/sigle/Abréviation
+
+Définition et traduction pour
+terme en langue étrangère
+
+Terme/sigle/Abréviation
+…
+
+JUNIA © 2024
+
+13
+
+14
+
+La charte de l’écrit
+
+FICHE F : SOMMAIRE
+Obligatoire
+
+Nombre de pages indicatif : 1 à 2 non numérotée(s)
+
+Le sommaire répertorie les titres du contenu du rapport accompagnés de leur numéro de
+page.
+Il inclut toutes les parties du travail à l’exception des pages liminaires (avant le sommaire)
+et du sommaire lui-même.
+
+Attention
+•
+•
+•
+
+La numérotation des titres est obligatoire sous la forme 1 1.1 1.1.1 (voir page 35).
+La numérotation des pages commence après le sommaire (voir page 32).
+Il est obligatoire de générer le sommaire de façon automatique (voir page 36). Un
+sommaire “fait à la main” est reconnaissable et n’est pas professionnel.
+
+Les éléments constitutifs d’un rapport écrit
+
+FICHE G : INTRODUCTION
+Obligatoire
+
+Nombre de pages indicatif : 1 à 2 numérotée(s)
+
+L’introduction justifie l’objectif de l’étude pour la structure d’accueil ou le commanditaire.
+Elle peut commencer par « une accroche ciblée, pertinente », c'est-à-dire une phrase qui
+permet d’attirer immédiatement l’attention et l’intérêt du lecteur.
+Elle part du contexte général, dans lequel l’étude s’inscrit, pour déboucher sur la
+problématique spécifique (image de l’entonnoir).
+Elle doit être composée de 3 parties :
+•
+•
+•
+
+une mise en situation : en quelques phrases, il faut exposer le contexte général de
+la mission ;
+la position du problème : la problématique doit être annoncée dans l’introduction ;
+l’annonce du plan.
+
+Il n’y a pas de résultats ni d’interprétation dans l’introduction. Cette partie n’est pas un
+état de l’art.
+
+Attention
+•
+•
+
+•
+
+La mention de l’année d’étude et du type de stage figurent uniquement sur la page
+de couverture : il ne faut pas rappeler la justification du stage style « Dans le cadre
+de ma troisième année, je dois faire un stage…»
+L’introduction est impersonnelle et ne doit donc pas contenir d’appréciation du
+style « Ce stage m’a permis de… », « Pendant mon stage j’ai…», « Dans un premier
+temps, je vous présenterai… », …
+La numérotation des pages commence avec l’introduction (voir page 32).
+
+JUNIA © 2024
+
+15
+
+16
+
+La charte de l’écrit
+
+FICHE H : CADRE DE L’ÉTUDE
+Facultatif
+
+Nombre de pages indicatif : 1 à 2 numérotée(s)
+
+Le cadre de l’étude permet de situer la mission afin de donner au lecteur des bases pour
+comprendre la problématique qui va suivre.
+Vous présenterez :
+•
+•
+•
+
+la structure d’accueil (ou le projet scientifique) ;
+la stratégie globale de la structure et la façon dont la mission s’inscrit dans cette
+stratégie ;
+la préoccupation de l’entreprise (reformuler la question posée par l’entreprise).
+
+Attention
+•
+
+•
+
+La présentation doit être adaptée à la taille de l’entreprise et au type de structure
+dans lequel la mission s’est déroulée (s’il s’agit d’un grand groupe, attardez-vous sur
+le service qui vous a accueilli(e)).
+La présentation éventuelle de l’organigramme se fait en annexe (voir fiche P).
+
+Les éléments constitutifs d’un rapport écrit
+
+FICHE I : CONTEXTE/ÉTAT DE L’ART ET
+PROBLÉMATIQUE
+Obligatoire
+
+Nombre de pages indicatif : 3 à 10 numérotées
+
+Le contexte/état de l’art et problématique permettent de détailler le pourquoi de cette
+étude.
+Il est important pour tous les rapports, et particulièrement lorsque l’étude est réalisée au
+sein d’une structure ou dans le cadre d’une étude scientifique :
+•
+•
+•
+•
+•
+•
+
+de poser le problème de manière intelligible pour un lecteur extérieur averti ;
+de faire un état des lieux des connaissances sur le problème (recherches
+bibliographiques) ;
+d’analyser l’existant dans la structure s’il y a lieu (fonctionnement actuel, données
+et informations à disposition au démarrage de l’étude) ;
+d’identifier les acteurs impliqués (structures, administrations, collectivités…) ;
+de définir l’enjeu stratégique pour l’entreprise ;
+de lister les principaux objectifs à atteindre.
+
+L’ordre des points n’est pas imposé. Il est toutefois important de veiller au « fil conducteur »
+de l’écrit, l’enchainement des différentes parties doit être logique. Si besoin, contactez
+votre enseignant référent pour valider l’ordre des points.
+Pour clarifier et rédiger la problématique, vous pouvez vous appuyer sur des questions
+comme :
+•
+•
+•
+•
+•
+•
+•
+
+Pourquoi la situation actuelle est-elle jugée insatisfaisante ?
+Quelle est l’importance du problème pour les personnes impliquées dans la
+structure ?
+Est-ce que le problème a déjà été traité et si oui comment (état de l’art) ?
+En quoi est-ce important pour la structure (enjeu stratégique) ?
+Quelle est la situation désirable recherchée ?
+Quelle est la portée du travail qui va être fourni pour les différents acteurs ?
+Etc.
+
+Lorsque l’étude fait partie d’un projet de recherche au sein d’un organisme de recherche
+(appliquée ou scientifique), une université… il est important de :
+•
+•
+•
+•
+
+définir le contexte global du projet de recherche ;
+faire un état des lieux des connaissances sur le problème (recherches
+bibliographiques) ;
+définir la problématique qui justifie l’étude menée ;
+définir les hypothèses de travail / étude le cas échéant.
+
+Au final, l’objectif du travail doit être clairement exprimé en 2 ou 3 lignes maximum.
+JUNIA © 2024
+
+17
+
+18
+
+La charte de l’écrit
+
+Attention
+•
+•
+•
+
+Le problème n’est pas toujours clairement identifié. Il vous appartient de le préciser
+pour l’analyser correctement.
+Si des études ont déjà été menées pour ce travail, il faut se baser sur des références
+bibliographiques (voir page 43).
+Toutes les références citées dans le texte doivent être référencées dans les
+références bibliographiques (voir page 43)
+
+Les éléments constitutifs d’un rapport écrit
+
+FICHE J : MÉTHODOLOGIE ET MOYENS MIS EN
+ŒUVRE
+Obligatoire
+
+Nombre de pages indicatif : 2 à 6 numérotées
+
+Cette partie permet de lister les étapes et les moyens retenus pour répondre à la
+problématique. C’est une synthèse explicative de la stratégie développée.
+Vous exposerez :
+•
+•
+
+•
+•
+
+la méthodologie globale ;
+les moyens scientifiques et techniques (méthodes statistiques et analytiques, plan
+d’expérience, stratégie d’échantillonnage, choix des objets et des sites d’étude,
+variables étudiées et indicateurs utilisés, techniques de recueil de l’information,
+matériel de laboratoire, matériel de chantier et de mesure, rapport de contrôle, …) ;
+les aspects organisationnels (méthodes de travail, planning opérationnel, …) ;
+le recours à des références (bases de données, logiciels, outils spécifiques, …).
+
+Il faut présenter les méthodes qui vont être utilisées et les justifier par des références
+bibliographiques.
+Cette partie peut être illustrée sous la forme d’un schéma ou d’un synoptique présentant
+les étapes clés, les données d’entrée et de sortie, les outils créés, …
+Il convient d’utiliser les annexes pour compléter et étayer l’argumentation.
+
+Attention
+•
+•
+•
+•
+•
+
+Cette partie n’est pas un carnet de bord ou un compte-rendu d’activité retraçant le
+travail au jour le jour.
+Il ne faut pas lister les actions par ordre chronologique mais indiquer la
+méthodologie pertinente qui a finalement été retenue pour le travail (sauf cas
+exceptionnel), dans un ordre logique.
+Elle devrait permettre à quelqu’un de reproduire l’étude à l’identique.
+Toutes les références citées dans le texte doivent être référencées dans les
+références bibliographiques (voir page 43)
+Tout ce qui est placé en annexe doit être cité dans le corps du texte sous forme
+d’un renvoi « Voir annexe 1 : titre, page… » (voir page 42).
+
+JUNIA © 2024
+
+19
+
+20
+
+La charte de l’écrit
+
+FICHE K : PRÉSENTATION ET ANALYSE DES
+RÉSULTATS
+Obligatoire
+
+Nombre de pages indicatif : 10 à 25 numérotées
+
+Cette partie permet :
+•
+•
+
+de présenter, de façon adaptée et commentée, les résultats obtenus en cohérence
+avec la méthodologie ;
+de définir et d’analyser les écarts par rapport à des attendus (normes, seuils…).
+
+Si les résultats sont nombreux, il faut prévoir des conclusions intermédiaires.
+
+Attention
+•
+•
+•
+•
+
+Choisir un mode de présentation des résultats clair avec des graphes et illustrations
+légendés (échelles, légendes des abscisses et ordonnées, unités).
+Toute illustration doit être commentée (il n’appartient pas au lecteur de faire sa
+propre interprétation).
+Présenter les résultats les plus importants et le reste dans les annexes.
+Tout ce qui est placé en annexe doit être cité dans le corps du texte sous forme
+d’un renvoi « Voir annexe 1 : titre, page… » (voir page 42).
+
+Les éléments constitutifs d’un rapport écrit
+
+FICHE L : DISCUSSION ET PERSPECTIVES
+Obligatoire
+
+Nombre de pages indicatif : 3 à 6 numérotées
+
+Après avoir exposé les résultats, il convient d’en discuter de manière structurée en prenant
+du recul.
+Vous allez :
+•
+•
+•
+•
+•
+•
+•
+
+faire le point sur l’ensemble de l’étude en rappelant les points forts des résultats ;
+apporter des réponses au problème posé ou des éléments de solution/réflexion ;
+définir le cas échéant les implications financières, conceptuelles ou managériales
+pour la structure et les limites éventuelles ;
+faire une analyse critique (ce qui a bien fonctionné et à l’inverse ce qui n’a pas bien
+fonctionné) en énonçant les critères retenus (données factuelles, mesurables) ;
+discuter les résultats au regard d’autres travaux (bibliographie, travaux
+précédents…) : le renvoi vers l’état de l’art est impératif ;
+élargir le débat pour montrer que votre propos n’est pas clos (vous ne prétendez
+pas avoir fourni la réponse définitive à la question posée) ;
+ouvrir sur de nouvelles pistes en suggérant d’autres recommandations et études
+possibles.
+
+Attention à la structure
+•
+
+La partie discussion contient plusieurs parties, organisées de manière logique, avec
+des titres pertinents. Ces parties couvrent les différents thèmes de discussion
+abordés.
+
+JUNIA © 2024
+
+21
+
+22
+
+La charte de l’écrit
+
+FICHE M : CONCLUSION
+Obligatoire
+
+Nombre de pages indicatif : 1 à 2 numérotée(s)
+
+La conclusion fait le bilan du travail accompli, reformule et synthétise la réponse apportée
+et rappelle éventuellement la perspective principale.
+A l’inverse de l’introduction, elle va du particulier vers le général.
+
+Attention
+•
+•
+
+Il ne faut pas reprendre le contenu des parties précédentes mais synthétiser les
+points les plus significatifs.
+La conclusion est impersonnelle et ne doit donc pas contenir d’appréciation du style
+« ce stage m’a permis de… », « pendant mon stage j’ai… », …
+
+Les éléments constitutifs d’un rapport écrit
+
+FICHE N : RÉFÉRENCES BIBLIOGRAPHIQUES
+Obligatoire
+
+Page(s) numérotée(s)
+
+C’est la liste des références bibliographiques classées par ordre alphabétique d’auteurs
+ou par ordre d’apparition si elles sont numérotées (tous types de documents confondus).
+Elle peut être générée de façon automatique (voir page 43).
+Les différents types de références sont :
+•
+•
+•
+•
+•
+•
+•
+•
+•
+•
+
+les ouvrages ;
+les articles d’un périodique ;
+les thèses et rapports de stage ;
+les communications dans les congrès scientifiques ;
+les normes ;
+les décrets, lois, circulaires, arrêtés, etc.
+les sites internet ;
+les articles en ligne ;
+les livres en ligne ;
+les vidéos en ligne.
+
+La manière de citer la référence doit correspondre à la norme (voir : rédaction des
+références bibliographiques, page 43).
+Toutes les références citées dans le texte doivent être référencées dans les références
+bibliographiques (voir page 43).
+
+JUNIA © 2024
+
+23
+
+24
+
+La charte de l’écrit
+
+FICHE O : LISTE DES ANNEXES
+Facultatif
+
+Une page numérotée
+
+C’est la liste numérotée des annexes avec leur titre et leur numéro de page.
+
+Attention
+•
+•
+
+Cette liste est pertinente s’il y a plus d’une annexe.
+Il est préférable de générer la liste de façon automatique (voir page 42). Une liste
+‘faite à la main’ est reconnaissable et n’est pas professionnelle.
+
+LISTE DES ANNEXES
+
+Annexe 1 : titre
+
+n° page
+
+Annexe 2 : titre
+
+n° page
+
+…
+
+Les éléments constitutifs d’un rapport écrit
+
+FICHE P : ANNEXES
+Facultatif
+
+Page(s) numérotée(s)
+
+Tous les documents qui ont été utiles lors de la rédaction mais qui alourdiraient le texte
+plutôt que d’en faciliter la compréhension doivent être placés dans les annexes.
+On trouvera par exemple en annexes :
+•
+•
+•
+•
+•
+•
+•
+•
+•
+
+l’organigramme de l’entreprise ;
+les tableaux de chiffres trop lourds ;
+certains graphiques de résultats (par exemple lorsqu’une synthèse des résultats
+figure dans le rapport) ;
+des documents techniques complémentaires ;
+le code informatique développé ;
+les textes réglementaires ;
+les protocoles expérimentaux détaillés ;
+les questionnaires ;
+les comptes rendus d’entretien.
+
+Attention
+•
+•
+•
+
+Les annexes doivent être utiles et utilisées (il ne s’agit pas de faire du remplissage).
+Tout ce qui est placé en annexe doit être cité dans le corps du texte sous forme
+d’un renvoi « Voir annexe 1 : titre, page… » (voir page 42).
+Bannir les mauvaises photocopies, les illustrations et schémas illisibles.
+
+JUNIA © 2024
+
+25
+
+26
+
+La charte de l’écrit
+
+FICHE Q : TABLE DES FIGURES
+Facultatif
+
+Une page numérotée
+
+C’est la liste numérotée des figures (schémas, cartes, graphiques, illustrations et photos)
+accompagnées de leur titre et numéro de page. Elle est très appréciée du jury et témoigne
+d’un degré d’achèvement du travail écrit.
+
+Attention
+•
+
+Il est préférable de générer la table de façon automatique (voir page 38). Une table
+‘faite à la main’ est reconnaissable et n’est pas professionnelle.
+
+LISTE DES FIGURES
+
+Figure 1 : titre
+
+n° page
+
+Figure 2 : titre
+
+n° page
+
+…
+
+Les éléments constitutifs d’un rapport écrit
+
+FICHE R : TABLE DES TABLEAUX
+Facultatif
+
+Une page numérotée
+
+C’est la liste numérotée des tableaux accompagnés de leur titre et numéro de page. Elle
+est très appréciée du jury et témoigne d’un degré d’achèvement du travail écrit.
+
+Attention
+•
+
+Il est préférable de générer la table de façon automatique (voir page 40). Une table
+‘faite à la main’ est reconnaissable et n’est pas professionnelle.
+
+LISTE DES TABLEAUX
+
+Tableau 1 : titre
+
+n° page
+
+Tableau 2 : titre
+
+n° page
+
+…
+
+JUNIA © 2024
+
+27
+
+28
+
+La charte de l’écrit
+
+La forme d’un rapport écrit
+
+La forme d’un
+rapport écrit
+
+29
+
+30
+
+La charte de l’écrit
+
+La dernière partie, la forme d’un rapport écrit, liste les bases de mise en forme que tout
+rapport/mémoire doit respecter. La mise en forme du rapport est très importante car elle
+détermine la première impression du lecteur.
+A cet effet, il convient d’utiliser les fonctionnalités essentielles suivantes :
+
+WORD OFFICE 365
+➔
+
+Le saut de page
+
+page 31
+
+➔
+
+L’en-tête et le pied de page contenant au minimum le numéro de
+page et le titre du rapport/mémoire
+
+page 32
+
+➔
+
+Le style de paragraphe
+
+page 34
+
+➔
+
+Le style de titre
+Numéroter le titre (obligatoire)
+Le sommaire automatique
+
+page 35
+page 35
+page 36
+
+➔
+
+Légender une figure
+La table automatique des figures
+
+page 38
+page 38
+
+➔
+
+Légender un tableau
+La table automatique des tableaux
+
+page 40
+page 40
+
+➔
+
+Légender une annexe
+La table automatique des annexes
+
+page 42
+page 42
+
+➔
+
+La saisie d’une référence bibliographique
+L’insertion automatique d’une référence bibliographique
+La liste automatique des références bibliographiques
+
+page 43
+page 43
+page 44
+
+La forme d’un rapport écrit
+
+L’ASPECT GÉNÉRAL DU DOCUMENT
+➔ Le document est dactylographié et de qualité professionnelle.
+➔ Les rapports sont principalement présentés en orientation portrait et les marges sont
+égales à 2,5 cm.
+WORD OFFICE 365
+
+Onglet Mise en page > groupe Mise en page > Marges
+Sélectionner Normales
+Onglet Mise en page > groupe Mise en page > Orientation
+Sélectionner Portrait
+
+➔ Les sauts de page doivent être définis par le rédacteur pour éviter les lignes veuves
+(dernière ligne d’un paragraphe qui se retrouve seule en haut d’une page), les lignes
+orphelines (première ligne d’un paragraphe qui se retrouve seule en bas d’une page)
+et les titres seuls en bas de page.
+WORD OFFICE 365
+
+Insérer un saut de page :
+Positionner le curseur à la fin de la page
+Onglet Insertion > groupe Pages > Saut de page
+Eviter les lignes veuves ou orphelines :
+Onglet Mise en page > groupe Paragraphe
+Cliquer la petite flèche
+en bas à droite du groupe pour afficher la boîte de dialogue
+Onglet Enchaînements
+Activer Eviter veuves et orphelines
+
+➔ Un même document peut contenir différentes mises en page (marges, orientation du
+papier, numérotation des pages, en-têtes et pieds de pages, …) grâce aux sections. Il
+est également possible de définir une nouvelle page comme page paire ou impaire.
+WORD OFFICE 365
+
+Insérer un saut de section :
+Positionner le curseur à la fin de la page
+Onglet Mise en page > groupe Mise en page > Sauts de page
+Sélectionner Page suivante
+Positionner le curseur dans la nouvelle page et changer la mise en forme
+Insérer un saut de section page paire ou impaire :
+Positionner le curseur à la fin de la page
+Onglet Mise en page > groupe Mise en page > Sauts de page
+Sélectionner Page paire ou Page impaire
+
+JUNIA © 2024
+
+31
+
+32
+
+La charte de l’écrit
+
+➔ Chaque page doit avoir un en-tête et/ou un pied de page (zones dans la marge
+supérieure ou inférieure de chaque page) contenant le titre du document et le numéro
+de page.
+WORD OFFICE 365
+
+Insérer un en-tête ou un pied de page identique dans tout le document :
+Onglet Insertion > groupe En-tête et pied de page
+Sélectionner En-tête ou Pied de page
+Choisir un style prédéfini ou cliquer sur Modifier l’en-tête
+Insérer un en-tête ou un pied de page différent pour les pages paires et impaires :
+Insérer des sauts de section page paire ou impaire (voir page 31)
+Onglet Mise en page> groupe Mise en page
+Cliquer la petite flèche
+en bas à droite du groupe Mise en page pour afficher la
+boîte de dialogue et Onglet Mise en page
+Activer l’option Paires et impaires différentes
+Insérer un en-tête ou un pied de page pair sur une page paire
+Insérer un en-tête ou un pied de page impair sur une page impaire
+Insérer un en-tête ou un pied de page différent pour une partie du document (document avec
+plusieurs sections - voir page 31) :
+Positionner le curseur dans la section qui aura un en-tête ou un pied de page différent
+Onglet Insertion > groupe En-tête et pied de page
+Sélectionner En-tête ou Pied de page
+Sélectionner Modifier l’en-tête ou Modifier le pied de page
+Dans le groupe Navigation, cliquer sur Lier au précédent
+pour rompre la liaison
+entre l’en-tête ou le pied de page en cours et celui de la section précédente.
+Modifier un en-tête ou un pied de page :
+Positionner le curseur dans la page contenant l’en-tête ou le pied de page
+Onglet Insertion > groupe En-tête et pied de page
+Sélectionner En-tête ou Pied de page
+Cliquer sur Modifier l’en-tête ou modifier le pied de page
+Supprimer un en-tête ou un pied de page :
+Positionner le curseur dans la page contenant l’en-tête ou le pied de page
+Onglet Insertion > groupe En-tête et pied de page
+Sélectionner En-tête ou Pied de page
+Cliquer sur Supprimer l’en-tête ou supprimer le pied de page
+Insérer des champs (date, auteur, numéro de page, nombre de pages, nom du document, …) :
+Positionner le curseur dans l’en-tête ou le pied de page
+Onglet Insertion > groupe Texte
+Sélectionner QuickPart et Champ
+Sélectionner un nom de champ dans la liste (Author=nom de l’auteur, Date, Heure,
+Page=numéro page en cours, NumPages=nombre de pages, …)
+
+➔ La numérotation des pages est obligatoire et doit débuter après le sommaire.
+WORD OFFICE 365
+
+Commencer la numérotation à 1 après la première page :
+Insérer un saut de section à l’emplacement où doit commencer la numérotation (voir
+page 31)
+Positionner le curseur dans la page où doit commencer la numérotation
+Onglet Insertion > groupe En-tête et pied de page
+Sélectionner En-tête ou Pied de page
+Cliquer sur Modifier l’en-tête ou modifier le pied de page
+Si un en-tête ou un pied de page a été défini pour la section précédente, cliquer sur
+Lier au précédent
+dans le groupe Navigation pour rompre la liaison
+Groupe En-tête et pied de page
+Sélectionner Numéro de page > Format des numéros de page
+Activer l’option A partir de = 1
+
+La forme d’un rapport écrit
+
+LE TEXTE
+➔ Choisir une police classique pour tout le document et ne plus changer.
+Exemples : Arial, Calibri, Times.
+
+➔ La taille de police du corps du texte doit être égale à 11 ou 12.
+➔ Le corps du texte est écrit en noir. Seuls les titres, figures et tableaux peuvent être en
+couleur.
+Les nuances des couleurs devront être correctement visibles lors d’une impression en noir et
+blanc.
+
+➔ L’usage du Gras, Italique et souligné doit toujours correspondre au même type de
+texte.
+Les mots latins sont en italique (in vitro, les noms de genre et d’espèce).
+
+LES PARAGRAPHES
+➔ Les paragraphes sont justifiés et peuvent débuter par un alinéa. L’interligne est simple
+ou égal au maximum à 1,5. Pour un même style de paragraphe, l’espacement avant
+est toujours identique, l’espacement après également.
+WORD OFFICE 365
+
+Positionner le curseur dans le paragraphe
+Onglet Mise en page> groupe Paragraphe
+Cliquer la petite flèche
+en bas à droite du groupe Paragraphe pour afficher la boîte de
+dialogue
+Onglet Retrait et espacement
+Alignement = justifié
+Définir un alinéa :
+Retrait de 1ère ligne = Première ligne
+Définir l’interligne :
+Interligne = simple
+Définir l’espace avant et après le paragraphe :
+Espacement Avant = valeur en pt
+Espacement Après = valeur en pt
+
+JUNIA © 2024
+
+33
+
+34
+
+La charte de l’écrit
+
+➔ Chaque forme de paragraphe doit appartenir à un style. Un style est une mise en
+forme de texte (police, style et attributs, couleur, corps, interlignage, espacement,
+retraits, alinéa) destinée à être appliquée en plusieurs endroits. La modification du
+style change la mise en forme pour tous les paragraphes ou portions de texte utilisant
+ce style. Les styles permettent d'uniformiser la présentation d'un document et de
+diminuer le temps passé pour la mise en forme.
+WORD OFFICE 365
+
+Créer un nouveau style :
+Mettre en forme le paragraphe
+Sélectionner le paragraphe
+Onglet Accueil > groupe Style
+Cliquer sur
+et sur Créer un style
+Saisir un nom pour le style
+Appliquer un style existant à un paragraphe :
+Cliquer dans le paragraphe
+Onglet Accueil > groupe Style
+Sélectionner le style à appliquer
+Modifier la mise en forme d’un style :
+Onglet Accueil > groupe Style
+Cliquer le bouton droit de la souris sur le style à modifier
+Sélectionner Modifier
+Modifier le style (tous les paragraphes basés sur ce style sont automatiquement
+modifiés)
+
+La forme d’un rapport écrit
+
+LES TITRES
+➔ La taille de police des titres doit être comprise entre 12 et 24.
+➔ Pas de deux points ou de point au bout d’un titre.
+➔ Eviter le soulignement pour un titre.
+➔ Pas de titre seul au début ou à la fin d’une page. Il doit toujours être suivi par un
+paragraphe.
+
+➔ Les titres qui doivent apparaître dans le sommaire et/ou la table des matières doivent
+appartenir à un style de titre.
+Word possède une série de styles prédéfinis pour les titres (Titre 1 à Titre 9). Chaque style
+correspond à un niveau hiérarchique (de 1 à 9).
+WORD OFFICE 365
+
+Appliquer un style de titre :
+Sélectionner le titre
+Onglet Accueil > groupe Style
+En fonction de son niveau hiérarchique, choisir un style (Titre 1 pour le niveau 1, Titre
+2 pour le niveau 2, …)
+Modifier la mise en forme d’un style :
+Onglet Accueil > groupe Style
+Cliquer le bouton droit de la souris sur le style à modifier
+Sélectionner Modifier
+Modifier le style (tous les titres basés sur ce style sont automatiquement modifiés)
+
+➔ La numérotation des titres est obligatoire afin de mettre en évidence les différentes
+subdivisions.
+WORD OFFICE 365
+
+Numéroter les titres (pour styles prédéfinis Titre 1 à Titre 9) :
+Cliquer sur un titre de n’importe quel niveau
+Onglet Accueil > groupe Paragraphe
+Cliquer sur l’outil Liste à plusieurs niveaux
+Dans la bibliothèque de listes, cliquer sur une vignette dont les niveaux numérotés
+sont représentés par les styles de titres Titre1, Titre2, …
+Créer sa propre liste numérotée à plusieurs niveaux :
+Onglet Accueil > groupe Paragraphe
+Cliquer sur l’outil Liste à plusieurs niveaux
+Sélectionner Définir une nouvelle liste à plusieurs niveaux
+Cliquer sur le bouton Plus >>
+Sélectionner 1 dans la liste Cliquez sur le niveau à modifier
+Sélectionner le style de titre (exemple : titre 1) dans la liste Style à appliquer à ce
+niveau
+Sélectionner le style de numérotation dans la liste style de nombre pour ce niveau
+Procéder de manière identique pour les niveaux suivants
+
+JUNIA © 2024
+
+35
+
+36
+
+La charte de l’écrit
+
+LE SOMMAIRE
+➔ Il est obligatoire de générer le sommaire de façon automatique. Attention, tous les
+titres du document qui doivent apparaître dans le sommaire doivent appartenir à un
+style de titre (voir page 35).
+WORD OFFICE 365
+
+Créer la table des matières :
+Onglet Références> groupe Table des matières
+Cliquer sur Table des matières
+Sélectionner Table des matières personnalisée
+Dans la liste Formats, choisir une mise en forme
+Dans la liste Afficher les niveaux, sélectionner le niveau hiérarchique maximum à
+afficher
+Mettre à jour la table des matières :
+Cliquer dans la table
+Onglet Références> groupe Table des matières
+Cliquer sur Mettre à jour la Table et Mettre à jour toute la table
+
+L’ÉNUMÉRATION
+➔ Une énumération (liste à puces ou à numéros) est introduite par une phrase et par un
+deux-points.
+Chaque terme ou phrase de l’énumération :
+• commence par une minuscule ;
+• est introduit par un tiret (pas de trait d’union), une puce ou un numéro ;
+• se termine par un point-virgule sauf le dernier qui se termine par un point.
+WORD OFFICE 365
+
+Créer une liste à puces ou à numéros :
+Sélectionner les termes ou phrases de l’énumération
+Onglet Accueil > groupe Paragraphe
+Cliquez sur Puces
+ou Numérotation
+Créer une liste à plusieurs niveaux :
+Onglet Accueil > groupe Paragraphe
+
+(pour les listes chronologiques)
+
+Cliquez sur Liste à plusieurs niveaux
+Sélectionner un style de liste dans la bibliothèque
+Cliquer sur
+
+pour augmenter le niveau d’un terme ou d’une phrase
+
+Cliquer sur
+
+pour diminuer le niveau d’un terme ou d’une phrase
+
+La forme d’un rapport écrit
+
+LA NOTE DE BAS DE PAGE
+➔ La note de bas de page permet :
+•
+•
+•
+
+d’expliquer un terme ou une expression ;
+d’apporter une précision (source d’une information ou d’un chiffre) ;
+de donner un commentaire non indispensable.
+
+➔ La taille de police des notes doit être comprise entre 9 et 10.
+WORD OFFICE 365
+
+Insérer une note de bas de page :
+Positionner le curseur à l’endroit d’insertion de la note
+Onglet Références > groupe Notes de bas de page
+Cliquer la petite flèche
+en bas à droite du groupe Notes de bas de page
+Choisir un format de nombre ou cliquer sur Symbole pour choisir une marque
+Cliquer sur le bouton Insérer et saisir la note
+Supprimer une note de bas de page :
+Dans le corps du texte, sélectionner la marque de la note de bas de page et appuyer
+sur la touche Supprimer au clavier
+
+JUNIA © 2024
+
+37
+
+38
+
+La charte de l’écrit
+
+LES FIGURES, TABLEAUX ET ANNEXES
+LES FIGURES
+WORD OFFICE 365
+
+Insérer une figure :
+Positionner le curseur à l’endroit d’insertion de la figure
+Onglet Insertion > groupe Illustrations
+Cliquer sur Image
+Sélectionner le fichier à insérer
+Définir la taille de la figure :
+Cliquer le bouton droit de la souris sur la figure
+Sélectionner Taille et position
+Onglet Taille
+Activer les cases Conserver les proportions et Proportionnelle à l’image
+d’origine
+Saisir un pourcentage dans Hauteur ou Largeur
+Définir la position de la figure par rapport au texte :
+Cliquer le bouton droit de la souris sur la figure
+Sélectionner Taille et position
+Onglet Habillage du texte
+Sélectionner un style d’habillage
+
+➔ Les figures doivent être accompagnées d’un numéro et d’un titre :
+•
+
+En-dessous pour une figure
+
+Figure n° Titre
+WORD OFFICE 365
+
+Insérer la légende sous la figure :
+Sélectionner la figure
+Onglet Références > groupe Légendes
+Sélectionner Insérer une légende
+Etiquette = Figure
+Position = Sous la sélection
+Ajouter le titre dans la zone de texte Légende
+Modifier la mise en forme de la légende :
+Cliquer dans la légende
+Onglet Accueil > groupe Style
+Cliquer le bouton droit de la souris sur le style Légende
+Sélectionner Modifier
+Modifier le style (toutes les légendes sont automatiquement modifiées)
+Créer la table des figures :
+Onglet Références > groupe Légendes
+Sélectionner Insérer une table des illustrations
+Légende = Figure
+Dans la liste Formats, choisir une mise en forme
+Mettre à jour la table des figures :
+Cliquer dans la table
+Appuyer sur la touche F9 et Sélectionner Mettre à jour toute la table
+
+La forme d’un rapport écrit
+
+➔
+
+Il faut faire figurer dans le texte le renvoi à la figure (« Comme le montre la
+figure n°… », « la figure n° illustre… ».
+WORD OFFICE 365
+
+Insérer un renvoi :
+Positionner le curseur à l’endroit d’insertion du renvoi
+Onglet Insertion > groupe Liens
+Sélectionner Renvoi
+Catégorie = Figure
+Sélectionner un type dans Insérer un renvoi à (possibilité de répéter
+cette action plusieurs fois si nécessaire).
+Sélectionner la figure dans la liste Pour la légende
+Mettre à jour les renvois :
+Onglet Accueil > groupe Modification
+Cliquer sur Sélectionner et Sélectionner tout
+Appuyer sur la touche F9
+Sélectionner Mettre à jour les numéros de page uniquement
+
+JUNIA © 2024
+
+39
+
+40
+
+La charte de l’écrit
+
+LES TABLEAUX
+WORD OFFICE 365
+
+Créer un tableau :
+Onglet Insertion > groupe Tableaux
+Cliquer sur Tableau
+Sélectionner le nombre de lignes et de colonnes ou cliquer sur Insérer un
+tableau et saisir Nombre de colonnes et Nombre de lignes
+Fusionner des cellules :
+Sélectionner les cellules et bouton droit de la souris
+Sélectionner Fusionner
+Définir les bordures :
+Sélectionner les cellules
+Onglet Outils de tableau - Création > groupe Bordures
+Sélectionner Bordures
+Définir une trame de fond :
+Sélectionner les cellules
+Onglet Outils de tableau - Création > groupe Bordures
+Sélectionner Bordures
+Sélectionner Bordure et trame et onglet Trame de fond
+Définir la position du texte dans les cellules :
+Sélectionner les cellules et bouton droit de la souris
+Sélectionner Propriétés du tableau
+Onglet Cellule > Alignement vertical
+Sélectionner une position
+
+➔ Les tableaux doivent être accompagnés d’un numéro et d’un titre :
+•
+
+Au-dessus pour un tableau
+Tableau n° Titre
+
+WORD OFFICE 365
+
+Insérer la légende au-dessus du tableau :
+Sélectionner le tableau
+Onglet Références > groupe Légendes
+Sélectionner Insérer une légende
+Etiquette = Tableau
+Position = Au-dessus de la sélection
+Ajouter le titre dans la zone de texte Légende
+Modifier la mise en forme de la légende :
+Cliquer dans la légende
+Onglet Accueil > groupe Style
+Cliquer le bouton droit de la souris sur le style Légende
+Sélectionner Modifier
+Modifier le style (toutes les légendes sont automatiquement modifiées)
+Créer la table des tableaux :
+Onglet Références > groupe Légendes
+Sélectionner Insérer une table des illustrations
+Légende = Tableau
+Dans la liste Formats, choisir une mise en forme
+Mettre à jour la table des tableaux :
+Cliquer dans la table
+Appuyer sur la touche F9
+Sélectionner Mettre à jour toute la table
+
+La forme d’un rapport écrit
+
+➔ Il faut faire figurer dans le texte le renvoi au tableau (« Comme le montre le tableau
+n°… », « le tableau n° illustre… ».
+WORD OFFICE 365
+
+Insérer un renvoi :
+Positionner le curseur à l’endroit d’insertion du renvoi
+Onglet Insertion > groupe Liens
+Sélectionner Renvoi
+Catégorie = Tableau
+Sélectionner un type dans Insérer un renvoi à (possibilité de répéter cette
+action plusieurs fois si nécessaire).
+Sélectionner le tableau dans la liste Pour la légende
+Mettre à jour les renvois :
+Onglet Accueil > groupe Modification
+Cliquer sur Sélectionner et Sélectionner tout
+Appuyer sur la touche F9
+Sélectionner Mettre à jour les numéros de page uniquement
+
+JUNIA © 2024
+
+41
+
+42
+
+La charte de l’écrit
+
+LES ANNEXES
+
+➔ Les annexes doivent être accompagnées d’un numéro et d’un titre :
+•
+
+Au-dessus pour une annexe
+Annexe n° Titre
+
+WORD OFFICE 365
+
+Insérer la légende au-dessus de l’annexe :
+Sélectionner l’annexe
+Onglet Références > groupe Légendes
+Sélectionner Insérer une légende
+Etiquette = Annexe (si cette étiquette n’existe pas, cliquer Nouvelle étiquette
+et saisir Annexe)
+Position = Au-dessus de la sélection
+Ajouter le titre dans la zone de texte Légende
+Modifier la mise en forme de la légende :
+Cliquer dans la légende
+Onglet Accueil > groupe Style
+Cliquer le bouton droit de la souris sur le style Légende
+Sélectionner Modifier
+Modifier le style (toutes les légendes sont automatiquement modifiées)
+Créer la table des annexes :
+Onglet Références > groupe Légendes
+Sélectionner Insérer une table des illustrations
+Légende = Annexe
+Dans la liste Formats, choisir une mise en forme
+Mettre à jour la table des annexes :
+Cliquer dans la table
+Appuyer sur la touche F9
+Sélectionner Mettre à jour toute la table
+
+➔ Il faut faire figurer dans le texte le renvoi à l’annexe (« Voir annexe n° annexe »).
+WORD OFFICE 365
+
+Insérer un renvoi :
+Positionner le curseur à l’endroit d’insertion du renvoi
+Onglet Insertion > groupe Liens
+Sélectionner Renvoi
+Catégorie = Annexe
+Sélectionner un type dans Insérer un renvoi à (possibilité de répéter cette
+action plusieurs fois si nécessaire).
+Sélectionner l’annexe dans la liste Pour la légende
+Mettre à jour les renvois :
+Onglet Accueil > groupe Modification
+Cliquer sur Sélectionner et Sélectionner tout
+Appuyer sur la touche F9
+Sélectionner Mettre à jour les numéros de page uniquement
+
+La forme d’un rapport écrit
+
+LA BIBLIOGRAPHIE
+➔ Afin de faciliter le référencement et d’éviter un oubli, il est vivement conseillé de les
+noter ou de les saisir au fur et à mesure que les documents sont utilisés pendant toute
+la durée du stage.
+WORD OFFICE 365
+
+Saisir une nouvelle référence :
+Onglet Références > groupe Citations et bibliographie
+Cliquer sur Gérer les sources (Le gestionnaire gère une liste active composée de sources
+saisies à l’intérieur du document actif et une liste principale qui rassemble toutes les
+sources saisies)
+Cliquer sur Nouveau
+Sélectionner le type de source
+Activer Afficher tous les champs bibliographiques
+Renseigner tous les champs précédés d’une étoile rouge
+Cliquer sur Modifier pour saisir plusieurs noms
+Cliquer sur OK
+
+CITATION DES RÉFÉRENCES DANS LE TEXTE DU RAPPORT/MÉMOIRE
+
+➔ Dans le texte du rapport, le renvoi à la référence se fait de manière abrégée, le plus
+souvent le nom des auteurs (sans l’initiale du prénom) suivi de l’année. S’il y a 2 auteurs,
+les 2 noms sont mentionnés ; au-delà, on ne mentionne que le premier nom suivi de la
+mention et al.
+Dagnelie (1993b) montre que….
+Des auteurs ont affirmé … (Jouventin et Thomas, 1995)
+Des études menées sur Escherichia coli … (Petit et al., 1991)
+WORD OFFICE 365
+
+Insérer une référence dans le texte du rapport :
+Positionner le curseur à l’endroit exact de l’insertion
+Onglet Références > groupe Citations et bibliographie
+Sélectionner le style bibliographique ISO 690 dans la liste Style
+Cliquer sur Insérer une citation
+Sélectionner une source
+
+JUNIA © 2024
+
+43
+
+44
+
+La charte de l’écrit
+
+RÉDACTION DES RÉFÉRENCES BIBLIOGRAPHIQUES
+WORD OFFICE 365
+
+Insérer la liste des références bibliographiques :
+Positionner le curseur à l’endroit exact de l’insertion
+Onglet Références > groupe Citations et bibliographie
+Cliquer sur Bibliographie et Insérer la bibliographie
+
+➔ Quand il y a plusieurs références du(des) même(s) auteur(s) la même année, alors on
+ajoute une lettre (a, b, c, etc.) à l’année.
+DAGNELIE P. (1993a). Multilinear regression. Advanced COMETT Chemometrics School, 26-28
+April, Libramont.
+DAGNELIE P. (1993b). Discriminant analysis. Advanced COMETT Chemometrics School, 26-28 April,
+Libramont.
+
+➔ Les noms en latin et les noms d’espèces doivent être écrits en italique.
+PETIT M-A., DIMPFL J., RADMAN M., ECHOLS H. (1991). Control of large chromosomal
+duplications in Escherichia coli by the mismatch repair system. Genetics, n°129, p. 327-332.
+
+➔ Les consignes de rédaction des références bibliographiques présentées ci-après sont
+inspirées de normes en vigueur ainsi que de pratiques rencontrées dans des revues à
+haut niveau scientifique. Selon les pays, les ouvrages, les revues, etc., vous trouverez des
+variantes dans la manière de présenter les références bibliographiques. Cependant, ce
+qui compte le plus est de respecter les consignes le plus souvent imposées pour pouvoir
+publier.
+
+➔ De manière générale, la citation d’une source doit permettre de répondre aux questions
+Qui, Quoi, Où et Quand ? La citation doit faire apparaitre, dans cet ordre, l’auteur du
+document (qui peut être une personne ou une institution), l’année de publication, le
+titre du document, le « lieu » du document (journal, maison d’édition, site internet)
+incluant dans certains cas les pages concernées ou le nombre de pages, le numéro
+d’identification du document (ISBN, DOI…) quand cela s’applique (livres, brochures,
+articles scientifiques) et enfin, dans le cas de documents disponibles uniquement en
+ligne ou d’une page web, l’adresse URL de localisation. S’il s’agit de documents non
+datés ou de contenu susceptible d’évoluer, la date de consultation du document est
+précisée à la fin. Les règles spécifiques à chaque type de document sont détaillées cidessous. Si le document que vous souhaitez citer ne correspond à aucun de ces cas,
+reportez-vous aux consignes générales ci-dessus.
+
+La forme d’un rapport écrit
+CAS DES OUVRAGES
+1) Support papier
+a) Même(s) auteur(s) pour tous les Chapitres
+
+1 seul auteur
+NOM 1ère_lettre_prénom. (année). Titre. Lieu_édition, éditeur, nombre_de_pages p.
+CHEROUTE G. (2002). Contrôle par échantillonnage ; bien utiliser les normes statistiques. Saint Denis la
+Plaine, AFNOR, 102 p.
+
+Plusieurs auteurs
+Tous les auteurs doivent être cités. Le dernier auteur doit être précédé du symbole & ou et.
+NOM 1ère_lettre_prénom, NOM 1ère_lettre_prénom, … & NOM 1ère_lettre_prénom (année). Titre.
+Lieu_édition, éditeur, nombre_de_pages p.
+OMORI M. & IKEDA T. (1984). Methods in marine zooplankton ecology. New York, Wiley, 332 p.
+b) Auteur(s) différent(s) selon les chapitres
+
+Le chapitre a un ou plusieurs auteur(s) ; il faut le repérer par ses pages. L’ouvrage est soit une
+compilation anonyme de chapitres soit une compilation réalisée par un coordonnateur.
+NOM 1ère_lettre_prénom. (année). Titre_chapitre. In : NOM_COORDONNATEUR 1ère_lettre_prénom.
+Titre_ouvrage. Lieu_édition, éditeur, p. 1ère_page-dernière_page.
+CHARNY G. & SCHON J-P. (1993). Transferts de chaleur par convection. In : SACADURA J-F. Initiation aux
+transferts thermiques. Paris, Tec&Doc, p.185-269.
+c)
+
+Auteur non mentionné
+
+Dans ce cas, il faut indiquer comme auteur le nom de la personne morale propriétaire de la
+publication ; si celui-ci était également inconnu alors il conviendrait d’utiliser la
+mention suivante : Anonyme (année).
+VIE CHRETIENNE (1991). Ignace de Loyola par lui-même. 124 p.
+2) Internet
+
+Certains ouvrages sont disponibles en ligne. Pour les référencer, il faut d’abord procéder
+comme si c’était un support papier (attention, il n’y a pas toujours un éditeur ; dans ce cas
+mentionnez la personne morale à laquelle l’auteur est rattaché) puis mentionnez l’adresse
+exacte et la date de consultation.
+NOM 1ère_lettre_prénom. (année). Titre [en ligne]. Lieu_édition, éditeur, nombre_de_pages p.
+Disponible sur <adresse_web> (consulté le …).
+CROSS J.L. (1997). A guide to the russian academy of sciences, part I [en ligne]. Austin, University of
+Texas, 1270 p.
+Disponible sur < http://www.lib.utexas.edu/books/cross/russia_rev97.pdf> (consulté le 4 janvier 2005).
+
+JUNIA © 2024
+
+45
+
+46
+
+La charte de l’écrit
+CAS DE L’ARTICLE D’UN PÉRIODIQUE
+
+Un périodique est une revue, un journal ou tout autre support de publication qui paraît
+régulièrement.
+1) Support papier
+NOM 1ère_lettre_prénom. (année). Titre. Nom_périodique, volume, numéro, 1ère_page –dernière_page.
+
+“volume” et “numéro” sont parfois confondus.
+SANCHEZ L.R. (2000). A new cyclic anisotropic model for plain strain sheet metal forming. International
+journal of mechanical sciences, vol. 42, 4, 705-728.
+WATHELET J-P., CWIKOWSKI M., MARLIER M., SEVERIN M. (1988). Comparaison de quatre méthodes de
+dosage des glucosinolates dans les graines de colza. Revue Française des Corps Gras, 4, 177-180.
+2) Internet
+GOOS P., LEEMANS H. (2004). Teaching optimal design of experiments using a spreadsheet. Journal of
+statistics education, vol.12, 3.
+Disponible sur < www.amstat.org/publications/jse/v12n3/goos.html> (consulté le 5 janvier 2005).
+
+CAS DES THÈSES ET RAPPORTS DE STAGE
+
+Une thèse ou un rapport de stage doit se traiter comme un ouvrage. L’éditeur est dans ce cas
+l’université ou l’école d’accueil.
+1) Support papier
+NOM 1ère_lettre_prénom. (année). Titre : nature_du_document. Lieu_édition, éditeur, nombre_de_pages p.
+FLORINS P. (1987). Etude du caractère aléatoire de la répartition de points dans des espaces à deux et à
+trois dimensions. Comparaison de différentes méthodes et applications biologiques : thèse de doctorat.
+Gembloux, Faculté Universitaire des Sciences Agronomiques, 197 p.
+ROUSSEY C. (1997). Méthode d’indexation multilingue fondée sur la sémantique : rapport de stage de
+DEA. Lyon, INSA de Lyon, 32 p.
+2) Internet
+MARCHETTI M. (2000). Aspects globaux et locaux de la mise en œuvre de la lubrification fluide en
+ambiance spatiale [en ligne] : thèse de doctorat. Lyon, INSA de Lyon, 214 p.
+Disponible sur <http://docinsa.insa-lyon.fr/these/pont.php?id=marchetti> (consulté le 4 janvier 2005).
+
+COMMUNICATION ORALE
+1) Communication avec actes lors d’un congrès
+AUTEUR (année). Titre. Nom_du_congrès, lieu.
+DAUDIN J-J. (2003). Modélisation de la variabilité dans les données d'expression du génome. Journées
+Statistique et Génome, Toulouse, Université Paul Sabatier.
+
+La forme d’un rapport écrit
+2) Communication personnelle (entretien)
+AUTEUR (année). Date_entretien
+DAUDIN J-J. (2005). Entretien téléphonique du 4 janvier.
+
+NORME
+1) Une seule norme
+EDITEUR (année). Titre_de_la_norme. Référence, nombre_de_pages p.
+AFNOR (1994). Déchets, essais de lessivage d'un déchet solide initialement massif ou généré par un
+procédé de solidification. X31-211, 13 p.
+2) Recueil de normes
+EDITEUR (année). Titre du recueil. Lieu_édition, éditeur, nombre_de_pages p.
+AFNOR (1999). Ergonomie. Tome 2 : travail de bureau avec terminal à écran de visualisation. Saint Denis
+la Plaine, AFNOR, 733 p.
+
+DÉCRET, LOI, CIRCULAIRE, ARRÊTÉ, ETC
+1) Support papier
+AUTEUR (année). Titre. Journal Officiel, n°_du_JO, p. 1ère_page –dernière_page.
+MINISTERE DE L’AMENAGEMENT DU TERRITOIRE ET DE L’ENVIRONNEMENT (2002). Décret n° 2002-540
+du 18 avril 2002 relatif à la classification des déchets. Journal Officiel, n°93 du 20 avril 2002, p.70747089.
+2) Internet
+AUTEUR (année). Titre[en ligne]. Journal Officiel, n°_du_JO.
+MINISTÈRE DE L'AGRICULTURE, DE L'ALIMENTATION, DE LA PÊCHE ET DE LA RURALITÉ (2005). Arrêté du
+28 décembre 2004 portant nomination à la commission d'étude de la dissémination des produits issus
+du génie biomoléculaire [en ligne]. Journal Officiel, n°14 du 18 janvier 2005.
+Disponible sur
+<http://www.legifrance.gouv.fr/WAspad/Visu?cid=726837&indice=67&table=JORF&ligneDeb=1#>
+(consulté le 18 janvier 2005).
+
+JUNIA © 2024
+
+47
+
+48
+
+La charte de l’écrit
+SITE INTERNET
+
+Il faut distinguer les documents que l’on peut consulter/télécharger sur un site internet (avec
+généralement un ou des auteurs bien identifiés) => cf. cas d’un ouvrage ou d’un périodique,
+de l’information générale (souvent sans auteur identifié) que l’on trouve sur des sites. Il faut
+alors donner la référence du site consulté. Dans ce premier cas, les références
+bibliographiques se citent de manière classique (cf. Cas de l’article d’un périodique). Pour les
+informations récupérées directement sur les pages Internet, les règles précisées ci-dessous
+s’appliquent, sachant que si plusieurs pages sont consultées, seule la référence générale suffit
+et si une seule page est consultée, alors il faut donner la référence exacte de cette page.
+1) Plusieurs pages
+ORGANISME. <URL>. (Consulté le : date_de_consultation).
+BONDUELLE. <www.bonduelle.com>. (Consulté le 15 janvier 2024).
+2) Une seule page
+ORGANISME. Titre de la page d’accueil [en ligne]. Disponible sur :<URL>. (Page consultée le :
+date_de_consultation).
+RÉPUBLIQUE DU SÉNÉGAL. Le Sénégal en bref [en ligne]. Disponible sur :
+<http://www.gouv.sn/senegal/index.html>. (Page consultée le 24 juillet 2023).
+MINISTERE DE L’AGRICULTURE, DE L’ALIMENTATION, DE LA PECHE ET DE LA RURALITE. Le CV du
+Ministre [en ligne]. Disponible sur :
+<http://www.agriculture.gouv.fr/spip/leministere.leministrelecabinet.cvduministre_r86.html>. (Page
+consultée le 19 janvier 2024)
+
+AUTRES SUPPORTS
+1) Supports multimédia (CD-ROM, DVD, cassette vidéo, etc.)
+AUTEUR ou ORGANISME (année). Titre [type_de_support]. Lieu_d’édition, éditeur.
+MEURICE J-M., SEGARRA L. (2004). Tibet, histoire d’une tragédie [DVD]. France Télévision Distribution.
+JOUVENTIN P., THOMAS T. (1995). Manchot royal, le retour [video en ligne]. CNRS-CEFE-SFRS.
+Disponible sur : <http://www.cerimes.fr/index.php?page=fiches&op1=view,1170,10,7,496,,,,14>
+(consulté le 19 janvier 2024).
+2) Supports papiers (plaquettes, brochures, rapports techniques, cartes, photographies, etc.)
+AUTEUR ou ORGANISME (année). Titre ou nature_du_support.
+BIJOU (2024). Plaquette de présentation de l’entreprise.
+
+

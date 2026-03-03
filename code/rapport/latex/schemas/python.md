@@ -1,0 +1,72 @@
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#003781', 'primaryTextColor': '#ffffff', 'primaryBorderColor': '#002050', 'lineColor': '#808080', 'secondaryColor': '#c0c0c0', 'tertiaryColor': '#cd7f32'}}}%%
+graph TB
+classDef bronze fill:#cd7f32,stroke:#8a5a22,color:#ffffff,stroke-width:2px;
+classDef silver fill:#c0c0c0,stroke:#808080,color:#000000,stroke-width:2px;
+classDef gold fill:#ffd700,stroke:#b8860b,color:#000000,stroke-width:2px;
+classDef process fill:#003781,stroke:#002050,color:#ffffff,stroke-width:2px,rx:5,ry:5;
+classDef infra fill:#f8f9fa,stroke:#e9ecef,stroke-width:1px,stroke-dasharray: 5 5;
+
+subgraph "Pipeline Capitaux"
+    direction TB
+    C_IN1[(IPF AZ)]:::bronze
+    C_IN2[(CAPITXCU AZEC)]:::bronze
+    
+    C_T1["Extraction\n(SQL/RegEx)"]:::process
+    C_T2["Agrégation\npar police"]:::process
+    C_T3["Indexation FFB"]:::process
+    
+    C_OUT[(AZ_AZEC_CAP\nGold)]:::gold
+    
+    C_IN1 --> C_T1
+    C_IN2 --> C_T2
+    C_T1 --> C_T3
+    C_T2 --> C_T3
+    C_T3 --> C_OUT
+end
+
+subgraph "Pipeline Portefeuille et Mouvements"
+    direction TB
+    P_IN1[(IPF AZ)]:::bronze
+    P_IN2[(POLIC_CU AZEC)]:::bronze
+    
+    P_T1_AZ["Filtres AZ\n& Nettoyage"]:::process
+    P_T1_AZEC["Nettoyage AZEC\n& Règles de gestion"]:::process
+    
+    P_T2_AZ["Calcul Mouvements\n(AFN, RES, PTF)"]:::process
+    P_T2_AZEC["Calcul Mouvements\n& Qualité des dates"]:::process
+    
+    P_T3["Consolidation AZ/AZEC\nUnion & Déduplication"]:::process
+    P_T4["Enrichissements Multiples:\nSegmentation, NAF/ISIC,\nIRD Risk, Client"]:::process
+    
+    P_OUT[(CUBE MVT_PTF\nGold)]:::gold
+    
+    P_IN1 --> P_T1_AZ
+    P_IN2 --> P_T1_AZEC
+    
+    P_T1_AZ --> P_T2_AZ
+    P_T1_AZEC --> P_T2_AZEC
+    
+    P_T2_AZ --> P_T3
+    P_T2_AZEC --> P_T3
+    
+    P_T3 --> P_T4
+    P_T4 --> P_OUT
+end
+
+subgraph "Pipeline Émissions"
+    direction TB
+    E_IN[("Données OneBI\nPrimes")]:::bronze
+    E_T1["Filtres Marché Const.\net Exclusions"]:::process
+    E_T2["Catégorisation\nExercice & Pôle"]:::process
+    E_T3["Calcul Primes (N, X)\net Commissions"]:::process
+    E_OUT1[(PRIMES_POL\nGold)]:::gold
+    E_OUT2[(PRIMES_GARP\nGold)]:::gold
+    
+    E_IN --> E_T1
+    E_T1 --> E_T2
+    E_T2 --> E_T3
+    E_T3 --> E_OUT1
+    E_T3 --> E_OUT2
+end
+```
