@@ -1,15 +1,15 @@
 % ==========================================
 % CHAPITRE 2
 % ==========================================
-\chapter{Contexte technique et état de l'art}
+\chapter{Contexte technique}
 
-\section{L'existant : le datamart Construction en SAS}
+\section{Étude de l'existant : Le datamart Construction sous SAS}
 
 \subsection{Rôle du datamart Construction dans l'analyse assurantielle}
 
-Le datamart Construction constitue l'un des datamarts P\&C gérés par l'équipe Data Management d'Allianz France. Il agrège et structure l'ensemble des données relatives au marché de l'assurance construction, qui couvre les risques liés aux bâtiments, travaux et chantiers. Ce marché présente des spécificités métier importantes : les capitaux assurés sont généralement élevés, les sinistres peuvent être complexes et s'étaler sur plusieurs années, et l'indexation des capitaux en fonction de l'inflation dans le secteur de la construction est cruciale.
+Le datamart Construction constitue l'un des datamarts P\&C gérés par l'équipe ADC de la direction P4D d'Allianz France. Il agrège et structure l'ensemble des données relatives au marché de l'assurance construction, qui couvre les risques liés aux bâtiments, travaux et chantiers. Ce marché présente des spécificités métier importantes : les capitaux assurés sont généralement élevés, les sinistres peuvent être complexes et s'étaler sur plusieurs années, et l'indexation des capitaux en fonction de l'inflation dans le secteur de la construction est cruciale.
 
-Le datamart Construction alimente trois types d'analyses principales. Les \textbf{études de portefeuille} permettent de suivre l'évolution du nombre de polices, les mouvements d'affaires nouvelles et de résiliations, et la composition du portefeuille par segment de clientèle (agents, courtiers, entreprises de construction). Les \textbf{analyses de capitaux} portent sur l'évaluation de l'exposition au risque à travers les capitaux assurés (Sinistre Maximum Possible, Limite Contractuelle d'Indemnité, Perte d'Exploitation, Risque Direct) et leur indexation selon les indices de coût de construction de la Fédération Française du Bâtiment (Fédération Française du Bâtiment, 2024 ; 2025). Enfin, les \textbf{calculs de primes} agrègent les émissions de primes par police et par garantie pour alimenter les reportings financiers et réglementaires.
+Le datamart Construction alimente trois types d'analyses principales. Les \textbf{études de portefeuille} permettent de suivre l'évolution du nombre de polices, les mouvements d'affaires nouvelles et de résiliations, et la composition du portefeuille par segment de clientèle (agents, courtiers, entreprises de construction). Les \textbf{analyses de capitaux} portent sur l'évaluation de l'exposition au risque à travers les capitaux assurés (Sinistre Maximum Possible, Limite Contractuelle d'Indemnité, Perte d'Exploitation, Risque Direct) et leur indexation selon les indices de coût de construction de la \hyperlink{ref.ffb_2024}{Fédération Française du Bâtiment (2024} ; \hyperlink{ref.ffb_2025}{2025)}. Enfin, les \textbf{calculs de primes} agrègent les émissions de primes par police et par garantie pour alimenter les reportings financiers et réglementaires.
 
 Les utilisateurs principaux de ce datamart sont les actuaires P4D de l'équipe Midcorp / Construction, ainsi que l'unité Midcorp au sens large grâce à son exploitation via l'outil de Business Intelligence MicroStrategy. La disponibilité et la fiabilité de ce datamart sont critiques : sa fréquence d'actualisation est mensuelle, ce qui impose qu'il soit pleinement opérationnel à chaque début de mois pour garantir la continuité des activités de reporting, de tarification et d'analyse.
 
@@ -17,8 +17,8 @@ La figure \ref{fig:general_sas} ci-dessous illustre la vue d'ensemble du datamar
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.8\textwidth]{schemas/general_sas_architecture.png}
-    \caption{Vue d'ensemble de l'architecture du datamart Construction : sources de données, transformations et sorties analytiques produits}
+    \includegraphics[width=1.0\textwidth]{schemas/general_sas_architecture.png}
+    \caption[Vue d'ensemble de l'architecture du datamart Construction]{Vue d'ensemble de l'architecture du datamart Construction : sources de données, transformations et sorties analytiques produits (Voir \protect\hyperlink{annexe.A}{Annexe A})}
     \label{fig:general_sas}
 \end{figure}
 
@@ -31,7 +31,7 @@ Comme le montre la figure \ref{fig:sas_detail}, l'architecture détaillée déco
 \begin{figure}[H]
     \centering
     \includegraphics[width=1\textwidth]{schemas/sas_detail_architecture_flow.png}
-    \caption{Architecture détaillée des flux de données : sources, transformations par étape et tables de sortie des trois pipelines du datamart Construction}
+    \caption[Architecture détaillée des flux de données]{Architecture détaillée des flux de données : sources, transformations par étape et tables de sortie des trois pipelines du datamart Construction (Voir \protect\hyperlink{annexe.B}{Annexe B})}
     \label{fig:sas_detail}
 \end{figure}
 
@@ -42,42 +42,42 @@ Cette architecture historique présente des défis techniques : utilisation mass
 Au-delà des limites stratégiques évoquées dans le chapitre un (coûts de licences, raréfaction de l'expertise, performances limitées), l'architecture SAS présente plusieurs contraintes techniques qui ont motivé la décision de migration.
 
 \begin{itemize}
-    \item \textbf{La scalabilité est structurellement limitée} : SAS exécute les traitements sur un seul serveur de calcul. Lorsque les volumes de données augmentent ou que de nouveaux enrichissements sont ajoutés, les temps de traitement s'allongent proportionnellement. Il n'existe pas de mécanisme simple pour paralléliser les calculs ou distribuer la charge sur plusieurs machines.
-    \item \textbf{La maintenabilité du code est coûteuse} : La complexité du code SAS, avec ses macros imbriquées et ses variables globales, rend les évolutions risquées. Lorsqu'une règle métier doit être modifiée, il faut tracer l'ensemble des endroits où cette règle intervient en tenant compte des substitutions de macros. Le risque d'effets de bord est élevé, et chaque modification nécessite des tests exhaustifs sur plusieurs visions.
+    \item \textbf{La scalabilité} : SAS exécute les traitements sur un seul serveur de calcul. Lorsque les volumes de données augmentent ou que de nouveaux enrichissements sont ajoutés, les temps de traitement s'allongent proportionnellement. Il n'existe pas de mécanisme simple pour paralléliser les calculs ou distribuer la charge sur plusieurs machines.
+    \item \textbf{La maintenabilité du code} : La complexité du code SAS, avec ses macros imbriquées et ses variables globales, rend les évolutions risquées. Lorsqu'une règle métier doit être modifiée, il faut tracer l'ensemble des endroits où cette règle intervient en tenant compte des substitutions de macros. Le risque d'effets de bord est élevé, et chaque modification nécessite des tests exhaustifs sur plusieurs visions.
     \item \textbf{L'absence de séparation des responsabilités} : complique le débogage et les tests. Dans l'architecture SAS, un même fichier peut mélanger la lecture des données, les filtres métier, les transformations, les jointures et l'écriture des résultats. Lorsqu'un problème survient, il est difficile d'isoler la cause exacte du dysfonctionnement.
     \item \textbf{La gestion des versions et de la traçabilité est rudimentaire} : Le code SAS est stocké sur des répertoires partagés, sans système de gestion de versions moderne. Les commentaires dans le code sont rares et souvent obsolètes, rendant difficile la reconstitution de l'historique des modifications.
 \end{itemize}
 
 Ces limites techniques, combinées aux enjeux stratégiques de coûts et d'expertise, ont conduit à la décision de migrer vers une architecture moderne basée sur PySpark et Azure.
 
-\section{Technologies modernes pour le traitement de données}
+\section{Cible technologique : L'écosystème PySpark et l'Architecture Médaillon}
 
-\subsection{PySpark et Apache Spark}
+\subsection{PySpark}
 
-\textbf{PySpark} est l'interface Python d'Apache Spark (Apache Software Foundation, 2024). L'API de DataFrames qu'elle expose permet de manipuler des volumes massifs de données en distribuant les calculs sur un cluster de machines, une capacité absente de l'architecture SAS d'origine. PySpark supporte nativement les opérations SQL, les agrégations complexes, les jointures et les fonctions fenêtres (\textit{window functions}), couvrant ainsi tous les besoins de transformation du datamart Construction.
+\textbf{PySpark} est l'interface Python d'Apache Spark \hyperlink{ref.apache}{(Apache Software Foundation, 2024)}. L'API de DataFrames qu'elle expose permet de manipuler des volumes massifs de données en distribuant les calculs sur un cluster de machines, une capacité absente de l'architecture SAS d'origine. PySpark supporte nativement les opérations SQL, les agrégations complexes, les jointures et les fonctions fenêtres (\textit{window functions}), couvrant ainsi tous les besoins de transformation du datamart Construction.
 
-Pour ce projet, PySpark présente trois avantages décisifs : la compatibilité avec les formats modernes (Parquet, Delta, CSV), la possibilité d'exécuter le même code en local pour les tests et sur un cluster Databricks en production, et l'intégration native avec l'écosystème Azure.
+Pour ce projet, PySpark présente trois avantages décisifs : la compatibilité avec les formats modernes (Parquet, Delta, CSV), la possibilité d'exécuter le même code en local pour les tests ou sur la plateforme ADP, et l'intégration native avec plusieurs plateformes cloud.
 
-\subsection{Azure Databricks}
+\subsection{Allianz Data Platform (ADP)}
 
-\textbf{Azure Databricks} est une plateforme cloud managée qui fournit un environnement complet pour exécuter des workloads Spark : clusters gérés automatiquement, notebooks collaboratifs, intégration native avec Azure Data Lake Storage (ADLS) et support de Delta Lake (Microsoft Corporation, 2024). Le choix d'Azure Databricks s'aligne avec la stratégie du groupe Allianz, qui a standardisé ses infrastructures data sur Azure au niveau international. Cette convergence facilite le partage de bonnes pratiques entre les entités du groupe.
+\textbf{Allianz Data Platform (ADP)} est l'environnement cloud interne sécurisé fourni par le groupe Allianz pour la gestion et la gouvernance des données au sein de l'entreprise. Basée sur lle cloud Azure et AWS, ADP offre un environnement complet et préconfiguré pour exécuter des \textit{workloads} Spark, avec une intégration native aux stockages de données internes (datalakes) tout en respectant les exigences strictes de sécurité du secteur de l'assurance. Ce choix d'environnement s'aligne avec la stratégie du groupe de standardiser ses infrastructures data, facilitant ainsi la collaboration et le partage de bonnes pratiques.
 
 \subsection{Formats de stockage modernes}
 
 \textbf{Parquet} est un format de fichier binaire optimisé pour le stockage en colonnes. Il offre une compression efficace et des performances de lecture supérieures au CSV traditionnel, particulièrement pour les requêtes portant sur un sous-ensemble de colonnes. Dans le contexte du datamart Construction, le passage de CSV à Parquet permet de réduire significativement l'espace de stockage et d'accélérer les lectures.
 
-\textbf{Delta Lake}, extension de Parquet, ajoute des fonctionnalités de gestion de données avancées : transactions ACID (garanties de cohérence et d'intégrité), \textit{time travel} (accès aux versions historiques des données), et gestion de schéma avec évolution contrôlée (Delta Lake Project, 2024). Ces fonctionnalités améliorent la qualité et la traçabilité des données, répondant à des exigences réglementaires croissantes dans le secteur de l'assurance.
+\textbf{Delta Lake}, extension de Parquet, ajoute des fonctionnalités de gestion de données avancées : transactions ACID (garanties de cohérence et d'intégrité), \textit{time travel} (accès aux versions historiques des données), et gestion de schéma avec évolution contrôlée \hyperlink{ref.delta}{(Delta Lake Project, 2024)}. Ces fonctionnalités améliorent la qualité et la traçabilité des données, répondant à des exigences réglementaires croissantes dans le secteur de l'assurance.
 
-\subsection{L'architecture médaillon : standard de l'industrie}
+\subsection{L'architecture médaillon}
 
-L'\textbf{architecture médaillon} (\textit{medallion architecture}) est un pattern d'organisation des données popularisé par Databricks et adopté comme standard de l'industrie pour les architectures \textit{lakehouse} (Databricks, 2024). Elle organise les données en trois couches successives, chacune représentant un niveau croissant de qualité et de transformation.
+L'\textbf{architecture médaillon} (\textit{medallion architecture}) est un pattern d'organisation des données popularisé par Databricks et adopté comme standard de l'industrie pour les architectures \textit{lakehouse} \hyperlink{ref.databricks_medallion}{(Databricks, 2024)}. Elle organise les données en trois couches successives, chacune représentant un niveau croissant de qualité et de transformation.
 
 Comme l'illustre la figure \ref{fig:python_archi}, les données transitent de la couche Bronze vers la couche Silver, puis vers la couche Gold, en suivant un flux unidirectionnel traité par Apache Spark et Python.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=1\textwidth]{schemas/python_architecture.png}
-    \caption{Architecture médaillon implémentée : flux de données des sources vers les couches Bronze, Silver et Gold stockées dans Azure Data Lake Storage (ADLS), traitées par Apache Spark et PySpark}
+    \caption[Architecture médaillon implémentée]{Architecture médaillon implémentée : flux de données des sources vers les couches Bronze, Silver et Gold stockées dans Azure Data Lake Storage (ADLS), traitées par Apache Spark et PySpark (Voir \protect\hyperlink{annexe.D}{Annexe D})}
     \label{fig:python_archi}
 \end{figure}
 
@@ -114,7 +114,7 @@ Le tableau \ref{tab:comparison} synthétise les différences principales entre l
 
 Ce tableau comparatif confirme que la migration vers PySpark et l'architecture médaillon répond directement aux limites structurelles identifiées dans l'architecture SAS existante.
 
-\section{Revue bibliographique et état de l'art des migrations SAS vers Python}
+\section{État de l'art : Revue des pratiques de migration SAS vers Python}
 
 \subsection{Tendances de migration dans l'industrie}
 

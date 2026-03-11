@@ -1,6 +1,6 @@
 \chapter{Présentation et analyse des résultats}
 
-\section{Architecture finale implémentée}
+\section{Déploiement de l'architecture finale}
 
 L'architecture Médaillon définie en phase de conception a été intégralement
 déployée dans Azure Data Lake Storage selon la hiérarchie suivante :
@@ -13,14 +13,14 @@ déployée dans Azure Data Lake Storage selon la hiérarchie suivante :
 |-- silver/
 |   `-- {YYYY}/{MM}/    <- résultats intermédiaires par pipeline
 `-- gold/
-    `-- {YYYY}/{MM}/    <- cubes finaux consommables par la BI
+    `-- {YYYY}/{MM}/    <- Tables finales consommables par la BI
 \end{verbatim}
 
 Le partitionnement temporel (\texttt{\{YYYY\}/\{MM\}/}) permet un traitement
 incrémental par vision mensuelle, en s'appuyant sur quarante-trois
 \textit{file groups} configurés avec des schémas Spark stricts.
 
-\section{Résultats par pipeline}
+\section{Résultats d'exécution par pipeline analytique}
 
 Au total, l'architecture produit \textbf{sept fichiers Delta Parquet distincts} par
 vision mensuelle, répartis entre les tables Silver (intermédiaires) et Gold
@@ -39,10 +39,10 @@ vision mensuelle, répartis entre les tables Silver (intermédiaires) et Gold
 
             \item \textbf{PTF Mouvements}
             \begin{itemize}
-                \item \textbf{Silver} : \texttt{ptf\_mvt\_{\{vision\}}}
-                \item \textbf{Silver} : \texttt{ird\_risk\_q45\_{\{vision\}}}
-                \item \textbf{Silver} : \texttt{ird\_risk\_q46\_{\{vision\}}}
-                \item \textbf{Silver} : \texttt{ird\_risk\_qan\_{\{vision\}}}
+                \item \textbf{Gold} : \texttt{ptf\_mvt\_{\{vision\}}}
+                \item \textbf{Gold} : \texttt{ird\_risk\_q45\_{\{vision\}}}
+                \item \textbf{Gold} : \texttt{ird\_risk\_q46\_{\{vision\}}}
+                \item \textbf{Gold} : \texttt{ird\_risk\_qan\_{\{vision\}}}
             \end{itemize}
 
             \item \textbf{Capitaux}
@@ -105,7 +105,7 @@ visions testées, les volumes et indicateurs Python (\texttt{Primes\_N},
 \texttt{Primes\_X}, \texttt{MTCOM\_X}) sont strictement identiques à la
 référence SAS.
 
-\section{Validation de la parité fonctionnelle}
+\section{Bilan de la validation de parité}
 
 La validation a été conduite sur plusieurs visions mensuelles et porte sur les
 trois pipelines. Elle s’appuie sur trois niveaux de contrôle :
@@ -117,7 +117,7 @@ trois pipelines. Elle s’appuie sur trois niveaux de contrôle :
 \end{itemize}
 
 L’ensemble des résultats détaillés est centralisé dans le fichier
-\texttt{kpis\_results.xlsx}. Chaque feuille correspond à un pipeline et à une vision
+\texttt{kpis\_results.xlsx} (Voir \hyperlink{annexe.F}{Annexe F}). Chaque feuille correspond à un pipeline et à une vision
 mensuelle, et documente les écarts éventuels (colonnes \texttt{ECART}) ainsi que
 les contrôles de cohérence par numéro de police.
 
@@ -132,7 +132,7 @@ Sur toutes les visions testées, les indicateurs calculés par Python sont
 que ce soit sur les volumes, les distributions ou les KPI métier. Cette parité
 confirme la fidélité de l’implémentation Python par rapport au comportement SAS.
 
-\section{Analyse de la structure du code Python produit}
+\section{Analyse qualitative du code produit}
 
 \subsection{Modularité et réutilisabilité}
 
@@ -163,7 +163,7 @@ code Python, ce qui améliore fortement la maintenabilité.
             \item \textbf{Versionnement et documentation}
             \begin{itemize}
                 \item SAS : versionnement manuel, documentation limitée.
-                \item Python : version Git complet, documentation technique + fonctionnelle.
+                \item Python : version Git complet (Voir \hyperlink{annexe.G}{Annexe G}), documentation technique + fonctionnelle.
             \end{itemize}
 
             \item \textbf{Modularité}

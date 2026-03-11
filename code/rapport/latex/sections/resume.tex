@@ -10,13 +10,19 @@ La démarche a débuté par une rétro-ingénierie complète du code source SAS 
 
 Les pipelines de traitement de la donnée (portefeuille, capitaux, primes) ont ensuite été implémentés en Python et validés via des tests de parité fonctionnelle très stricts, garantissant une parfaite équivalence des indicateurs métiers entre l'ancien et le nouveau système.
 
-Ce premier datamart migré fait office de prototype : le socle technique, la méthodologie et les composants génériques développés lors de ce stage posent les fondations industrielles pour accélérer la migration des autres marchés P\&C à venir.
+Ce premier datamart migré fait office de PoC de référence, posant les bases d'inspiration pour la migration des autres marchés à venir.
 
 \vspace{1cm}
-\textbf{Mots-clés :} Migration, Azure Databricks, PySpark, Assurance, Datamart, SAS.
+\textbf{Mots-clés :} Migration, Allianz Data Platform, PySpark, Assurance, Datamarts, SAS.
 
 \vspace{0.5cm}
-\textbf{Abstract :} This report presents the migration of Allianz France's Construction datamart from a legacy SAS environment to a modern Python/PySpark architecture on Azure Databricks. As part of a broader strategic modernization initiative, the project began with a comprehensive reverse-engineering of the existing SAS codebase to document business rules. Based on this, a scalable Medallion architecture (Bronze/Silver/Gold) was designed. The data pipelines (portfolio, capital, premiums) were successfully implemented in Python and rigorously validated against SAS outputs to ensure strict functional parity. This inaugural migration serves as a foundational prototype, providing reusable components and a proven methodology to accelerate the migration of subsequent P\&C markets.
+\textbf{Abstract :} 
+
+This report presents the migration of Allianz France's Construction datamart from a legacy SAS environment to a modern Python/PySpark architecture on the internal Allianz Data Platform (ADP). 
+
+As part of a broader strategic modernization initiative, the project began with a comprehensive reverse-engineering of the existing SAS codebase to document business rules. Based on this, a scalable Medallion architecture (Bronze/Silver/Gold) was designed. The data pipelines (portfolio, capital, premiums) were successfully implemented in Python and rigorously validated against SAS outputs to ensure strict functional parity. 
+
+This first migrated datamart acts as a reference PoC, shaping the approach for the next markets to follow.
 
 \vspace{0.5cm}
-\textbf{Keywords :} Migration, Azure Databricks, PySpark, Insurance, Datamart, SAS.
+\textbf{Keywords :} Migration, Allianz Data Platform, PySpark, Insurance, Datamarts, SAS.

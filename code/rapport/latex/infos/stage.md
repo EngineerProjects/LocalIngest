@@ -17,7 +17,7 @@ En gros l'équipe actuellement utilise, principal du sas pour tous  leurs travau
 
 Les datamarts sont des bases de données qui contiennent des données agrégées et transformées pour faciliter l'analyse et la prise de décision sur les différents types de contrats d'assurance d'allianz dans les différents secteurs ou marchés.
 
-Mon stage constistera donc à créer le premier prototype de cette migration en utilisant bien sûr le datamart le plus simple à gérer qui est celui du marché construction. 
+Mon stage constistera donc à créer le premier PoC de cette migration en utilisant bien sûr le datamart le plus simple à gérer qui est celui du marché construction. 
 
 semaine 2 et 3 : 
 Pour ce faire, j'ai du dans un premier temps comprendre le fonctionnement du datamart en analysant les différents programmes SAS qui constituent ce datamart afin de bien comprendre dans l'emsemble comment il fonctionnait et ce que faisait exactement ce datamart. Etant donné qu'il n'y avait pas de documentation existante sur le processus de création de ce datamart,  avec les vérifications régulieres de mon tuteur, j'ai créer une nouvelle documentation qui expliquait pricipalement l'architecture de ce datamart, les principales sources de données et les différentes étapes quie suivent le datamart construction. 

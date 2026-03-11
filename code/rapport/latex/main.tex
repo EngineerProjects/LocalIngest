@@ -16,6 +16,7 @@
 \usepackage{titlesec}
 \usepackage{setspace}
 \usepackage{tocloft}
+\setlength{\cftbeforechapskip}{4pt} % Réduire l'espacement pour que le sommaire tienne sur une page
 \usepackage{enumitem}
 \renewcommand{\cftchapleader}{\cftdotfill{\cftdotsep}}
 
@@ -92,12 +93,12 @@
     \hspace{1.8cm}%
     \begin{minipage}[c]{0.38\paperwidth}
         \raggedright
-        \includegraphics[height=2.0cm,keepaspectratio]{images/logo_ecole_junia.png}
+        \includegraphics[height=1.3cm,keepaspectratio]{images/logo_ecole_junia.png}
     \end{minipage}%
     \hfill
     \begin{minipage}[c]{0.38\paperwidth}
         \raggedleft
-        \includegraphics[height=1.8cm,keepaspectratio]{images/logo_allianz.png}
+        \includegraphics[height=1.2cm,keepaspectratio]{images/logo_allianz.png}
     \end{minipage}%
     \hspace{1.8cm}
 \end{minipage}
@@ -112,7 +113,7 @@
 
     %----- Étiquette
     \begin{center}
-        {\color{midBlue}\Large\bfseries\sffamily\MakeUppercase{Rapport de Stage}}
+        {\color{midBlue}\Large\bfseries\sffamily\MakeUppercase{Rapport de Mission}}
     \end{center}
 
     \vspace{0.6cm}
@@ -125,8 +126,7 @@
     %----- Titre
     \begin{center}
         {\color{darkBlue}\fontsize{23}{30}\selectfont\bfseries\sffamily
-         Migration du Datamart Construction\\[8pt]
-         de SAS vers PySpark}
+         Migration des Datamarts SAS vers Python : Cas du  datamart construction}
     \end{center}
 
     \vspace{0.8cm}
@@ -139,7 +139,8 @@
     %----- Mention
     \begin{center}
         {\color{midBlue}\large\itshape
-         Pour la validation du stage de fin d'études}
+         Pour la validation du stage de fin d'études\\[0.2cm]
+         Cycle Ingénieur \textemdash{} Spécialité Big Data}
     \end{center}
 
     \vspace{1.8cm}
@@ -179,9 +180,11 @@
                     {\hspace{4.8cm}\normalsize\color{gray}%
                         Direction P4D \textemdash{} Pôle Advanced Data \& Climate}\\[0.5cm]
                     {\color{darkBlue}\bfseries\sffamily Encadrant entreprise :}
-                        ~M. ROMEO TOHOUN\\
-                    {\color{darkBlue}\bfseries\sffamily Enseignant référent :}
-                        ~Madame Feryal WINDAL
+                        ~M. Romeo TOHOUN\\
+                    {\hspace{4.8cm}\normalsize\color{gray}Data Scientist}\\[0.5cm]
+                    {\color{darkBlue}\bfseries\sffamily Enseignante référente :}
+                        ~Madame Feryal WINDAL\\
+                    {\hspace{4.8cm}\normalsize\color{gray}Enseignante Chercheure en Data Science}
                 \end{minipage}
             \end{minipage}
             \vspace{0.65cm}
@@ -226,6 +229,7 @@
 \restoregeometry
 
 \cleardoublepage
+\pagenumbering{roman}
 
 \input{sections/resume}
 
@@ -242,9 +246,12 @@
 \phantomsection
 \addcontentsline{toc}{chapter}{Sommaire}
 \renewcommand{\contentsname}{Sommaire}
+\setcounter{tocdepth}{1}
 \tableofcontents
 
 \cleardoublepage
+\pagenumbering{arabic}
+\setcounter{page}{1}
 
 \input{sections/introduction}
 
@@ -262,6 +269,25 @@
 \input{sections/conclusion}
 
 \cleardoublepage
+\pagenumbering{roman}
+
 \input{sections/bibliographie}
+
+\cleardoublepage
+\input{sections/annexes}
+
+\cleardoublepage
+\phantomsection
+\addcontentsline{toc}{chapter}{Liste des figures}
+\listoffigures
+
+\vspace{1.5cm}
+\begingroup
+\let\clearpage\relax
+\let\cleardoublepage\relax
+\phantomsection
+\addcontentsline{toc}{chapter}{Liste des tableaux}
+\listoftables
+\endgroup
 
 \end{document}

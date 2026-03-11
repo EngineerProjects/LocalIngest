@@ -1,15 +1,15 @@
 % ==========================================
 % CHAPITRE 3
 % ==========================================
-\chapter{Méthodologie et moyens}
+\chapter{Méthodologie et moyens mis en œuvre}
 
-\section{Démarche globale et organisation du projet}
+\section{Démarche globale et organisation des travaux}
 
 \subsection{Une approche itérative et structurée}
 
 Le projet de migration du datamart Construction a été conduit selon une \textbf{approche itérative et incrémentale}, organisée en cinq phases successives. Ce choix méthodologique s'est imposé naturellement compte tenu des contraintes du projet : un code SAS non documenté à analyser, une architecture cible à concevoir, et un critère de parité fonctionnelle strict à atteindre. Chaque phase s'est appuyée sur les livrables de la phase précédente, garantissant une progression méthodique et tracée.
 
-Ce séquençage reflète un principe fondamental adopté dès le départ : \textbf{analyser et documenter exhaustivement avant d'écrire la première ligne de code}. Cette décision, validée avec le maître de stage, a permis d'éviter les erreurs dues à une mauvaise compréhension de la logique métier, et d'identifier en amont les complexités susceptibles d'impacter les choix architecturaux.
+Ce séquençage reflète un principe fondamental adopté dès le départ : \textbf{analyser et documenter exhaustivement avant d'écrire la première ligne de code}. Cette décision, validée avec le chef de projet, a permis d'éviter les erreurs dues à une mauvaise compréhension de la logique métier, et d'identifier en amont les complexités susceptibles d'impacter les choix architecturaux.
 
 Le tableau \ref{tab:methodologie} présente la vue d'ensemble des cinq phases et leur enchaînement :
 
@@ -33,9 +33,9 @@ Le tableau \ref{tab:methodologie} présente la vue d'ensemble des cinq phases et
 
 \subsection{Équipe et cadre de travail}
 
-Le projet s'est déroulé au sein d'une équipe restreinte composée du stagiaire et de son maître de stage, Romeo TOHOUN, data scientist et sa responsable hiérarchique Caroline BOUCHON dans le pôle Advanced Data \& Climate. Des points d'avancement hebdomadaires ont permis de valider les choix techniques, de lever les ambiguïtés métier et d'orienter les priorités de développement. La collaboration avec M. Alain VOSS, expert assurance de l'équipe, a été essentielle pour comprendre les mécanismes assurantiels sous-jacents aux règles métier codées en SAS.
+Le projet s'est déroulé au sein d'une équipe restreinte composée du projet et de son chef de projet, Romeo TOHOUN, data scientist et sa responsable hiérarchique Caroline BOUCHON dans le pôle Advanced Data \& Climate. Des points d'avancement hebdomadaires ont permis de valider les choix techniques, de lever les ambiguïtés métier et d'orienter les priorités de développement. La collaboration avec M. Alain VOSS, expert assurance de l'équipe, a été essentielle pour comprendre les mécanismes assurantiels sous-jacents aux règles métier codées en SAS.
 
-\section{Phase 1 : Analyse et documentation du code SAS existant}
+\section{Rétro-ingénierie et documentation du code existant}
 
 \subsection{Objectifs et démarche d'analyse}
 
@@ -45,13 +45,13 @@ L'analyse a suivi une méthode \textit{top-down} : étude des fichiers d'orchest
 
 \subsection{Livrables produits}
 
-Cette analyse a abouti à la création d'une documentation SAS complète, structurée en un volet synthétique (pour la vision managériale et la pérennité de la connaissance) et un volet technique détaillé décrivant chaque transformation pour guider l'implémentation Python et les futurs tests de parité.
+Cette analyse a abouti à la création d'une documentation SAS complète (Voir \hyperlink{annexe.C}{Annexe C}), structurée en un volet synthétique (pour la vision managériale et la pérennité de la connaissance) et un volet technique détaillé décrivant chaque transformation pour guider l'implémentation Python et les futurs tests de parité.
 
-\section{Phase 2 : Conception de l'architecture cible Python}
+\section{Conception de l'architecture logicielle cible}
 
 \subsection{Évaluation des options architecturales}
 
-Suite à l'analyse du code SAS, deux options d'architecture ont été évaluées et présentées lors d'une réunion de cadrage avec le maître de stage.
+Suite à l'analyse du code SAS, deux options d'architecture ont été évaluées et présentées lors d'une réunion de cadrage avec le chef de projet.
 
 La \textbf{réplication à l'identique} aurait consisté à reproduire la structure SAS en Python (un script Python par fichier SAS). Cette option présentait l'avantage d'être simple à valider par comparaison directe, mais elle aurait conservé l'ensemble des défauts de l'architecture monolithique source : séquentialité, couplage fort entre les modules, absence de séparation des responsabilités.
 
@@ -92,7 +92,7 @@ Les choix technologiques ont été validés en cohérence avec l'infrastructure 
     \end{tabularx}
 \end{table}
 
-\section{Phase 3 : Recensement systématique des règles et datasets}
+\section{Recensement des règles de gestion et des données sources}
 
 \subsection{Objectif : tout tracer avant de coder}
 
@@ -100,7 +100,7 @@ Avant de démarrer toute implémentation, un effort systématique de recensement
 
 \subsection{Fichier 1 : inventaire des règles de gestion}
 
-Le premier fichier Excel (\texttt{datamart\_construction\_regle\_de\_gestion.xlsx}) recense l'ensemble des règles métier du datamart, soit \textbf{soixante-douze règles} réparties sur les trois pipelines. Chaque règle est documentée avec un identifiant unique, le pipeline concerné, une description de la règle, la référence précise au code SAS source (fichier et numéro de ligne) et l'implémentation Python correspondante.
+Le premier fichier Excel (\texttt{datamart\_construction\_regle\_de\_gestion.xlsx}) recense l'ensemble des règles métier du datamart, soit \textbf{soixante-douze règles} réparties sur les trois pipelines (Voir \hyperlink{annexe.E}{Annexe E}). Chaque règle est documentée avec un identifiant unique, le pipeline concerné, une description de la règle, la référence précise au code SAS source (fichier et numéro de ligne) et l'implémentation Python correspondante.
 
 Ce fichier a rempli un double rôle : \textbf{checklist d'implémentation} pendant la phase de développement (chaque règle étant cochée après implémentation et validation), et \textbf{base de traçabilité} permettant de vérifier après coup que chaque comportement SAS est bien couvert par le code Python.
 
@@ -110,7 +110,7 @@ La seconde feuille du même fichier inventorie l'ensemble des sources de donnée
 
 Cette dernière information s'est révélée particulièrement précieuse : plusieurs datasets référencés dans le code SAS n'étaient pas disponibles dans le datalake au moment du projet (\texttt{cproduit.csv}, \texttt{prdcap.csv}, \texttt{lob.csv}, ...). Leur identification précoce a permis de les déclarer optionnels en Python et de gérer leur absence de manière gracieuse, évitant des blocages lors de l'exécution.
 
-\section{Phase 4 : Implémentation des pipelines Python}
+\section{Implémentation technique des pipelines de données}
 
 \subsection{Structure du projet}
 
@@ -167,7 +167,7 @@ L'architecture détaillée des flux de données, illustrée par la figure \ref{f
 
 Cette représentation met en évidence la modularité des traitements, particulièrement visible pour le pipeline \textit{Portefeuille et Mouvements}. Ce dernier nécessite l'exécution d'étapes de nettoyage propres à chaque canal de distribution (AZ et AZEC), suivies d'une consolidation complexe (harmonisation des schémas, union, et enrichissements en cascade via des référentiels externes).
 
-\section{Phase 5 : Validation et tests de parité fonctionnelle}
+\section{Validation fonctionnelle et stratégie de tests}
 
 \subsection{Stratégie de validation à trois niveaux}
 
@@ -184,33 +184,33 @@ La \textbf{validation par échantillonnage} compare champ par champ un échantil
 La confrontation des résultats Python et SAS a soulevé plusieurs défis techniques ayant nécessité des investigations poussées. L'approche est restée la même : diagnostic via le code SAS, correction en Python, puis rejeu du pipeline pour vérifier la convergence. Voici les principaux problèmes résolus :
 
 \begin{itemize}
-    \item \textbf{Disponibilité des données de test :} L'accès aux données de production sur Azure nécessitait des validations de sécurité strictes. Ces délais m'ont souvent obligé à coder "à l'aveugle" en attendant de pouvoir tester sur des données réelles, ce qui rallongeait les cycles de correction.
-    \item \textbf{Colonne CDPOLE absente en AZEC :} Lors de la consolidation, Python trouvait moins de polices Courtage (pôle 3) que SAS. L'analyse a montré que SAS forçait l'assignation \texttt{cdpole = "3"} via une macro dédiée. Un simple ajout dans mon processor AZEC a rétabli la parité.
-    \item \textbf{Formats de dates hétérogènes (\texttt{dtechann}) :} La date d'échéance annuelle mélangeait plusieurs formats historiques (MMJJ, MMJJAA, formats complets). Plutôt que d'utiliser un type Date natif qui plantait sur les anomalies, j'ai reproduit la logique SAS en traitant la colonne comme du texte pour extraire et recombiner les caractères, couvrant ainsi 100\% des cas.
-    \item \textbf{Dates au format SAS datetime (IRD) :} Les tables IRD Risk contenaient des chaînes complexes (ex: \texttt{'14MAY1991:00:00:00'}) incomprises par PySpark, produisant des valeurs nulles silencieuses. J'ai dû développer un helper \texttt{parse\_sas\_datetime()} pour extraire et convertir spécifiquement la partie date.
-    \item \textbf{Configurations JSON capricieuses :} Pour le filtrage des Émissions métier, j'avais organisé un JSON lisible avec descriptions et valeurs. Cependant, utiliser ce dictionnaire directement dans un \texttt{isin()} PySpark déclenchait une erreur. J'ai dû extraire explicitement la liste des valeurs en Python pour que Spark l'accepte sans broncher.
-    \item \textbf{Harmonisation AZ vs AZEC :} Les deux canaux avaient des noms de colonnes différents (ex: \texttt{POLICE} vs \texttt{NOPOL}). Pour éviter un code rigide rempli de \texttt{withColumnRenamed}, j'ai externalisé tout le mapping dans un JSON dédié, permettant de renommer les colonnes dynamiquement avant l'union.
+    \item \textbf{Disponibilité des données de test :} L'accès aux données de production sur Azure nécessitait des validations de sécurité strictes. Ces délais nous ont souvent obligé à coder "à l'aveugle" en attendant de pouvoir tester sur des données réelles, ce qui rallongeait les cycles de correction.
+    \item \textbf{Colonne CDPOLE absente en AZEC :} Lors de la consolidation, Python trouvait moins de polices Courtage (pôle 3) que SAS. L'analyse a montré que SAS forçait l'assignation \texttt{cdpole = "3"} via une macro dédiée. Un simple ajout dans le processor AZEC a rétabli la parité.
+    \item \textbf{Formats de dates hétérogènes (\texttt{dtechann}) :} La date d'échéance annuelle mélangeait plusieurs formats historiques (MMJJ, MMJJAA, formats complets). Plutôt que d'utiliser un type Date natif qui plantait sur les anomalies, nous avions reproduit la logique SAS en traitant la colonne comme du texte pour extraire et recombiner les caractères, couvrant ainsi 100\% des cas.
+    \item \textbf{Dates au format SAS datetime (IRD) :} Les tables IRD Risk contenaient des chaînes complexes (ex: \texttt{'14MAY1991:00:00:00'}) incomprises par PySpark, produisant des valeurs nulles silencieuses. Nous avions dû développer un helper \texttt{parse\_sas\_datetime()} pour extraire et convertir spécifiquement la partie date.
+    \item \textbf{Configurations JSON capricieuses :} Pour le filtrage des Émissions métier, nous avions organisé un JSON lisible avec descriptions et valeurs. Cependant, utiliser ce dictionnaire directement dans un \texttt{isin()} PySpark déclenchait une erreur. Nous avions dû extraire explicitement la liste des valeurs en Python pour que Spark l'accepte sans broncher.
+    \item \textbf{Harmonisation AZ vs AZEC :} Les deux canaux avaient des noms de colonnes différents (ex: \texttt{POLICE} vs \texttt{NOPOL}). Pour éviter un code rigide rempli de \texttt{withColumnRenamed}, nous avions externalisé tout le mapping dans un JSON dédié, permettant de renommer les colonnes dynamiquement avant l'union.
 \end{itemize}
 
-\section{Outils, environnement et livrables finaux}
+\section{Environnement de développement et livrables}
 
 \subsection{Environnement de développement}
 
-Le développement a été réalisé dans un environnement cloud ADP (Allianz Data platform) qui est automatiquement connecté à azure via un token, permettant de tester l'intégralité des pipelines sans nécessiter de connexion ardure à l'infrastructure cloud Azure. Cette autonomie a facilité le cycle de développement itératif, réduisant les temps de feedback entre la modification et le test. La migration vers Azure Databricks est prévue pour la phase de déploiement en production, postérieure à la période du stage.
+Le développement a été réalisé dans un environnement cloud ADP (Allianz Data platform) qui est automatiquement connecté à azure via un token, permettant de tester l'intégralité des pipelines sans nécessiter de connexion ardure à l'infrastructure cloud Azure. Cette autonomie a facilité le cycle de développement itératif, réduisant les temps de feedback entre la modification et le test. La migration vers Azure Databricks est prévue pour la phase de déploiement en production, postérieure à la période du mission.
 
 La gestion du code source a été assurée via Git, avec un dépôt versionné permettant de tracer l'ensemble des modifications et de revenir en cas de régression. Cette pratique, absente du système SAS source, constitue l'une des améliorations fondamentales apportées par la migration.
 
 \enlargethispage{2cm} % Ajuste la valeur (1cm, 2cm, etc.) pour gagner de la place en bas
 \subsection{Synthèse des livrables produits}
 
-L'ensemble des travaux réalisés au cours du stage a abouti à quatre catégories principales de livrables :
+L'ensemble des travaux réalisés au cours du mission a abouti à quatre catégories principales de livrables :
 
 \vspace{0.3cm}
 \noindent\fbox{
     \begin{minipage}{\textwidth}
         \vspace{0.2cm}
         \begin{center}
-            {\large \textbf{Synthèse des livrables produits lors du stage}}
+            {\large \textbf{Synthèse des livrables produits lors du mission}}
         \end{center}
         \vspace{0.4em}
 

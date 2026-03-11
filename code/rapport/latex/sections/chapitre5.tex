@@ -1,6 +1,6 @@
 \chapter{Discussion et perspectives} 
 
-\section{Analyse critique du projet}
+\section{Bilan critique du projet}
 
 \subsection*{Ce qui a bien fonctionné}
 
@@ -18,13 +18,13 @@ La difficulté principale a été \textbf{l’absence totale de documentation SA
 
 L’\textbf{accès aux données de test} a également été un défi. Les règles de sécurité Azure d’Allianz sont strictes et l’obtention d’extraits réels pouvait prendre du temps. Plusieurs transformations ont dû être codées sans données réelles, puis ajustées une fois l’accès obtenu.
 
-\section{Positionnement par rapport aux pratiques de l'industrie}
+\section{Positionnement vis-à-vis des standards de l'industrie}
 
-La solution développée est cohérente avec les standards actuels du data engineering. L’architecture médaillon est la recommandation de référence pour les architectures \textit{lakehouse}, et le choix d’Azure Databricks correspond à la stratégie cloud d’Allianz.
+La solution développée est cohérente avec les standards actuels du data engineering. L’architecture médaillon est la recommandation de référence pour les architectures \textit{lakehouse}, et le choix de la plateforme Allianz Data Platform (ADP) correspond à la stratégie cloud d’Allianz.
 
 Par rapport à d’autres approches observées dans l’assurance, notamment celles basées sur Pandas qui atteignent vite leurs limites, PySpark permet de traiter des volumes bien supérieurs. La structure modulaire du code, conforme aux conventions Python, marque aussi une vraie rupture avec le SAS d’origine.
 
-\section{Ce que ça apporte à Allianz France}
+\section{Valeur ajoutée pour Allianz France}
 
 Trois bénéfices concrets ressortent :
 
@@ -36,7 +36,7 @@ Trois bénéfices concrets ressortent :
 
 Deux points de vigilance se dégagent également : la période de coexistence SAS/Python, qui a un coût opérationnel, et la montée en compétences PySpark des équipes, qui doit être accompagnée.
 
-\section{Perspectives}
+\section{Perspectives opérationnelles et stratégiques}
 
 \textbf{Court terme} : finaliser la validation des dix visions historiques pour les pipelines Capitaux et Émissions. Le pipeline PTF Mouvements est déjà stabilisé.
 
