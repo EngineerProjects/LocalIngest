@@ -688,7 +688,10 @@ class AZProcessor(BaseProcessor):
             ) \
             .dropDuplicates(['cprod'])
         
-        self.logger.info(f"✓ PRDPFA1 (Agents) chargé : {df_segment1.count()} produits")
+        if self.logger.is_debug():
+            self.logger.debug(f"✓ PRDPFA1 (Agents) chargé : {df_segment1.count()} produits")
+        else:
+            self.logger.info("✓ PRDPFA1 (Agents) chargé")
         
         # --- ÉTAPE 2 : Chargement PRDPFA3 (Courtiers) ---
         try:
@@ -712,11 +715,17 @@ class AZProcessor(BaseProcessor):
             ) \
             .dropDuplicates(['cprod'])
         
-        self.logger.info(f"✓ PRDPFA3 (Courtage) chargé : {df_segment3.count()} produits")
+        if self.logger.is_debug():
+            self.logger.debug(f"✓ PRDPFA3 (Courtage) chargé : {df_segment3.count()} produits")
+        else:
+            self.logger.info("✓ PRDPFA3 (Courtage) chargé")
         
         # --- ÉTAPE 3 : Fusion des deux référentiels ---
         df_segment = df_segment1.unionByName(df_segment3, allowMissingColumns=True)
-        self.logger.info(f"✓ Segmentation combinée : {df_segment.count()} produits au total")
+        if self.logger.is_debug():
+            self.logger.debug(f"✓ Segmentation combinée : {df_segment.count()} produits au total")
+        else:
+            self.logger.info("✓ Segmentation combinée chargée")
         
         # --- ÉTAPE 4 : Enrichissement via CPRODUIT (Type Produit) ---
         try:

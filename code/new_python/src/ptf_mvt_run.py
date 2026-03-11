@@ -121,14 +121,18 @@ def copy_ird_risk_to_gold(spark, config, vision: str, logger: PipelineLogger):
             df_ird = reader.read_file_group(ird_file_group, vision)
 
             # Vérifier que le fichier existe et contient des données
-            if df_ird is None or df_ird.count() == 0:
+            # take(1) est bien plus rapide que count() : il s'arrête dès la première ligne
+            if df_ird is None or len(df_ird.take(1)) == 0:
                 logger.warning(f"{ird_file_group} introuvable ou vide, ignoré")
                 continue
 
             # Écrire directement en Gold sans transformation
             write_to_layer(df_ird, config, 'gold', f'{ird_file_group}_{vision}', vision, logger)
 
-            logger.info(f"✓ {ird_file_group} copié vers Gold ({df_ird.count()} lignes)")
+            if logger.is_debug():
+                logger.debug(f"✓ {ird_file_group} copié vers Gold ({df_ird.count()} lignes)")
+            else:
+                logger.info(f"✓ {ird_file_group} copié vers Gold")
             copied_count += 1
 
         except Exception as e:

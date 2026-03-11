@@ -164,12 +164,17 @@ class BaseOrchestrator:
             
             # Gérer le cas où l'étape retourne plusieurs DataFrames (ex: Émissions)
             if isinstance(result, tuple):
-                # Calculer le nombre total de lignes générées
-                total_rows = sum(df.count() for df in result if df is not None)
-                self.logger.success(f"{stage_name} terminée : {total_rows:,} lignes au total")
+                if self.logger.is_debug():
+                    total_rows = sum(df.count() for df in result if df is not None)
+                    self.logger.debug(f"{stage_name} terminée : {total_rows:,} lignes au total")
+                else:
+                    self.logger.success(f"{stage_name} terminée ✓")
             else:
                 # Cas standard : un seul DataFrame
-                self.logger.success(f"{stage_name} terminée : {result.count():,} lignes")
+                if self.logger.is_debug():
+                    self.logger.debug(f"{stage_name} terminée : {result.count():,} lignes")
+                else:
+                    self.logger.success(f"{stage_name} terminée ✓")
             
             return result
             
@@ -335,10 +340,16 @@ class BaseOrchestrator:
             
             elif isinstance(result, tuple):
                 # Cas spécial : étapes produisant plusieurs fichiers
-                for i, df in enumerate(result, 1):
-                    if df is not None:
-                        self.logger.info(f"{stage_name} (sortie {i}) : {df.count():,} lignes")
+                if self.logger.is_debug():
+                    for i, df in enumerate(result, 1):
+                        if df is not None:
+                            self.logger.debug(f"{stage_name} (sortie {i}) : {df.count():,} lignes")
+                else:
+                    self.logger.info(f"{stage_name} : {len([d for d in result if d is not None])} sortie(s) produite(s)")
             
             else:
                 # Cas standard : un seul fichier
-                self.logger.info(f"{stage_name} : {result.count():,} lignes")
+                if self.logger.is_debug():
+                    self.logger.debug(f"{stage_name} : {result.count():,} lignes")
+                else:
+                    self.logger.info(f"{stage_name} : traitée ✓")

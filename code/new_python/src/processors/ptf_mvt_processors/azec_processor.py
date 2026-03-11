@@ -260,7 +260,7 @@ class AZECProcessor(BaseProcessor):
         reader = BronzeReader(self.spark, self.config)
         df_seg = reader.read_file_group('table_segmentation_azec_mml', 'ref')
         
-        if df_seg is None or df_seg.count() == 0:
+        if df_seg is None or len(df_seg.take(1)) == 0:
             raise RuntimeError(
                 "La table TABLE_SEGMENTATION_AZEC_MML est requise pour la segmentation AZEC. "
                 "Vérifiez sa présence dans le répertoire 'bronze/ref/'."

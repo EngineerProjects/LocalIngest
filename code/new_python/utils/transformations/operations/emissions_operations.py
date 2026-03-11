@@ -127,17 +127,17 @@ def apply_emissions_filters(
     Retourne :
         DataFrame filtré
     """
-    initial_count = df.count() if logger else 0
+    initial_count = df.count() if (logger and logger.is_debug()) else 0
 
     # Filtre pour le marché construction uniquement (cd_marche='6')
     df = df.filter(col('cd_marche') == MARKET_CODE.MARKET)
-    if logger:
-        logger.info(f"Après filtre marché (cd_marche='6') : {df.count():,} enregistrements")
+    if logger and logger.is_debug():
+        logger.debug(f"Après filtre marché (cd_marche='6') : {df.count():,} enregistrements")
 
     # Filtre 2 : Date comptable <= vision
     df = df.filter(col('dt_cpta_cts') <= lit(vision))
-    if logger:
-        logger.info(f"Après filtre date (dt_cpta_cts <= {vision}) : {df.count():,} enregistrements")
+    if logger and logger.is_debug():
+        logger.debug(f"Après filtre date (dt_cpta_cts <= {vision}) : {df.count():,} enregistrements")
 
     # Filtre 3 : Intermédiaires exclus
     excluded_noint_config = config.get('excluded_intermediaries', {})
@@ -145,8 +145,8 @@ def apply_emissions_filters(
     excluded_noint = excluded_noint_config.get('values', []) if isinstance(excluded_noint_config, dict) else excluded_noint_config
     if excluded_noint:
         df = df.filter(~col('cd_int_stc').isin(excluded_noint))
-        if logger:
-            logger.info(f"Après filtre intermédiaires ({len(excluded_noint)} exclus) : {df.count():,} enregistrements")
+        if logger and logger.is_debug():
+            logger.debug(f"Après filtre intermédiaires ({len(excluded_noint)} exclus) : {df.count():,} enregistrements")
 
     # Filtre 4 : Exclusions produit/garantie
     product_guarantee_config = config.get('product_guarantee_exclusions', {})
@@ -192,10 +192,12 @@ def apply_emissions_filters(
 
         df = df.filter(~filter_expr)
 
-    if logger:
+    if logger and logger.is_debug():
         final_count = df.count()
         filtered_out = initial_count - final_count
-        logger.success(f"Filtres appliqués : {filtered_out:,} enregistrements filtrés, {final_count:,} restants")
+        logger.debug(f"Filtres appliqués : {filtered_out:,} enregistrements filtrés, {final_count:,} restants")
+    elif logger:
+        logger.info("Filtres Émissions appliqués (marché + date + intermédiaires + garanties)")
 
     return df
 

@@ -89,7 +89,10 @@ class CapitauxConsolidationProcessor(BaseProcessor):
         reader = SilverReader(self.spark, self.config)
         df_az = reader.read_silver_file(f"az_capitaux_{vision}", vision)
         
-        self.logger.success(f"Lecture terminée : {df_az.count():,} enregistrements chargés (AZ)")
+        if self.logger.is_debug():
+            self.logger.debug(f"Lecture terminée : {df_az.count():,} enregistrements chargés (AZ)")
+        else:
+            self.logger.success("Lecture terminée (AZ Silver) ✓")
         return df_az
     
     def transform(self, df_az: DataFrame, vision: str) -> DataFrame:
@@ -126,7 +129,10 @@ class CapitauxConsolidationProcessor(BaseProcessor):
         try:
             # Tenter de lire le fichier AZEC
             df_azec = reader.read_silver_file(f"azec_capitaux_{vision}", vision)
-            self.logger.success(f"Données AZEC chargées : {df_azec.count():,} enregistrements")
+            if self.logger.is_debug():
+                self.logger.debug(f"Données AZEC chargées : {df_azec.count():,} enregistrements")
+            else:
+                self.logger.success("Données AZEC chargées ✓")
         except Exception as e:
             # Si le fichier n'existe pas (cas toléré par l'orchestrateur)
             self.logger.warning(f"Données AZEC non disponibles : {e}")
@@ -194,7 +200,10 @@ class CapitauxConsolidationProcessor(BaseProcessor):
             # Si pas de données AZEC, la consolidation est égale aux données AZ
             df_consolidated = df_az
         
-        self.logger.success(f"Consolidation terminée : {df_consolidated.count():,} enregistrements au total")
+        if self.logger.is_debug():
+            self.logger.debug(f"Consolidation terminée : {df_consolidated.count():,} enregistrements au total")
+        else:
+            self.logger.success("Consolidation (AZ + AZEC) terminée ✓")
         return df_consolidated
     
     def write(self, df: DataFrame, vision: str) -> None:
@@ -233,4 +242,7 @@ class CapitauxConsolidationProcessor(BaseProcessor):
             df_final, self.config, 'gold', output_name, vision, self.logger
         )
         
-        self.logger.success(f"Fichier écrit : {output_name}.parquet ({df_final.count():,} enregistrements)")
+        if self.logger.is_debug():
+            self.logger.debug(f"Fichier écrit : {output_name}.parquet ({df_final.count():,} enregistrements)")
+        else:
+            self.logger.success(f"Fichier écrit : {output_name}.parquet ✓")

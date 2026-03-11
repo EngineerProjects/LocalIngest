@@ -27,10 +27,14 @@ def main():
         # Exécuter un composant spécifique (ignore activé/désactivé dans config.yml)
         python main.py --component ptf_mvt --vision 202509
         python main.py --component capitaux --vision 202509
-        
+
         # Exécuter tous les composants activés dans config.yml
         python main.py --vision 202509
-        
+
+        # Activer le mode debug (log verbeux + counts Spark intermédiaires)
+        python main.py --vision 202509 --log-level DEBUG
+        python main.py --vision 202509 --debug
+
         # Utiliser un fichier de config personnalisé
         python main.py --vision 202509 --config chemin/vers/config.yml
 
@@ -49,6 +53,10 @@ Exemples:
 
   # Exécuter tous les composants activés dans config.yml
   python main.py --vision 202509
+
+  # Mode debug (active les counts Spark intermédiaires dans les logs)
+  python main.py --vision 202509 --debug
+  python main.py --vision 202509 --log-level DEBUG
 
   # Utiliser un fichier de config personnalisé
   python main.py --vision 202509 --config ma_config.yml
@@ -78,6 +86,21 @@ Exemples:
         choices=['ptf_mvt', 'capitaux', 'emissions'],
         default=None,
         help='Composant à exécuter (ignore l\'état activé dans config.yml ; défaut : exécuter tous ceux activés)'
+    )
+
+    parser.add_argument(
+        '--log-level',
+        type=str,
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+        default=None,
+        metavar='LEVEL',
+        help='Niveau de journalisation (DEBUG/INFO/WARNING/ERROR). Surcharge la valeur de config.yml. Défaut : INFO'
+    )
+
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Raccourci pour --log-level DEBUG (active les counts Spark intermédiaires)'
     )
 
     args = parser.parse_args()
@@ -178,11 +201,20 @@ Exemples:
     print(f"Composants :{', '.join(components_to_run)}")
     print(f"Vision :    {vision}")
     print(f"Config :    {config_path}")
+    _preview_level = 'DEBUG' if args.debug else (args.log_level or config.get('logging.level', 'INFO'))
+    print(f"Log level : {_preview_level}")
 
     # =========================================================================
     # Initialiser le Logging (CENTRALISÉ - Un seul log pour tous les composants)
     # =========================================================================
-    log_level = config.get('logging.level', 'INFO')
+    # Priorité : --debug > --log-level > config.yml > défaut INFO
+    if args.debug:
+        log_level = 'DEBUG'
+    elif args.log_level:
+        log_level = args.log_level
+    else:
+        log_level = config.get('logging.level', 'INFO')
+
     log_dir = config.get('logging.local_dir', 'logs')
     log_filename_template = config.get('logging.filename_template', 'pipeline_{vision}.log')
     log_filename = log_filename_template.format(vision=vision)
@@ -201,6 +233,7 @@ Exemples:
     logger.info(f"Composants à exécuter : {', '.join(components_to_run)}")
     logger.info(f"Vision : {vision}")
     logger.info(f"Config : {config_path}")
+    logger.info(f"Niveau de log : {log_level}{'  ← mode DEBUG activé (counts Spark intermédiaires inclus)' if log_level == 'DEBUG' else ''}")
     logger.info(f"Fichier Log : {log_file}")
 
     # =========================================================================

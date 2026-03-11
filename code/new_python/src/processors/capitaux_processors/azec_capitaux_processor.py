@@ -101,7 +101,10 @@ class AZECCapitauxProcessor(BaseProcessor):
         # Lire le fichier principal CAPITXCU
         df_capitxcu = reader.read_file_group('capitxcu_azec', vision)
         
-        self.logger.success(f"Lecture terminée : {df_capitxcu.count():,} enregistrements chargés (CAPITXCU)")
+        if self.logger.is_debug():
+            self.logger.debug(f"Lecture terminée : {df_capitxcu.count():,} enregistrements chargés (CAPITXCU)")
+        else:
+            self.logger.success("Lecture terminée (CAPITXCU) ✓")
         return df_capitxcu
     
     def transform(self, df: DataFrame, vision: str) -> DataFrame:
@@ -188,9 +191,11 @@ class AZECCapitauxProcessor(BaseProcessor):
         from pyspark.sql.functions import col
 
         if 'cmarch' in df.columns:
-            # Ne conserver que les lignes du marché Construction
             df = df.filter(col('cmarch') == MARKET_CODE.MARKET)
-            self.logger.info(f"Après filtre marché : {df.count():,} enregistrements")
+            if self.logger.is_debug():
+                self.logger.debug(f"Après filtre marché : {df.count():,} enregistrements")
+            else:
+                self.logger.info("Filtre marché Construction appliqué ✓")
         else:
             self.logger.warning("Colonne CMARCH introuvable - Filtre ignoré (Risque de données hors périmètre)")
         
@@ -221,4 +226,7 @@ class AZECCapitauxProcessor(BaseProcessor):
             df, self.config, 'silver', output_name, vision, self.logger
         )
         
-        self.logger.success(f"Fichier écrit : {output_name}.parquet ({df.count():,} enregistrements)")
+        if self.logger.is_debug():
+            self.logger.debug(f"Fichier écrit : {output_name}.parquet ({df.count():,} enregistrements)")
+        else:
+            self.logger.success(f"Fichier écrit : {output_name}.parquet ✓")

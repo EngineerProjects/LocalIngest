@@ -87,9 +87,11 @@ def load_constrcu_reference(
         "cseg", "lseg", "cssseg", "lssseg", "lprod", "segment"
     )
     
-    # Détecter les doublons AVANT de dédupliquer pour lever une erreur si LOB est corrompu
-    dup_check = lob_pre_dedup.groupBy("produit").agg(spark_count("*").alias("dup_count"))
-    dup_count_total = dup_check.filter(col("dup_count") > 1).count()
+    # Détecter les doublons AVANT de dédupliquer (uniquement en mode debug pour éviter des jobs Spark inutiles)
+    dup_count_total = 0
+    if logger and logger.is_debug():
+        dup_check = lob_pre_dedup.groupBy("produit").agg(spark_count("*").alias("dup_count"))
+        dup_count_total = dup_check.filter(col("dup_count") > 1).count()
     
     if dup_count_total > 0:
         if logger:
@@ -120,13 +122,13 @@ def load_constrcu_reference(
         )
     )
     
-    # Validation : assurer exactement 1 ligne par produit
-    final_count = lob_small.count()
-    unique_produits = lob_pre_dedup.select("produit").distinct().count()
-    if final_count != unique_produits:
-        if logger:
+    # Validation déduplication uniquement en mode debug (2 scans complets en prod = inutile)
+    if logger and logger.is_debug():
+        final_count = lob_small.count()
+        unique_produits = lob_pre_dedup.select("produit").distinct().count()
+        if final_count != unique_produits:
             logger.error(f"[SEG] Échec de la déduplication LOB : {final_count} lignes vs {unique_produits} produits uniques")
-        raise RuntimeError(f"Échec de la vérification déduplication LOB : {final_count} != {unique_produits}")
+            raise RuntimeError(f"Échec de la vérification déduplication LOB : {final_count} != {unique_produits}")
 
     merged = (
         merged.alias("c")

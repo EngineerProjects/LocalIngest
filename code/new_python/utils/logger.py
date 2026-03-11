@@ -69,6 +69,18 @@ class PipelineLogger:
         """Enregistre un message de débogage (DEBUG)."""
         self.logger.debug(message)
 
+    def is_debug(self) -> bool:
+        """
+        Retourne True si le niveau de journalisation effectif est DEBUG.
+
+        Permet de conditionner les opérations Spark coûteuses (ex: .count())
+        qui ne servent qu'à alimenter des logs.
+        Usage recommandé :
+            if logger and logger.is_debug():
+                logger.debug(f"Nb lignes : {df.count():,}")
+        """
+        return self.logger.isEnabledFor(logging.DEBUG)
+
     def info(self, message: str) -> None:
         """Enregistre un message d'information (INFO)."""
         self.logger.info(message)

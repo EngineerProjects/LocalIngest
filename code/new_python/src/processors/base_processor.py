@@ -229,7 +229,8 @@ class BaseProcessor(ABC):
         
         duration = time.time() - start_time
         self.logger.info(f"Terminé : {processor_name}.read() (Durée : {duration:.2f}s)")
-        self.logger.info(f"Données lues : {df.count()} lignes")
+        if self.logger.is_debug():
+            self.logger.debug(f"Données lues : {df.count()} lignes")
         
         # --- ÉTAPE 2 : TRANSFORMATION (TRANSFORM) ---
         self.logger.info(f"Démarrage : {processor_name}.transform()")
@@ -243,11 +244,13 @@ class BaseProcessor(ABC):
         
         # Gérer le cas où transform() retourne plusieurs DataFrames (tuple)
         if isinstance(df, tuple):
-            for i, result_df in enumerate(df, 1):
-                if result_df is not None:
-                    self.logger.info(f"Résultat transformation {i}/{len(df)} : {result_df.count()} lignes")
+            if self.logger.is_debug():
+                for i, result_df in enumerate(df, 1):
+                    if result_df is not None:
+                        self.logger.debug(f"Résultat transformation {i}/{len(df)} : {result_df.count()} lignes")
         else:
-            self.logger.info(f"Résultat transformation : {df.count()} lignes")
+            if self.logger.is_debug():
+                self.logger.debug(f"Résultat transformation : {df.count()} lignes")
         
         # --- ÉTAPE 3 : ÉCRITURE (WRITE) ---
         self.logger.info(f"Démarrage : {processor_name}.write()")

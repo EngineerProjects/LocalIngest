@@ -274,18 +274,20 @@ def enrich_segmentation(
 
             # Sélectionner les colonnes nécessaires incluant cdpole
             df_seg_needed = df_seg.select(join_key, 'cdpole', 'cmarch', 'cseg', 'cssseg')
-            # Détection de doublons dans le référentiel de segmentation.
-            # Des doublons sur (cdprod, cdpole) multiplieraient les lignes après jointure
-            # et gonfleraient les montants de primes — on les élimine et on avertit.
-            count_before_dedup = df_seg_needed.count()
-            df_seg = df_seg_needed.dropDuplicates([join_key, 'cdpole'])
-            count_after_dedup = df_seg.count()
-            if count_before_dedup != count_after_dedup and logger:
-                logger.warning(
-                    f"⚠️ SEGMENTPRDT : {count_before_dedup - count_after_dedup} doublons éliminés "
-                    f"sur ({join_key}, cdpole). Des doublons dans le référentiel auraient multiplié "
-                    f"les lignes et gonflé les montants. Vérifier la table de référence."
-                )
+            # Déduplication des doublons (cdprod, cdpole) dans le référentiel
+            # En mode DEBUG : comptage avant/après pour mesurer l'impact
+            # En prod : déduplication directe sans scan supplémentaire
+            if logger and logger.is_debug():
+                count_before_dedup = df_seg_needed.count()
+                df_seg = df_seg_needed.dropDuplicates([join_key, 'cdpole'])
+                count_after_dedup = df_seg.count()
+                if count_before_dedup != count_after_dedup:
+                    logger.warning(
+                        f"⚠️ SEGMENTPRDT : {count_before_dedup - count_after_dedup} doublons éliminés "
+                        f"sur ({join_key}, cdpole). Doublons dans le référentiel à vérifier."
+                    )
+            else:
+                df_seg = df_seg_needed.dropDuplicates([join_key, 'cdpole'])
             
             # Jointure sur cdprod ET cdpole
             df_result = df.join(

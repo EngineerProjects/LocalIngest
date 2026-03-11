@@ -111,7 +111,10 @@ class EmissionsProcessor(BaseProcessor):
         # Lire le groupe de fichiers correspondant aux primes
         df = reader.read_file_group('rf_fr1_prm_dtl_midcorp_m', vision)
         
-        self.logger.success(f"Lecture terminée : {df.count():,} enregistrements chargés")
+        if self.logger.is_debug():
+            self.logger.debug(f"Lecture terminée : {df.count():,} enregistrements chargés")
+        else:
+            self.logger.success("Lecture terminée ✓")
         return df
     
     def transform(self, df: DataFrame, vision: str) -> tuple:
@@ -233,15 +236,10 @@ class EmissionsProcessor(BaseProcessor):
         df = enrich_segmentation(df, reader, vision, include_cdpole=True, logger=self.logger)
         
         # Re-filtrage CMARCH='6' après segmentation
-        # La segmentation peut réattribuer un marché différent du cd_marche initial.
-        count_before = df.count()
         df = df.filter(col('cmarch') == MARKET_CODE.MARKET)
-        count_after = df.count()
-        if count_before != count_after:
-            self.logger.info(
-                f"Re-filtre CMARCH='6' après segmentation : "
-                f"{count_before:,} → {count_after:,} ({count_before - count_after:,} exclues)"
-            )
+        if self.logger.is_debug():
+            count_after = df.count()
+            self.logger.debug(f"Re-filtre CMARCH='6' après segmentation : {count_after:,} restants")
         
         # --- Étape 8 : Agrégations finales ---
         self.logger.step(8, "Création des fichiers de sortie agrégés")
@@ -264,7 +262,10 @@ class EmissionsProcessor(BaseProcessor):
         # Somme les montants par clé de regroupement
         df_pol_garp = aggregate_by_policy_guarantee(df, group_cols_garp)
         
-        self.logger.info(f"Agrégation POL_GARP terminée : {df_pol_garp.count():,} lignes")
+        if self.logger.is_debug():
+            self.logger.debug(f"Agrégation POL_GARP terminée : {df_pol_garp.count():,} lignes")
+        else:
+            self.logger.info("Agrégation POL_GARP terminée ✓")
         
         # SORTIE 2 : Agrégation par Police uniquement (POL)
         # On repart de POL_GARP pour éviter de tout recalculer (optimisation)
@@ -280,7 +281,10 @@ class EmissionsProcessor(BaseProcessor):
             _sum('mtcom_x').alias('mtcom_x')      # Somme commissions
         )
         
-        self.logger.info(f"Agrégation POL terminée : {df_pol.count():,} lignes")
+        if self.logger.is_debug():
+            self.logger.debug(f"Agrégation POL terminée : {df_pol.count():,} lignes")
+        else:
+            self.logger.info("Agrégation POL terminée ✓")
         
         self.logger.success("Transformations Émissions terminées avec succès")
         
@@ -325,7 +329,10 @@ class EmissionsProcessor(BaseProcessor):
         write_to_layer(
             df_pol_garp_final, self.config, 'gold', output_name_garp, vision, self.logger
         )
-        self.logger.success(f"Fichier écrit : {output_name_garp}.parquet ({df_pol_garp_final.count():,} lignes)")
+        if self.logger.is_debug():
+            self.logger.debug(f"Fichier écrit : {output_name_garp}.parquet ({df_pol_garp_final.count():,} lignes)")
+        else:
+            self.logger.success(f"Fichier écrit : {output_name_garp}.parquet ✓")
         
         # --- Écriture Fichier 2 : POL ---
         self.logger.info(f"Écriture du fichier POL pour vision {vision}")
@@ -343,4 +350,7 @@ class EmissionsProcessor(BaseProcessor):
         write_to_layer(
             df_pol_final, self.config, 'gold', output_name_pol, vision, self.logger
         )
-        self.logger.success(f"Fichier écrit : {output_name_pol}.parquet ({df_pol_final.count():,} lignes)")
+        if self.logger.is_debug():
+            self.logger.debug(f"Fichier écrit : {output_name_pol}.parquet ({df_pol_final.count():,} lignes)")
+        else:
+            self.logger.success(f"Fichier écrit : {output_name_pol}.parquet ✓")

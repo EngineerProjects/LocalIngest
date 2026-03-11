@@ -136,9 +136,11 @@ class EmissionsOrchestrator(BaseOrchestrator):
             if result and isinstance(result, tuple):
                 df_pol_garp, df_pol = result
                 
-                # Afficher les statistiques de chaque fichier
-                self.logger.success(f"  - POL_GARP : {df_pol_garp.count():,} lignes (détail par garantie)")
-                self.logger.success(f"  - POL : {df_pol.count():,} lignes (agrégé par police)")
+                if self.logger.is_debug():
+                    self.logger.debug(f"  - POL_GARP : {df_pol_garp.count():,} lignes (détail par garantie)")
+                    self.logger.debug(f"  - POL : {df_pol.count():,} lignes (agrégé par police)")
+                else:
+                    self.logger.success("  - 2 fichiers Gold produits : POL_GARP (détail) + POL (agrégé)")
 
 
 def run_emissions_pipeline(

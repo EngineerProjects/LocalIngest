@@ -683,7 +683,7 @@ class ConsolidationProcessor(BaseProcessor):
             for file_group in ["ipfm0024_1", "ipfm0024_3"]:
                 try:
                     df_src = reader.read_file_group(file_group, vision)
-                    if df_src is not None and df_src.count() > 0:
+                    if df_src is not None and len(df_src.take(1)) > 0:
                         df_part = df_src.select(
                             col("nopol"),
                             col("noint"),
@@ -695,7 +695,7 @@ class ConsolidationProcessor(BaseProcessor):
                             lit(None).cast("double").alias("mtca_ris"),
                         )
                         tabspec_parts.append(df_part)
-                        self.logger.debug(f"TABSPEC: {file_group} chargé ({df_src.count()} lignes)")
+                        self.logger.debug(f"TABSPEC: {file_group} chargé")
                 except Exception as e:
                     self.logger.debug(f"TABSPEC: {file_group} non disponible : {e}")
 
@@ -706,7 +706,7 @@ class ConsolidationProcessor(BaseProcessor):
             for file_group in ["ipfm63_1", "ipfm63_3"]:
                 try:
                     df_src = reader.read_file_group(file_group, vision)
-                    if df_src is not None and df_src.count() > 0:
+                    if df_src is not None and len(df_src.take(1)) > 0:
                         df_part = df_src.select(
                             col("nopol"),
                             col("noint"),
@@ -718,7 +718,7 @@ class ConsolidationProcessor(BaseProcessor):
                             col("mtca1").cast("double").alias("mtca_ris"),
                         )
                         tabspec_parts.append(df_part)
-                        self.logger.debug(f"TABSPEC: {file_group} chargé ({df_src.count()} lignes)")
+                        self.logger.debug(f"TABSPEC: {file_group} chargé")
                 except Exception as e:
                     self.logger.debug(f"TABSPEC: {file_group} non disponible : {e}")
 
@@ -729,7 +729,7 @@ class ConsolidationProcessor(BaseProcessor):
             for file_group in ["ipfm99_1", "ipfm99_3"]:
                 try:
                     df_src = reader.read_file_group(file_group, vision)
-                    if df_src is not None and df_src.count() > 0:
+                    if df_src is not None and len(df_src.take(1)) > 0:
                         df_part = df_src.select(
                             col("nopol"),
                             col("noint"),
@@ -741,7 +741,7 @@ class ConsolidationProcessor(BaseProcessor):
                             col("mtca").cast("double").alias("mtca_ris"),
                         )
                         tabspec_parts.append(df_part)
-                        self.logger.debug(f"TABSPEC: {file_group} chargé ({df_src.count()} lignes)")
+                        self.logger.debug(f"TABSPEC: {file_group} chargé")
                 except Exception as e:
                     self.logger.debug(f"TABSPEC: {file_group} non disponible : {e}")
 
@@ -757,8 +757,8 @@ class ConsolidationProcessor(BaseProcessor):
                 )
                 df_tabspec = df_tabspec.filter(col("nopol").isNotNull())
 
-                if df_tabspec.count() > 0:
-                    self.logger.info(f"TABSPEC construit : {df_tabspec.count()} enregistrements")
+                if len(df_tabspec.take(1)) > 0:
+                    self.logger.info("TABSPEC construit et non vide")
 
                     # Jointure LEFT sur (NOPOL, CDPROD) — SAS ligne 515
                     # NB : SAS joint sur (NOPOL, CDPROD) seulement, PAS CDPOLE

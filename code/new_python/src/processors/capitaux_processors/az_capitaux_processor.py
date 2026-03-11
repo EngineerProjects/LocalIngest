@@ -109,7 +109,10 @@ class AZCapitauxProcessor(BaseProcessor):
         # Lire les fichiers IPF (combine IPFE16 + IPFE36)
         df = reader.read_file_group('ipf', vision)
         
-        self.logger.success(f"Lecture terminée : {df.count():,} enregistrements chargés (AZ)")
+        if self.logger.is_debug():
+            self.logger.debug(f"Lecture terminée : {df.count():,} enregistrements chargés (AZ)")
+        else:
+            self.logger.success("Lecture terminée (AZ) ✓")
         return df
     
     def transform(self, df: DataFrame, vision: str) -> DataFrame:
@@ -170,8 +173,11 @@ class AZCapitauxProcessor(BaseProcessor):
         from pyspark.sql.functions import col, trim, upper
         from config.constants import MARKET_CODE
 
-        count_before = df.count()
-        self.logger.info(f"Données brutes : {count_before:,} enregistrements")
+        if self.logger.is_debug():
+            count_before = df.count()
+            self.logger.debug(f"Données brutes : {count_before:,} enregistrements")
+        else:
+            count_before = 0  # Utilisé uniquement si is_debug()
 
         EXCLUDED_NOINT = [
             'H90061','482001','489090','102030','H90036','H90059',
@@ -201,11 +207,14 @@ class AZCapitauxProcessor(BaseProcessor):
             (csegt  == MARKET_CODE.SEGMENT)      # Segment type 2
         )
 
-        count_after = df.count()
-        self.logger.info(
-            f"Filtres Capitaux AZ : {count_before:,} → {count_after:,} "
-            f"({count_before - count_after:,} exclues)"
-        )
+        if self.logger.is_debug():
+            count_after = df.count()
+            self.logger.debug(
+                f"Filtres Capitaux AZ : {count_before:,} → {count_after:,} "
+                f"({count_before - count_after:,} exclues)"
+            )
+        else:
+            self.logger.info("Filtres Capitaux AZ appliqués ✓")
         
         # --- Étape 2 : Configuration des colonnes ---
         self.logger.step(2, "Standardisation des colonnes")
@@ -347,4 +356,7 @@ class AZCapitauxProcessor(BaseProcessor):
             df, self.config, 'silver', output_name, vision, self.logger
         )
         
-        self.logger.success(f"Fichier écrit : {output_name}.parquet ({df.count():,} enregistrements)")
+        if self.logger.is_debug():
+            self.logger.debug(f"Fichier écrit : {output_name}.parquet ({df.count():,} enregistrements)")
+        else:
+            self.logger.success(f"Fichier écrit : {output_name}.parquet ✓")
