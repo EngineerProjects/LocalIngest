@@ -1,0 +1,163 @@
+{
+  "FRANCE": {
+    "name": "France",
+    "iso": "FR",
+    "bbox": [-5.0, 42.5, 9.56, 51.15],
+    "comment": "France métropolitaine uniquement"
+  },
+  "BELGIQUE": {
+    "name": "Belgique",
+    "iso": "BE",
+    "bbox": [2.51, 49.53, 6.16, 51.48]
+  },
+  "LUXEMBOURG": {
+    "name": "Luxembourg",
+    "iso": "LU",
+    "bbox": [5.67, 49.44, 6.24, 50.13]
+  },
+  "SUISSE": {
+    "name": "Suisse",
+    "iso": "CH",
+    "bbox": [6.02, 45.78, 10.44, 47.83]
+  },
+  "ALLEMAGNE": {
+    "name": "Allemagne",
+    "iso": "DE",
+    "bbox": [5.99, 47.3, 15.02, 54.98]
+  },
+  "ESPAGNE": {
+    "name": "Espagne",
+    "iso": "ES",
+    "bbox": [-9.39, 35.95, 3.04, 43.75]
+  },
+  "ITALIE": {
+    "name": "Italie",
+    "iso": "IT",
+    "bbox": [6.75, 36.62, 18.48, 47.12]
+  },
+  "PORTUGAL": {
+    "name": "Portugal",
+    "iso": "PT",
+    "bbox": [-9.53, 36.84, -6.39, 42.28]
+  },
+  "ROYAUME-UNI": {
+    "name": "Royaume-Uni",
+    "iso": "GB",
+    "bbox": [-7.57, 49.96, 1.68, 58.64]
+  },
+  "PAYS-BAS": {
+    "name": "Pays-Bas",
+    "iso": "NL",
+    "bbox": [3.31, 50.8, 7.09, 53.51]
+  },
+  "AUTRICHE": {
+    "name": "Autriche",
+    "iso": "AT",
+    "bbox": [9.48, 46.43, 16.98, 49.04]
+  },
+  "POLOGNE": {
+    "name": "Pologne",
+    "iso": "PL",
+    "bbox": [14.07, 49.03, 24.03, 54.85]
+  },
+  "IRLANDE": {
+    "name": "Irlande",
+    "iso": "IE",
+    "bbox": [-9.98, 51.67, -6.03, 55.13]
+  },
+  "DANEMARK": {
+    "name": "Danemark",
+    "iso": "DK",
+    "bbox": [8.09, 54.8, 12.69, 57.73]
+  },
+  "SUEDE": {
+    "name": "Suède",
+    "iso": "SE",
+    "bbox": [11.03, 55.36, 23.9, 69.11]
+  },
+  "NORVEGE": {
+    "name": "Norvège",
+    "iso": "NO",
+    "bbox": [4.99, 58.08, 31.29, 70.92]
+  },
+  "FINLANDE": {
+    "name": "Finlande",
+    "iso": "FI",
+    "bbox": [20.65, 59.85, 31.52, 70.16]
+  },
+  "GRECE": {
+    "name": "Grèce",
+    "iso": "GR",
+    "bbox": [20.15, 34.92, 26.6, 41.83]
+  },
+  "REPUBLIQUE TCHEQUE": {
+    "name": "République Tchèque",
+    "iso": "CZ",
+    "bbox": [12.24, 48.56, 18.85, 51.12]
+  },
+  "HONGRIE": {
+    "name": "Hongrie",
+    "iso": "HU",
+    "bbox": [16.2, 45.76, 22.71, 48.62]
+  },
+  "ROUMANIE": {
+    "name": "Roumanie",
+    "iso": "RO",
+    "bbox": [20.22, 43.69, 29.63, 48.22]
+  },
+  "BULGARIE": {
+    "name": "Bulgarie",
+    "iso": "BG",
+    "bbox": [22.38, 41.23, 28.56, 44.23]
+  },
+  "CROATIE": {
+    "name": "Croatie",
+    "iso": "HR",
+    "bbox": [13.66, 42.48, 19.39, 46.5]
+  },
+  "SLOVENIE": {
+    "name": "Slovénie",
+    "iso": "SI",
+    "bbox": [13.7, 45.45, 16.56, 46.85]
+  },
+  "SLOVAQUIE": {
+    "name": "Slovaquie",
+    "iso": "SK",
+    "bbox": [16.88, 47.76, 22.56, 49.57]
+  },
+  "MONACO": {
+    "name": "Monaco",
+    "iso": "MC",
+    "bbox": [7.41, 43.72, 7.44, 43.75]
+  },
+  "ANDORRE": {
+    "name": "Andorre",
+    "iso": "AD",
+    "bbox": [1.41, 42.43, 1.79, 42.66]
+  },
+  "MAROC": {
+    "name": "Maroc",
+    "iso": "MA",
+    "bbox": [-17.02, 21.42, -1.12, 35.76]
+  },
+  "TUNISIE": {
+    "name": "Tunisie",
+    "iso": "TN",
+    "bbox": [7.52, 30.31, 11.49, 37.35]
+  },
+  "ALGERIE": {
+    "name": "Algérie",
+    "iso": "DZ",
+    "bbox": [-8.68, 19.06, 12.0, 37.12]
+  },
+  "ETATS-UNIS": {
+    "name": "États-Unis",
+    "iso": "US",
+    "bbox": [-125.0, 25.0, -66.96, 49.5]
+  },
+  "CANADA": {
+    "name": "Canada",
+    "iso": "CA",
+    "bbox": [-141.0, 41.68, -52.65, 73.23]
+  }
+}

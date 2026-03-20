@@ -1,0 +1,119 @@
+================================================================================
+                    MAPPING DES COLONNES — PROJET QUALITÉ PROXIMA
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+                              COLONNES PRINCIPALES
+────────────────────────────────────────────────────────────────────────────────
+
+IDENTIFICATION
+──────────────
+ID_SITE                     → Identifiant unique du site (clé primaire rapport)
+NU_CNT                      → Numéro de contrat (contexte rapport)
+NOM_SITE                    → Nom du site (contexte rapport, optionnel)
+NOM_CLI                     → Nom du client (contexte rapport, optionnel)
+
+FILTRE SITES ACTIFS
+───────────────────
+STOCK                       → Doit être = 1
+DT_EFF_RESIL_CNT            → Doit être vide (pas de date de résiliation --> contrat toujours en cours)
+CDSITP                      → Reporté (non disponible dans ce fichier  --> besoin de merge avec le datamart pour sortir cette colonne)
+
+ADRESSE
+───────
+PAYS_SITE                   → Pays (obligatoire)
+CP_SITE                     → Code postal (obligatoire)
+VILLE_SITE                  → Ville (obligatoire)
+NUM_RUE_SITE                → Rue complète (priorité 1)
+RUE_SITE                    → Nom de rue (priorité 2)
+NUM_VOIE_SITE               → Numéro de voie (priorité 3)
+LIEU_DIT_SITE               → Complément d'adresse (informatif)
+ADRESSE_SITE                → Adresse complète (informatif/fallback)
+
+COORDONNÉES GPS
+───────────────
+COORD_X_SITE                → Longitude
+COORD_Y_SITE                → Latitude
+QUALITE_GEOCODAGE           → Qualité existante (informatif, non utilisé)
+
+DONNÉES TECHNIQUES — CAPITAUX
+─────────────────────────────
+CAPITAUX_MURS_BATIMENTS     → Capital murs/bâtiments
+CAPITAUX_CONTENU            → Capital contenu
+CAPITAUX_MATERIEL           → Capital matériel
+CAPITAUX_MARCHANDISES       → Capital marchandises
+CAPITAUX_TT                 → Capital total (à confirmer si exploitable)
+CAPITAUX_ASS_MH_HLL_CARAV   → Capital mobile home/caravane (bonus)
+CAPITAUX_DEPENDANCE         → Capital dépendance (bonus)
+CAPITAUX_COMPL              → Capital complémentaire (bonus)
+CAPITAUX_DD                 → Capital DD (bonus)
+
+DONNÉES TECHNIQUES — SURFACE
+────────────────────────────
+SURFACE                     → Surface principale
+SURFACE_DPDCE               → Surface dépendance
+
+
+────────────────────────────────────────────────────────────────────────────────
+                         CONSTANTES DE CONFIGURATION
+────────────────────────────────────────────────────────────────────────────────
+
+# Colonnes pour le filtre sites actifs
+FILTER_COLS = {
+    'stock': 'STOCK',
+    'dt_resil': 'DT_EFF_RESIL_CNT'
+}
+
+# Colonnes d'identification
+ID_COLS = {
+    'site_id': 'ID_SITE',
+    'contract_id': 'NU_CNT',
+    'site_name': 'NOM_SITE',
+    'client_name': 'NOM_CLI'
+}
+
+# Colonnes d'adresse
+ADDRESS_COLS = {
+    'country': 'PAYS_SITE',
+    'postal_code': 'CP_SITE',
+    'city': 'VILLE_SITE',
+    'street_full': 'NUM_RUE_SITE',
+    'street_name': 'RUE_SITE',
+    'street_number': 'NUM_VOIE_SITE',
+    'lieu_dit': 'LIEU_DIT_SITE',
+    'full_address': 'ADRESSE_SITE'
+}
+
+# Colonnes GPS
+GPS_COLS = {
+    'longitude': 'COORD_X_SITE',
+    'latitude': 'COORD_Y_SITE',
+    'quality': 'QUALITE_GEOCODAGE'
+}
+
+# Colonnes capitaux (pour règle P-07)
+CAPITAL_COLS = [
+    'CAPITAUX_MURS_BATIMENTS',
+    'CAPITAUX_CONTENU',
+    'CAPITAUX_MATERIEL',
+    'CAPITAUX_MARCHANDISES',
+    'CAPITAUX_TT',
+    'CAPITAUX_ASS_MH_HLL_CARAV',
+    'CAPITAUX_DEPENDANCE',
+    'CAPITAUX_COMPL',
+    'CAPITAUX_DD'
+]
+
+# Colonnes surface (pour règle P-07)
+SURFACE_COLS = [
+    'SURFACE',
+    'SURFACE_DPDCE'
+]
+
+# Toutes les colonnes techniques (capitaux + surface)
+TECHNICAL_COLS = CAPITAL_COLS + SURFACE_COLS
+
+
+────────────────────────────────────────────────────────────────────────────────
+                              FIN DU MAPPING
+────────────────────────────────────────────────────────────────────────────────

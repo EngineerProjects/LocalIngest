@@ -1,0 +1,711 @@
+================================================================================
+                    PROJET CONTRÔLE QUALITÉ — DONNÉES PROXIMA
+                              Documentation complète
+================================================================================
+
+════════════════════════════════════════════════════════════════════════════════
+                              1. OBJECTIF DU PROJET
+════════════════════════════════════════════════════════════════════════════════
+
+Le projet vise à détecter les anomalies et incohérences dans les données de 
+localisation des sites (points de gestion) issus de Proxima, fusionnés avec 
+un datamart.
+
+OBJECTIFS PRINCIPAUX :
+─────────────────────
+• Vérifier la PRÉSENCE des champs obligatoires (adresse, GPS, capitaux, données techniques)
+• Valider le FORMAT des données présentes (code postal, coordonnées GPS)
+• Détecter les INCOHÉRENCES entre les données (GPS vs Adresse, CP vs Ville)
+• Identifier les CAUSES PROBABLES des erreurs (inversion X/Y, signe erroné, 
+  faute de frappe)
+• Générer un RAPPORT EXCEL détaillé pour faciliter la correction des données
+
+CONTEXTE DONNÉES :
+──────────────────
+• Source : fichiers CSV Proxima fusionnés avec un datamart
+• Granularité : une ligne = un site (point de gestion)
+• Un contrat peut avoir plusieurs sites
+• Volume : ~400 000 lignes (test), potentiellement millions en production
+• Données majoritairement françaises, autres pays possibles
+
+LIVRABLES :
+───────────
+• Fichier Excel avec 3 onglets :
+  - Résumé : statistiques globales et répartition des anomalies
+  - Détail des anomalies : liste complète avec descriptions et suggestions
+  - Données enrichies : fichier source avec colonnes de flags anomalies
+
+
+════════════════════════════════════════════════════════════════════════════════
+                              2. ARCHITECTURE GÉNÉRALE
+════════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           FLUX DE TRAITEMENT                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    ┌──────────────────┐      ┌──────────────────┐
+    │   CSV Proxima    │      │    Datamart      │
+    └────────┬─────────┘      └────────┬─────────┘
+             │                         │
+             └───────────┬─────────────┘
+                         │
+                         ▼
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │  ÉTAPE 0 — FILTRE PRÉALABLE                                             │
+    │  Sélection des sites actifs uniquement                                  │
+    │  Critères : STOCK=1 ET CDSITP=1 ET DT_EFF_RESIL_CNT vide                │
+    └────────────────────────────────┬────────────────────────────────────────┘
+                                     │
+                                     ▼
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │  ÉTAPE 1 — VÉRIFICATIONS DE PRÉSENCE                                    │
+    │  Chaque champ important est-il renseigné ?                              │
+    │  → Détection des champs manquants                                       │
+    └────────────────────────────────┬────────────────────────────────────────┘
+                                     │
+                                     ▼
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │  ÉTAPE 2 — VÉRIFICATIONS DE FORMAT                                      │
+    │  Les données présentes ont-elles le bon format ?                        │
+    │  → Détection des formats invalides                                      │
+    └────────────────────────────────┬────────────────────────────────────────┘
+                                     │
+                                     ▼
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │  ÉTAPE 3 — VÉRIFICATIONS DE COHÉRENCE                                   │
+    │  Les données sont-elles cohérentes entre elles ?                        │
+    │  → Détection des contradictions et incohérences                         │
+    └────────────────────────────────┬────────────────────────────────────────┘
+                                     │
+                                     ▼
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │  ÉTAPE 4 — GÉNÉRATION DU RAPPORT                                        │
+    │  Export Excel avec toutes les anomalies détectées                       │
+    └────────────────────────────────┬────────────────────────────────────────┘
+                                     │
+                                     ▼
+                         ┌──────────────────────┐
+                         │  RAPPORT EXCEL       │
+                         │  • Résumé            │
+                         │  • Détail anomalies  │
+                         │  • Données enrichies │
+                         └──────────────────────┘
+
+════════════════════════════════════════════════════════════════════════════════
+                              3. RÈGLES DE CONTRÔLE
+════════════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────────────
+                    ÉTAPE 0 — FILTRE PRÉALABLE (SITES ACTIFS)
+────────────────────────────────────────────────────────────────────────────────
+
+Avant toute vérification, seules les lignes correspondant à des sites actifs 
+sont traitées.
+
+CONDITIONS D'ACTIVITÉ :
+───────────────────────
+• Dans le CSV Proxima : STOCK = 1
+• Après fusion avec le datamart :
+  - CDSITP = 1
+  - DT_EFF_RESIL_CNT est vide (pas de date de résiliation)
+
+LOGIQUE :
+─────────
+Si (STOCK = 1) ET (CDSITP = 1) ET (DT_EFF_RESIL_CNT est vide) :
+    → Site actif, à traiter
+Sinon :
+    → Site inactif, ignoré (pas d'anomalie générée)
+
+
+────────────────────────────────────────────────────────────────────────────────
+                    ÉTAPE 1 — VÉRIFICATIONS DE PRÉSENCE
+────────────────────────────────────────────────────────────────────────────────
+
+Objectif : Vérifier que les champs obligatoires sont renseignés.
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RÈGLE P-01 : Pays obligatoire                                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Champ        : PAYS_SITE                                                   │
+│  Condition    : Le champ doit être renseigné et non vide                    │
+│  Anomalie     : P-01 — Pays manquant                                        │
+│  Gravité      : GRAVE                                                       │
+│  Description  : "Le pays est obligatoire pour valider le format du CP       │
+│                 et la cohérence des coordonnées GPS."                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RÈGLE P-02 : Code postal obligatoire                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Champ        : CP_SITE                                                     │
+│  Condition    : Le champ doit être renseigné et non vide                    │
+│  Anomalie     : P-02 — Code postal manquant                                 │
+│  Gravité      : GRAVE                                                       │
+│  Description  : "Le code postal est nécessaire pour valider la cohérence    │
+│                 avec la ville et le positionnement GPS."                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RÈGLE P-03 : Ville obligatoire                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Champ        : VILLE_SITE                                                  │
+│  Condition    : Le champ doit être renseigné et non vide                    │
+│  Anomalie     : P-03 — Ville manquante                                      │
+│  Gravité      : GRAVE                                                       │
+│  Description  : "La ville est nécessaire pour valider la cohérence          │
+│                 avec le code postal."                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RÈGLE P-04 : Rue souhaitée                                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Champs       : NUM_RUE_SITE, RUE_SITE, NUM_VOIE_SITE (par ordre de         │
+│                 priorité)                                                   │
+│  Condition    : Au moins un des trois champs doit être renseigné            │
+│  Logique      :                                                             │
+│                 1. Si NUM_RUE_SITE renseigné → rue présente                 │
+│                 2. Sinon si RUE_SITE renseigné → rue présente               │
+│                 3. Sinon si NUM_VOIE_SITE renseigné → rue présente          │
+│                 4. Sinon → rue absente                                      │
+│  Anomalie     : P-04 — Rue manquante                                        │
+│  Gravité      : LÉGÈRE                                                      │
+│  Description  : "Aucune information de rue renseignée (NUM_RUE_SITE,        │
+│                 RUE_SITE, NUM_VOIE_SITE tous vides)."                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RÈGLE P-05 : GPS incomplet                                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Champs       : COORD_X_SITE (longitude), COORD_Y_SITE (latitude)           │
+│  Condition    : Si une seule des deux coordonnées est renseignée            │
+│  Anomalie     : P-05 — GPS incomplet (une seule coordonnée)                 │
+│  Gravité      : LÉGÈRE                                                      │
+│  Description  : "Une seule coordonnée GPS renseignée. Les deux (X et Y)     │
+│                 sont nécessaires pour une localisation valide."             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RÈGLE P-06 : GPS absent                                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Champs       : COORD_X_SITE, COORD_Y_SITE                                  │
+│  Condition    : Les deux coordonnées sont vides                             │
+│  Anomalie     : P-06 — Coordonnées GPS absentes                             │
+│  Gravité      : LÉGÈRE                                                      │
+│  Description  : "Aucune coordonnée GPS renseignée. La localisation repose   │
+│                 uniquement sur l'adresse textuelle."                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RÈGLE P-07 : Données techniques obligatoires                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Champs       : CAPITAUX_MURS_BATIMENTS, CAPITAUX_CONTENU,                  │
+│                 CAPITAUX_MATERIEL, CAPITAUX_MARCHANDISES, CAPITAUX_TT,      │
+│                 SURFACE, SURFACE_DPDCE                                      │
+│  Condition    : Au moins un des champs doit être renseigné et > 0           │
+│  Anomalie     : P-07 — Données techniques manquantes                        │
+│  Gravité      : GRAVE                                                       │
+│  Description  : "Aucune donnée technique renseignée (ni capitaux,           │
+│                 ni superficie). Au moins une valeur est requise."           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+────────────────────────────────────────────────────────────────────────────────
+                    ÉTAPE 2 — VÉRIFICATIONS DE FORMAT
+────────────────────────────────────────────────────────────────────────────────
+
+Objectif : Vérifier que les données présentes respectent le format attendu.
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RÈGLE F-01 : Format code postal (France)                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Champs       : CP_SITE, PAYS_SITE                                          │
+│  Condition    : Appliquée uniquement si PAYS_SITE = "FRANCE" et CP présent  │
+│  Pré-trait.   : Convertir en string, repadder à 5 chiffres (ex: "4100" →    │
+│                 "04100")                                                    │
+│  Validations  :                                                             │
+│                 1. Le CP doit contenir exactement 5 chiffres numériques     │
+│                 2. Les 2 premiers chiffres (département) doivent être       │
+│                    valides :                                                │
+│                    - Métropole : 01 à 19, 21 à 95                           │
+│                    - Corse : 20 (accepté), 2A, 2B                           │
+│                    - DOM-TOM : 971, 972, 973, 974, 976                      │
+│  Anomalie     : F-01 — Format code postal invalide                          │
+│  Gravité      : GRAVE                                                       │
+│  Description  : "Le code postal '[valeur]' ne respecte pas le format        │
+│                 français (5 chiffres, département valide)."                 │
+│  Suggestion   : Si 4 chiffres → "Peut-être manque-t-il un 0 au début ?"     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RÈGLE F-02 : Format code postal (autres pays)                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Champs       : CP_SITE, PAYS_SITE                                          │
+│  Condition    : Appliquée si PAYS_SITE ≠ "FRANCE" et CP présent             │
+│  Validations  : Format selon le pays (extensible)                           │
+│                 - Version initiale : pas de validation, marqué "non validé" │
+│  Anomalie     : F-02 — Format code postal non validé (pays étranger)        │
+│  Gravité      : INFO                                                        │
+│  Description  : "Le format du code postal pour le pays '[pays]' n'est pas   │
+│                 validé dans cette version."                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RÈGLE F-03 : Format coordonnée X (longitude)                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Champ        : COORD_X_SITE                                                │
+│  Condition    : Appliquée si COORD_X_SITE est renseigné                     │
+│  Validations  :                                                             │
+│                 1. La valeur doit être numérique                            │
+│                 2. La valeur doit être comprise entre -180 et 180           │
+│  Anomalie     : F-03 — Format longitude invalide                            │
+│  Gravité      : GRAVE                                                       │
+│  Description  : "La longitude '[valeur]' n'est pas valide (attendu :        │
+│                 valeur numérique entre -180 et 180)."                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RÈGLE F-04 : Format coordonnée Y (latitude)                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Champ        : COORD_Y_SITE                                                │
+│  Condition    : Appliquée si COORD_Y_SITE est renseigné                     │
+│  Validations  :                                                             │
+│                 1. La valeur doit être numérique                            │
+│                 2. La valeur doit être comprise entre -90 et 90             │
+│  Anomalie     : F-04 — Format latitude invalide                             │
+│  Gravité      : GRAVE                                                       │
+│  Description  : "La latitude '[valeur]' n'est pas valide (attendu :         │
+│                 valeur numérique entre -90 et 90)."                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+────────────────────────────────────────────────────────────────────────────────
+                    ÉTAPE 3 — VÉRIFICATIONS DE COHÉRENCE
+────────────────────────────────────────────────────────────────────────────────
+
+Objectif : Détecter les contradictions et incohérences entre les données.
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RÈGLE C-01 : Cohérence CP / Ville (exacte)                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Champs       : CP_SITE, VILLE_SITE                                         │
+│  Condition    : Appliquée si CP_SITE et VILLE_SITE sont tous deux présents  │
+│                 et si le pays est "FRANCE"                                  │
+│  Source réf.  : Base officielle des codes postaux français (data.gouv.fr)   │
+│  Logique      :                                                             │
+│                 1. Normaliser la ville saisie (minuscules, trim)            │
+│                 2. Récupérer la liste des communes associées au CP          │
+│                 3. Normaliser les communes de référence                     │
+│                 4. Vérifier si la ville saisie correspond exactement        │
+│                    à une commune de la liste                                │
+│  Si CP inexistant dans la base :                                            │
+│                 → Anomalie F-01 déjà levée (format invalide)                │
+│  Si ville ne correspond pas :                                               │
+│                 → Passer à la règle C-02 (fuzzy matching)                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RÈGLE C-02 : Cohérence CP / Ville (fuzzy matching)                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Champs       : CP_SITE, VILLE_SITE                                         │
+│  Condition    : Appliquée si C-01 échoue (pas de correspondance exacte)     │
+│  Outil        : rapidfuzz (ou Levenshtein)                                  │
+│  Logique      :                                                             │
+│                 1. Calculer le score de similarité entre la ville saisie    │
+│                    et chaque commune associée au CP                         │
+│                 2. Identifier la meilleure correspondance (best_match)      │
+│                 3. Évaluer selon le score :                                 │
+│                                                                             │
+│  ┌─────────────┬─────────────────────────────────────────────────────────┐  │
+│  │ Score       │ Interprétation                                          │  │
+│  ├─────────────┼─────────────────────────────────────────────────────────┤  │
+│  │ ≥ 90%       │ Probable faute de frappe                                │  │
+│  │             │ Gravité : LÉGÈRE                                        │  │
+│  │             │ Suggestion : "Vouliez-vous dire '[best_match]' ?"       │  │
+│  ├─────────────┼─────────────────────────────────────────────────────────┤  │
+│  │ 70% - 89%   │ Ville douteuse                                          │  │
+│  │             │ Gravité : LÉGÈRE                                        │  │
+│  │             │ Suggestion : "Ville similaire trouvée : '[best_match]'" │  │
+│  ├─────────────┼─────────────────────────────────────────────────────────┤  │
+│  │ < 70%       │ Incohérence avérée                                      │  │
+│  │             │ Gravité : GRAVE                                         │  │
+│  │             │ Description : "La ville '[ville]' ne correspond pas     │  │
+│  │             │ au CP [cp]. Communes attendues : [liste]"               │  │
+│  └─────────────┴─────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│  Anomalie     : C-02 — Incohérence CP / Ville                               │
+│  Champs sortie: VALEUR_ACTUELLE, SUGGESTION, SCORE_SIMILARITE               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RÈGLE C-03 : Cohérence GPS / Département                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Champs       : COORD_X_SITE, COORD_Y_SITE, CP_SITE                         │
+│  Condition    : Appliquée si GPS complet (X et Y présents et valides)       │
+│                 ET CP présent et valide (format OK)                         │
+│  Source réf.  : Bounding boxes des départements français (fichier JSON)     │
+│  Logique      :                                                             │
+│                 1. Extraire le département du CP (2 premiers chiffres)      │
+│                    - Cas spécial Corse : 20 → 2A ou 2B selon CP             │
+│                    - Cas DOM-TOM : 3 premiers chiffres (971, 972, etc.)     │
+│                 2. Récupérer la bounding box du département :               │
+│                    - lat_min, lat_max, lon_min, lon_max                     │
+│                 3. Vérifier que les coordonnées sont dans la bbox :         │
+│                    - lon_min ≤ COORD_X ≤ lon_max                            │
+│                    - lat_min ≤ COORD_Y ≤ lat_max                            │
+│                                                                             │
+│  Si hors bbox : → Passer aux règles C-05 et C-06 pour diagnostic            │
+│  Anomalie     : C-03 — GPS incohérent avec le département                   │
+│  Gravité      : GRAVE                                                       │
+│  Description  : "Les coordonnées GPS ([x], [y]) sont situées hors du        │
+│                 département [dept] ([nom_dept]) indiqué par le CP [cp]."    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RÈGLE C-04 : Cohérence GPS / Pays                                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Champs       : COORD_X_SITE, COORD_Y_SITE, PAYS_SITE                       │
+│  Condition    : Appliquée si GPS complet (X et Y présents et valides)       │
+│                 ET PAYS_SITE présent                                        │
+│                 ET (CP absent OU règle C-03 non applicable)                 │
+│  Source réf.  : Bounding boxes des pays (fichier JSON)                      │
+│  Logique      :                                                             │
+│                 1. Récupérer la bounding box du pays                        │
+│                 2. Vérifier que les coordonnées sont dans la bbox           │
+│                                                                             │
+│  Bounding box France métropolitaine :                                       │
+│                 - Latitude  : 41.3° à 51.1°                                 │
+│                 - Longitude : -5.1° à 9.6°                                  │
+│                                                                             │
+│  Si hors bbox : → Passer aux règles C-05 et C-06 pour diagnostic            │
+│  Anomalie     : C-04 — GPS hors du pays renseigné                           │
+│  Gravité      : GRAVE                                                       │
+│  Description  : "Les coordonnées GPS ([x], [y]) sont situées hors du        │
+│                 pays '[pays]'."                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RÈGLE C-05 : Diagnostic — Inversion X/Y                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Champs       : COORD_X_SITE, COORD_Y_SITE                                  │
+│  Condition    : Appliquée si C-03 ou C-04 a détecté une incohérence         │
+│  Logique      :                                                             │
+│                 1. Inverser les coordonnées : X_test = Y, Y_test = X        │
+│                 2. Vérifier si (X_test, Y_test) tombe dans la bbox          │
+│                    attendue (département ou pays)                           │
+│                 3. Si oui → cause probable identifiée                       │
+│                                                                             │
+│  Anomalie     : C-05 — Cause probable : X et Y inversés                     │
+│  Gravité      : INFO                                                        │
+│  Description  : "Les coordonnées semblent inversées. En inversant X et Y,   │
+│                 le point ([y], [x]) serait situé dans la zone attendue."    │
+│  Suggestion   : "Vérifier si COORD_X et COORD_Y n'ont pas été échangés."    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RÈGLE C-06 : Diagnostic — Signe erroné                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Champs       : COORD_X_SITE, COORD_Y_SITE                                  │
+│  Condition    : Appliquée si C-03 ou C-04 a détecté une incohérence         │
+│                 ET C-05 n'a pas trouvé de cause                             │
+│  Logique      :                                                             │
+│                 1. Tester avec signe opposé sur X : (-X, Y)                 │
+│                 2. Tester avec signe opposé sur Y : (X, -Y)                 │
+│                 3. Tester avec signes opposés sur les deux : (-X, -Y)       │
+│                 4. Si une combinaison tombe dans la bbox → cause identifiée │
+│                                                                             │
+│  Anomalie     : C-06 — Cause probable : signe erroné sur une coordonnée     │
+│  Gravité      : INFO                                                        │
+│  Description  : "Un signe négatif semble erroné. Avec [combinaison], le     │
+│                 point serait situé dans la zone attendue."                  │
+│  Suggestion   : "Vérifier si un signe '-' n'a pas été ajouté par erreur."   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+════════════════════════════════════════════════════════════════════════════════
+                         4. RÉCAPITULATIF DES ANOMALIES
+════════════════════════════════════════════════════════════════════════════════
+
+┌────────┬────────┬─────────────────────────────────────────────────┬──────────┐
+│ CODE   │ ÉTAPE  │ LIBELLÉ                                         │ GRAVITÉ  │
+├────────┼────────┼─────────────────────────────────────────────────┼──────────┤
+│ P-01   │ 1      │ Pays manquant                                   │ GRAVE    │
+│ P-02   │ 1      │ Code postal manquant                            │ GRAVE    │
+│ P-03   │ 1      │ Ville manquante                                 │ GRAVE    │
+│ P-04   │ 1      │ Rue manquante                                   │ LÉGÈRE   │
+│ P-05   │ 1      │ GPS incomplet (une seule coordonnée)            │ LÉGÈRE   │
+│ P-06   │ 1      │ Coordonnées GPS absentes                        │ LÉGÈRE   │
+│ P-07   │ 1      │ Données techniques manquantes                   │ GRAVE    │
+├────────┼────────┼─────────────────────────────────────────────────┼──────────┤
+│ F-01   │ 2      │ Format code postal invalide (France)            │ GRAVE    │
+│ F-02   │ 2      │ Format code postal non validé (étranger)        │ INFO     │
+│ F-03   │ 2      │ Format longitude invalide                       │ GRAVE    │
+│ F-04   │ 2      │ Format latitude invalide                        │ GRAVE    │
+├────────┼────────┼─────────────────────────────────────────────────┼──────────┤
+│ C-02   │ 3      │ Incohérence CP / Ville                          │ LÉGÈRE   │
+│        │        │                                                 │ ou GRAVE │
+│ C-03   │ 3      │ GPS incohérent avec le département              │ GRAVE    │
+│ C-04   │ 3      │ GPS hors du pays renseigné                      │ GRAVE    │
+│ C-05   │ 3      │ Cause probable : X et Y inversés                │ INFO     │
+│ C-06   │ 3      │ Cause probable : signe erroné                   │ INFO     │
+└────────┴────────┴─────────────────────────────────────────────────┴──────────┘
+
+NIVEAUX DE GRAVITÉ :
+────────────────────
+• GRAVE  : Anomalie bloquante, donnée inutilisable ou incohérence majeure
+• LÉGÈRE : Anomalie non bloquante, donnée exploitable mais à corriger
+• INFO   : Information complémentaire, diagnostic ou suggestion
+
+
+════════════════════════════════════════════════════════════════════════════════
+                         5. FORMAT DU RAPPORT EXCEL
+════════════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────────────
+                              ONGLET 1 : RÉSUMÉ
+────────────────────────────────────────────────────────────────────────────────
+
+SECTION A — Statistiques globales
+─────────────────────────────────
+┌─────────────────────────────────┬─────────────┐
+│ Métrique                        │ Valeur      │
+├─────────────────────────────────┼─────────────┤
+│ Date d'exécution                │ 2026-03-17  │
+│ Fichier source                  │ proxima.csv │
+│ Total lignes dans le fichier    │ 500 000     │
+│ Lignes filtrées (sites actifs)  │ 412 422     │
+│ Lignes sans anomalie            │ 380 000     │
+│ Lignes avec anomalie(s)         │ 32 422      │
+│ Total anomalies détectées       │ 45 500      │
+│ Anomalies GRAVES                │ 12 500      │
+│ Anomalies LÉGÈRES               │ 25 000      │
+│ Anomalies INFO                  │ 8 000       │
+└─────────────────────────────────┴─────────────┘
+
+SECTION B — Répartition par code anomalie
+─────────────────────────────────────────
+┌────────┬─────────────────────────────────────────┬─────────────┬──────────┐
+│ Code   │ Libellé                                 │ Occurrences │ Gravité  │
+├────────┼─────────────────────────────────────────┼─────────────┼──────────┤
+│ C-03   │ GPS incohérent avec le département      │ 5 200       │ GRAVE    │
+│ C-02   │ Incohérence CP / Ville                  │ 4 800       │ LÉGÈRE   │
+│ P-02   │ Code postal manquant                    │ 3 100       │ GRAVE    │
+│ P-06   │ Coordonnées GPS absentes                │ 2 800       │ LÉGÈRE   │
+│ ...    │ ...                                     │ ...         │ ...      │
+└────────┴─────────────────────────────────────────┴─────────────┴──────────┘
+
+SECTION C — Répartition par étape
+─────────────────────────────────
+┌─────────────────────────────────┬─────────────┐
+│ Étape                           │ Anomalies   │
+├─────────────────────────────────┼─────────────┤
+│ Étape 1 — Présence              │ 15 000      │
+│ Étape 2 — Format                │ 8 500       │
+│ Étape 3 — Cohérence             │ 22 000      │
+└─────────────────────────────────┴─────────────┘
+
+
+────────────────────────────────────────────────────────────────────────────────
+                         ONGLET 2 : DÉTAIL DES ANOMALIES
+────────────────────────────────────────────────────────────────────────────────
+
+Colonnes du tableau :
+─────────────────────
+┌──────────────────┬───────────────────────────────────────────────────────────┐
+│ Colonne          │ Description                                               │
+├──────────────────┼───────────────────────────────────────────────────────────┤
+│ ID_SITE          │ Identifiant unique du site                                │
+│ NUM_CONTRAT      │ Numéro du contrat associé                                 │
+│ CODE_ANOMALIE    │ Code de l'anomalie (ex: C-02, P-01)                       │
+│ GRAVITE          │ Niveau de gravité (GRAVE, LÉGÈRE, INFO)                   │
+│ ETAPE            │ Étape de détection (1, 2 ou 3)                            │
+│ DESCRIPTION      │ Description détaillée de l'anomalie                       │
+│ CHAMPS_CONCERNES │ Liste des champs impliqués                                │
+│ VALEUR_ACTUELLE  │ Valeur(s) actuelle(s) des champs concernés                │
+│ SUGGESTION       │ Suggestion de correction (si applicable)                  │
+│ SCORE_SIMILARITE │ Score fuzzy matching (si applicable, pour C-02)           │
+└──────────────────┴───────────────────────────────────────────────────────────┘
+
+Exemple de lignes :
+───────────────────
+┌─────────┬────────┬────────┬────────┬───────────────────────────────────────┐
+│ ID_SITE │ CODE   │ GRAVITÉ│ ÉTAPE  │ DESCRIPTION                           │
+├─────────┼────────┼────────┼────────┼───────────────────────────────────────┤
+│ 12345   │ C-02   │ LÉGÈRE │ 3      │ Probable faute de frappe sur la ville │
+│ 12346   │ C-03   │ GRAVE  │ 3      │ GPS incohérent avec le département    │
+│ 12346   │ C-05   │ INFO   │ 3      │ Cause probable : X et Y inversés      │
+│ 12347   │ P-02   │ GRAVE  │ 1      │ Code postal manquant                  │
+│ 12348   │ F-01   │ GRAVE  │ 2      │ Format code postal invalide           │
+└─────────┴────────┴────────┴────────┴───────────────────────────────────────┘
+
+(suite des colonnes)
+┌───────────────────┬─────────────────────────┬──────────────────────────────┐
+│ CHAMPS_CONCERNES  │ VALEUR_ACTUELLE         │ SUGGESTION                   │
+├───────────────────┼─────────────────────────┼──────────────────────────────┤
+│ CP_SITE,VILLE_SITE│ CP=59000, Ville=LiLLLe  │ Vouliez-vous dire "Lille" ?  │
+│ COORD_X,COORD_Y,CP│ X=2.35, Y=48.85, CP=59  │ GPS indique Paris, CP=Nord   │
+│ COORD_X, COORD_Y  │ X=2.35, Y=48.85         │ Inverser X et Y              │
+│ CP_SITE           │ (vide)                  │ —                            │
+│ CP_SITE           │ 5900                    │ Manque un 0 ? → 59000        │
+└───────────────────┴─────────────────────────┴──────────────────────────────┘
+
+
+────────────────────────────────────────────────────────────────────────────────
+                      ONGLET 3 : DONNÉES ENRICHIES
+────────────────────────────────────────────────────────────────────────────────
+
+Contenu : Fichier source complet avec colonnes supplémentaires
+
+Colonnes ajoutées :
+───────────────────
+┌──────────────────┬───────────────────────────────────────────────────────────┐
+│ Colonne          │ Description                                               │
+├──────────────────┼───────────────────────────────────────────────────────────┤
+│ HAS_ANOMALY      │ TRUE si au moins une anomalie, FALSE sinon                │
+│ ANOMALY_COUNT    │ Nombre total d'anomalies pour cette ligne                 │
+│ ANOMALY_CODES    │ Liste des codes anomalies séparés par virgule             │
+│ WORST_SEVERITY   │ Gravité la plus élevée (GRAVE > LÉGÈRE > INFO)            │
+│ ANOMALY_DETAILS  │ Descriptions concaténées (optionnel)                      │
+└──────────────────┴───────────────────────────────────────────────────────────┘
+
+Exemple :
+─────────
+┌─────────┬─────────────┬─────────────┬───────────────┬────────────────┐
+│ ID_SITE │ HAS_ANOMALY │ ANOMALY_CNT │ ANOMALY_CODES │ WORST_SEVERITY │
+├─────────┼─────────────┼─────────────┼───────────────┼────────────────┤
+│ 12345   │ TRUE        │ 1           │ C-02          │ LÉGÈRE         │
+│ 12346   │ TRUE        │ 2           │ C-03, C-05    │ GRAVE          │
+│ 12347   │ TRUE        │ 1           │ P-02          │ GRAVE          │
+│ 12348   │ FALSE       │ 0           │ —             │ —              │
+└─────────┴─────────────┴─────────────┴───────────────┴────────────────┘
+
+
+════════════════════════════════════════════════════════════════════════════════
+                         6. BESOINS
+════════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         BASES DE RÉFÉRENCE                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  BASE 1 : Codes postaux France                                              │
+│  ─────────────────────────────────────────────────────────────────────────  │
+│  Source    : data.gouv.fr (Base officielle des codes postaux La Poste)      │
+│  Contenu   : CP → liste des communes associées                              │
+│  Usage     : Règles F-01, C-01, C-02                                        │
+│  Accès     : Gratuit, téléchargement direct                                 │
+│  URL       : https://www.data.gouv.fr                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  BASE 2 : Codes postaux internationaux (optionnel)                          │
+│  ─────────────────────────────────────────────────────────────────────────  │
+│  Source    : GeoNames                                                       │
+│  Contenu   : Codes postaux + communes pour la plupart des pays              │
+│  Usage     : Extension future pour pays hors France                         │
+│  Accès     : Gratuit, téléchargement direct                                 │
+│  URL       : https://www.geonames.org/postal-codes/                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  BASE 3 : Bounding boxes des départements français                          │
+│  ─────────────────────────────────────────────────────────────────────────  │
+│  Source    : Contours GeoJSON des départements (data.gouv.fr)               │
+│  Contenu   : Min/Max latitude et longitude par département                  │
+│  Usage     : Règle C-03                                                     │
+│  Méthode   : Fichier JSON pré-calculé à partir des contours GeoJSON         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  BASE 4 : Bounding boxes des pays                                           │
+│  ─────────────────────────────────────────────────────────────────────────  │
+│  Source    : GeoNames ou dataset country_bounding_boxes                     │
+│  Contenu   : Min/Max latitude et longitude par pays                         │
+│  Usage     : Règle C-04                                                     │
+│  France    : Latitude 41.3° à 51.1°, Longitude -5.1° à 9.6°                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         STRUCTURE DU CODE                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+projet_qualite_proxima/
+│
+├── data/
+│   ├── reference/
+│   │   ├── codes_postaux_france.csv      # Base CP → Communes
+│   │   ├── bbox_departements.json        # Bounding boxes départements
+│   │   └── bbox_pays.json                # Bounding boxes pays
+│   ├── input/
+│   │   └── proxima_datamart.csv          # Fichier source à analyser
+│   └── output/
+│       └── rapport_anomalies.xlsx        # Rapport généré
+│
+├── src/
+│   ├── __init__.py
+│   ├── config.py                         # Configuration et constantes
+│   ├── loader.py                         # Chargement des données
+│   ├── filters.py                        # Filtre sites actifs (Étape 0)
+│   ├── rules/
+│   │   ├── __init__.py
+│   │   ├── presence.py                   # Règles de présence (Étape 1)
+│   │   ├── format.py                     # Règles de format (Étape 2)
+│   │   └── coherence.py                  # Règles de cohérence (Étape 3)
+│   ├── utils/
+│   │   ├── __init__.py
+│   │   ├── normalizer.py                 # Normalisation texte (trim, lower)
+│   │   ├── fuzzy_matcher.py              # Matching flou (rapidfuzz)
+│   │   └── geo_utils.py                  # Fonctions géographiques (bbox)
+│   └── reporter.py                       # Génération rapport Excel (Étape 4)
+│
+├── tests/
+│   ├── test_presence.py
+│   ├── test_format.py
+│   └── test_coherence.py
+│
+├── main.py                               # Point d'entrée principal
+├── requirements.txt                      # Dépendances Python
+└── README.md                             # Documentation
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         DÉPENDANCES PYTHON                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+pandas>=2.0.0          # Manipulation des données
+openpyxl>=3.1.0        # Export Excel
+rapidfuzz>=3.0.0       # Fuzzy matching performant
+numpy>=1.24.0          # Calculs numériques
+tqdm>=4.65.0           # Barre de progression (optionnel)
+
+
+
+════════════════════════════════════════════════════════════════════════════════
+                         7. POINTS EN SUSPENS
+════════════════════════════════════════════════════════════════════════════════
+
+Questions à clarifier avec Alain :
+──────────────────────────────────
+1. STOCK = 1 suffit-il à identifier un contrat actif, ou faut-il obligatoirement 
+   le CDSITP du datamart ?
+
+2. Valider la gradation anomalie légère / grave pour chaque règle.
+
+3. Autres pays possibles dans PAYS_SITE : lesquels exactement ? 
+   Faut-il implémenter leur validation de CP ?
+
+4. CAPITAUX_TT : champ calculé ou saisie directe ? Peut-on s'y fier ?
+
+5. Pour la règle P-07 : certains capitaux sont-ils obligatoires selon le type 
+   de bien ?
+
+6. Y a-t-il d'autres colonnes capitaux qui arrivent via le datamart ?
+
+7. Quel identifiant unique utiliser pour ID_SITE dans le rapport ?
+
+
+════════════════════════════════════════════════════════════════════════════════
+                              FIN DU DOCUMENT
+════════════════════════════════════════════════════════════════════════════════

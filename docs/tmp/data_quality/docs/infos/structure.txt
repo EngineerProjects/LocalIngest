@@ -1,0 +1,86 @@
+================================================================================
+              STRUCTURE DU NOTEBOOK — CONTRÔLE QUALITÉ PROXIMA
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+                              VUE D'ENSEMBLE
+────────────────────────────────────────────────────────────────────────────────
+
+NOTEBOOK : controle_qualite_proxima.ipynb
+
+SECTIONS :
+──────────
+    0. Configuration et Setup
+       0.1 Imports
+       0.2 Configuration globale
+       0.3 Fonctions utilitaires générales
+
+    1. Préparation des données de référence (ONE-TIME SETUP)
+       1.1 Téléchargement base codes postaux France
+       1.2 Génération des bounding boxes départements
+       1.3 Définition des bounding boxes pays
+       1.4 Sauvegarde des fichiers de référence
+
+    2. Chargement des données
+       2.1 Chargement du fichier source Proxima
+       2.2 Chargement des données de référence
+       2.3 Aperçu et statistiques initiales
+
+    3. Étape 0 — Filtre sites actifs
+       3.1 Application du filtre
+       3.2 Statistiques post-filtre
+
+    4. Étape 1 — Vérifications de présence
+       4.1 Règle P-01 : Pays obligatoire
+       4.2 Règle P-02 : Code postal obligatoire
+       4.3 Règle P-03 : Ville obligatoire
+       4.4 Règle P-04 : Rue souhaitée
+       4.5 Règle P-05 : GPS incomplet
+       4.6 Règle P-06 : GPS absent
+       4.7 Règle P-07 : Données techniques obligatoires
+
+    5. Étape 2 — Vérifications de format
+       5.1 Règle F-01 : Format code postal (France)
+       5.2 Règle F-02 : Format code postal (autres pays)
+       5.3 Règle F-03 : Format longitude
+       5.4 Règle F-04 : Format latitude
+
+    6. Étape 3 — Vérifications de cohérence
+       6.1 Règles C-01/C-02 : Cohérence CP / Ville
+       6.2 Règle C-03 : Cohérence GPS / Département
+       6.3 Règle C-04 : Cohérence GPS / Pays
+       6.4 Règles C-05/C-06 : Diagnostic causes probables
+
+    7. Agrégation des résultats
+       7.1 Consolidation des anomalies par site
+       7.2 Calcul des statistiques globales
+
+    8. Génération du rapport Excel
+       8.1 Onglet Résumé
+       8.2 Onglet Détail des anomalies
+       8.3 Onglet Données enrichies
+       8.4 Export final
+
+
+────────────────────────────────────────────────────────────────────────────────
+                         ARBORESCENCE DES FICHIERS
+────────────────────────────────────────────────────────────────────────────────
+
+projet_qualite_proxima/
+│
+├── notebooks/
+│   └── controle_qualite_proxima.ipynb    ← Notebook principal
+│
+├── data/
+│   ├── input/
+│   │   └── proxima_data.csv              ← Fichier source à analyser
+│   │
+│   ├── reference/
+│   │   ├── codes_postaux_france.csv      ← Base CP (téléchargée)
+│   │   ├── bbox_departements.json        ← Bounding boxes départements
+│   │   └── bbox_pays.json                ← Bounding boxes pays
+│   │
+│   └── output/
+│       └── rapport_anomalies_YYYYMMDD.xlsx  ← Rapport généré
+│
+└── README.md
