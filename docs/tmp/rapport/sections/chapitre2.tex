@@ -60,7 +60,7 @@ Pour ce projet, PySpark présente trois avantages décisifs : la compatibilité 
 
 \subsection{Allianz Data Platform (ADP)}
 
-\textbf{Allianz Data Platform (ADP)} est l'environnement cloud interne sécurisé fourni par le groupe Allianz pour la gestion et la gouvernance des données au sein de l'entreprise. Basée sur lle cloud Azure et AWS, ADP offre un environnement complet et préconfiguré pour exécuter des \textit{workloads} Spark, avec une intégration native aux stockages de données internes (datalakes) tout en respectant les exigences strictes de sécurité du secteur de l'assurance. Ce choix d'environnement s'aligne avec la stratégie du groupe de standardiser ses infrastructures data, facilitant ainsi la collaboration et le partage de bonnes pratiques.
+\textbf{Allianz Data Platform (ADP)} est l'environnement cloud interne sécurisé fourni par le groupe Allianz pour la gestion et la gouvernance des données au sein de l'entreprise. Basée sur le cloud Azure et AWS, ADP offre un environnement complet et préconfiguré pour exécuter des \textit{workloads} Spark, avec une intégration native aux stockages de données internes (datalakes) tout en respectant les exigences strictes de sécurité du secteur de l'assurance. Ce choix d'environnement s'aligne avec la stratégie du groupe de standardiser ses infrastructures data, facilitant ainsi la collaboration et le partage de bonnes pratiques.
 
 \subsection{Formats de stockage modernes}
 
@@ -94,46 +94,31 @@ Le tableau \ref{tab:comparison} synthétise les différences principales entre l
     \caption{Comparaison des architectures SAS et PySpark sur les principaux critères}
     \label{tab:comparison}
     \vspace{0.2cm}
-    \begin{tabularx}{\textwidth}{@{}l X X@{}}
-        \toprule
+    \begin{tabularx}{\textwidth}{|l|X|X|}
+        \hline
         \textbf{Critère} & \textbf{SAS (Existant)} & \textbf{PySpark (Cible)} \\
-        \midrule
+        \hline
         \textbf{Architecture} & Monolithique, flux linéaire & Distribuée, couches Bronze/Silver/Gold \\
+        \hline
         \textbf{Licences} & Propriétaires (coûteuses) & Open Source (gratuit) \\
+        \hline
         \textbf{Scalabilité} & Limitée (serveur unique) & Élevée (cluster élastique Azure) \\
+        \hline
         \textbf{Configuration} & Codée en dur dans les scripts & Externalisée (JSON/YAML) \\
+        \hline
         \textbf{Performance} & Séquentielle, sur disque & Parallèle, en mémoire (in-memory) \\
+        \hline
         \textbf{Format de stockage} & SAS7BDAT / CSV & Parquet optimisé (colonnaire) \\
+        \hline
         \textbf{Versioning du code} & Absence de VCS & Git (traçabilité complète) \\
+        \hline
         \textbf{Maintenabilité} & Macros imbriquées, difficile & Modules Python découplés et testables \\
+        \hline
         \textbf{Traçabilité} & Minimale & Logs détaillés par couche et par étape \\
+        \hline
         \textbf{Reproductibilité} & Partielle & Complète (rejeu depuis Bronze) \\
-        \bottomrule
+        \hline
     \end{tabularx}
 \end{table}
 
 Ce tableau comparatif confirme que la migration vers PySpark et l'architecture médaillon répond directement aux limites structurelles identifiées dans l'architecture SAS existante.
-
-\section{État de l'art : Revue des pratiques de migration SAS vers Python}
-
-\subsection{Tendances de migration dans l'industrie}
-
-La migration des infrastructures SAS vers des technologies open source est une tendance de fond observée dans de nombreux secteurs, en particulier dans les services financiers et l'assurance. Les principales motivations identifiées sont la réduction des coûts de licences, la montée en popularité de Python auprès des nouvelles générations de data scientists, et l'adoption généralisée du cloud computing.
-
-Dans le secteur de l'assurance spécifiquement, les contraintes réglementaires (Solvabilité II, IFRS 17) ont conduit les acteurs à moderniser leurs chaînes de traitement de données pour améliorer la traçabilité, l'auditabilité et la reproductibilité des calculs actuariels. L'architecture médaillon, telle que décrite par Databricks, répond précisément à ces exigences en garantissant une séparation claire entre les données brutes, les transformations intermédiaires et les résultats finaux.
-
-\subsection{Défis techniques connus}
-
-La littérature technique identifie plusieurs défis récurrents lors des migrations SAS vers Python. La \textbf{gestion des valeurs nulles} est l'un des plus fréquemment cités : SAS représente les valeurs manquantes numériques par un point (.) et les valeurs textuelles par une chaîne vide (""), tandis que Python/PySpark utilise la valeur \texttt{null}. Cette différence de convention, si elle n'est pas traitée explicitement, peut conduire à des erreurs silencieuses dans les calculs.
-
-La \textbf{compatibilité des formats de dates} est un autre défi documenté : SAS stocke les dates en formats spécifiques (numéro de jours depuis le 1er janvier 1960, ou chaînes de caractères comme "14MAY1991:00:00:00") qui nécessitent des fonctions de conversion explicites en PySpark. Les \textbf{macros SAS} n'ont pas d'équivalent direct en Python et doivent être refactorisées en fonctions Python paramétrables, ce qui constitue souvent la partie la plus complexe de la migration.
-
-Enfin, la \textbf{validation de la parité fonctionnelle} est reconnue comme une étape critique et chronophage. La comparaison des résultats SAS et Python ligne par ligne, indicateur par indicateur, nécessite une méthodologie rigoureuse et un outillage adapté.
-
-\subsection{Bonnes pratiques identifiées}
-
-Les retours d'expérience disponibles convergent autour de plusieurs bonnes pratiques pour mener à bien une telle migration. La \textbf{documentation exhaustive du code source} avant de commencer à coder est unanimement identifiée comme un prérequis indispensable, particulièrement lorsque le code SAS n'est pas documenté initialement. Le \textbf{recensement systématique des règles métier} dans un format structuré (tableur ou base de données) permet de garantir l'exhaustivité de la migration et de fournir une base pour les tests de validation.
-
-L'\textbf{adoption d'une architecture modulaire} facilite les tests unitaires et la maintenance. La \textbf{séparation de la configuration et du code} (externalisation des règles métier dans des fichiers JSON ou YAML) rend le code plus lisible et plus facilement évolutif. Enfin, la \textbf{validation incrémentale} (tester chaque module immédiatement après son implémentation) permet de détecter et corriger les erreurs au plus tôt, évitant l'accumulation de bugs difficiles à tracer.
-
-Ces bonnes pratiques ont directement inspiré la méthodologie adoptée pour la migration du datamart Construction, détaillée dans le chapitre suivant.

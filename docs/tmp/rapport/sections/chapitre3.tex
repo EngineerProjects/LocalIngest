@@ -18,22 +18,26 @@ Le tableau \ref{tab:methodologie} présente la vue d'ensemble des cinq phases et
     \caption{Vue d'ensemble des cinq phases de la méthodologie de migration}
     \label{tab:methodologie}
     \vspace{0.2cm}
-    \begin{tabularx}{\textwidth}{@{}c c c X X@{}}
-        \toprule
+    \begin{tabularx}{\textwidth}{|c|c|c|X|X|}
+        \hline
         \textbf{Phase} & \textbf{Intitulé} & \textbf{Durée} & \textbf{Objectif} & \textbf{Livrable principal} \\
-        \midrule
+        \hline
         1 & Analyse et documentation SAS & 2 semaines & Comprendre le code source & Documentation SAS complète \\
+        \hline
         2 & Conception de l'architecture cible & 1 semaine & Définir la structure Python & Architecture médaillon validée \\
+        \hline
         3 & Recensement des règles et datasets & 1 semaine & Inventorier l'exhaustif & 2 fichiers Excel de référence \\
+        \hline
         4 & Implémentation Python & 5 semaines & Développer les pipelines & Code source (3 pipelines) \\
+        \hline
         5 & Validation et tests de parité & 5 semaines & Garantir l'équivalence & Rapports de validation KPI \\
-        \bottomrule
+        \hline
     \end{tabularx}
 \end{table}
 
 \subsection{Équipe et cadre de travail}
 
-Le projet s'est déroulé au sein d'une équipe restreinte composée du projet et de son chef de projet, Romeo TOHOUN, data scientist et sa responsable hiérarchique Caroline BOUCHON dans le pôle Advanced Data \& Climate. Des points d'avancement hebdomadaires ont permis de valider les choix techniques, de lever les ambiguïtés métier et d'orienter les priorités de développement. La collaboration avec M. Alain VOSS, expert assurance de l'équipe, a été essentielle pour comprendre les mécanismes assurantiels sous-jacents aux règles métier codées en SAS.
+Le projet s'est déroulé au sein d'une équipe restreinte, composée de l'étudiant et de son chef de projet, Romeo TOHOUN, Data Scientist, et de sa responsable hiérarchique Caroline BOUCHON, dans le pôle Advanced Data \& Climate. Des points d'avancement hebdomadaires ont permis de valider les choix techniques, de lever les ambiguïtés métier et d'orienter les priorités de développement. La collaboration avec M. Alain VOSS, expert assurance de l'équipe, a été essentielle pour comprendre les mécanismes assurantiels sous-jacents aux règles métier codées en SAS.
 
 \section{Rétro-ingénierie et documentation du code existant}
 
@@ -51,11 +55,12 @@ Cette analyse a abouti à la création d'une documentation SAS complète (Voir \
 
 \subsection{Évaluation des options architecturales}
 
-Suite à l'analyse du code SAS, deux options d'architecture ont été évaluées et présentées lors d'une réunion de cadrage avec le chef de projet.
+Suite à l'analyse du code SAS, deux options d'architecture ont été évaluées :
 
-La \textbf{réplication à l'identique} aurait consisté à reproduire la structure SAS en Python (un script Python par fichier SAS). Cette option présentait l'avantage d'être simple à valider par comparaison directe, mais elle aurait conservé l'ensemble des défauts de l'architecture monolithique source : séquentialité, couplage fort entre les modules, absence de séparation des responsabilités.
-
-L'\textbf{architecture médaillon complète} (Bronze/Silver/Gold), standard de l'industrie tel que décrit dans le chapitre 2, a été retenue. Cette option nécessitait un effort de développement initial plus important, mais offrait les garanties de qualité, de traçabilité et d'évolutivité requises pour un système en production.
+\begin{itemize}
+    \item \textbf{La réplication à l'identique} (un script Python pour un fichier SAS) : plus simple pour valider les résultats rapidement, mais conserve tous les défauts de l'ancien code SAS (séquentialité, trop de dépendances). Option écartée.
+    \item \textbf{L'architecture médaillon complète} (Bronze/Silver/Gold) : plus longue à mettre en place initialement, mais garantit la qualité, une bonne traçabilité et une grande évolutivité. C'est l'option retenue.
+\end{itemize}
 
 \subsection{Principes de conception retenus}
 
@@ -78,17 +83,22 @@ Les choix technologiques ont été validés en cohérence avec l'infrastructure 
     \caption{Stack technologique retenue pour l'implémentation Python}
     \label{tab:stack}
     \vspace{0.2cm}
-    \begin{tabularx}{\textwidth}{@{}l l X@{}}
-        \toprule
+    \begin{tabularx}{\textwidth}{|l|l|X|}
+        \hline
         \textbf{Composant} & \textbf{Technologie} & \textbf{Rôle} \\
-        \midrule
+        \hline
         Langage & Python 3.11+ & Développement des pipelines \\
+        \hline
         Framework de traitement & PySpark 3.x & Traitement distribué des DataFrames \\
+        \hline
         Format de stockage & Parquet & Optimisation lectures/écritures \\
+        \hline
         Configuration & JSON / YAML & Externalisation des règles métier \\
+        \hline
         Versioning & Git & Traçabilité du code \\
-        Environnement de dev & ADP (tout pré‑installé) & Tests et mise au point \\
-        \bottomrule
+        \hline
+        Environnement de dev & ADP (tout pré-installé) & Tests et mise au point \\
+        \hline
     \end{tabularx}
 \end{table}
 
@@ -124,33 +134,33 @@ project_baseline/
 |   |-- config.yml            # Configuration globale de l'application
 |   |-- constants.py          # Constantes métier
 |   |-- variables.py          # Variables globales du projet
-|   `-- transformations/      # Règles métier JSON par pipeline
+|   |-- transformations/      # Règles métier JSON par pipeline
 |-- src/
 |   |-- processors/           # Logique métier par pipeline
 |   |   |-- capitaux_processors/
 |   |   |-- emissions_processors/
 |   |   `-- ptf_mvt_processors/
 |   |-- orchestrators/        # Orchestration des exécutions
-|   `-- reader.py             # Lecture des données Bronze
+|   |-- reader.py             # Lecture des données Bronze
 |-- utils/
 |   |-- transformations/      # Fonctions métier (base, operations)
 |   |-- loaders/              # Utilitaires de chargement externes
 |   |-- helpers.py            # Fonctions génériques (dates, types)
 |   |-- processor_helpers.py  # Fonctions d'aide aux processors
-|   `-- logger.py             # Logger structuré personnalisé
+|   |-- logger.py             # Logger structuré personnalisé
 |-- docs/                     # Documentation technique (configs, workflows)
-`-- main.py                   # Point d'entrée principal
+|-- main.py                   # Point d'entrée principal
 \end{verbatim}
 
-Les \textbf{fondations du projet} (module de lecture, helpers, logger, configuration) ont été développées et testées en premier, avant le développement d'un seul pipeline métier. Cette approche a garanti que les briques de base étaient fiables avant de les utiliser dans des contextes métier plus complexes.
+Les \textbf{fondations du projet} (module de lecture, helpers, logger, configuration) ont été développées et testées en premier, avant le développement des pipelines métier. Cela a permis d'établir une base technique solide et fiable pour la suite.
 
 \subsection{Ordre d'implémentation et stratégie de développement}
 
-L'ordre d'implémentation des pipelines a été décidé par ordre de complexité décroissante : PTF Mouvements en premier (le plus complexe, impliquant les deux canaux AZ et AZEC, la consolidation, et les enrichissements multiples), puis Capitaux (complexité intermédiaire, avec la logique d'indexation FFB), et enfin Émissions (le plus linéaire, sans consolidation AZ/AZEC).
+L'implémentation a commencé par le pipeline le plus complexe : \textit{PTF Mouvements} (consolidation AZ/AZEC et nombreux enrichissements), puis \textit{Capitaux} (pour gérer l'indexation FFB), et enfin \textit{Émissions} (plus linéaire).
 
-Le choix d'aborder d'abord le pipeline le plus complexe présente un avantage stratégique majeur : les fonctions utilitaires créées pour PTF Mouvements (extraction des capitaux, calcul des mouvements AFN/RES/PTF, enrichissement ISIC, harmonisation AZ/AZEC) sont directement réutilisables pour les pipelines suivants, réduisant significativement l'effort de développement global.
+Débuter par le périmètre le plus difficile a mené à créer très tôt des fonctions utilitaires (calculs AFN/RES, enrichissement par référentiels) directement réutilisables pour les autres pipelines, générant un gain de temps significatif.
 
-À l'intérieur de chaque pipeline, une approche \textbf{itérative par transformation} a été systématiquement appliquée : coder une transformation, la tester immédiatement sur un sous-ensemble de données, logger le nombre de lignes en entrée et en sortie, corriger si nécessaire, puis passer à la transformation suivante. Cette discipline a permis de détecter et corriger les erreurs au plus tôt, avant qu'elles ne se propagent et ne deviennent difficiles à tracer.
+Pour chaque pipeline, une méthode itérative a été adoptée : coder une transformation, la tester sur un échantillon de données, vérifier les logs, puis passer à la suite. Cette boucle courte permet de repérer et corriger les erreurs immédiatement.
 
 \subsection{Architecture des processors}
 
@@ -181,22 +191,21 @@ La \textbf{validation par échantillonnage} compare champ par champ un échantil
 
 \subsection{Défis techniques rencontrés lors de la validation}
 
-La confrontation des résultats Python et SAS a soulevé plusieurs défis techniques ayant nécessité des investigations poussées. L'approche est restée la même : diagnostic via le code SAS, correction en Python, puis rejeu du pipeline pour vérifier la convergence. Voici les principaux problèmes résolus :
+Lors de la comparaison des résultats entre Python et SAS, plusieurs défis ont d\^u être relevés pour atteindre la parité parfaite :
 
 \begin{itemize}
-    \item \textbf{Disponibilité des données de test :} L'accès aux données de production sur Azure nécessitait des validations de sécurité strictes. Ces délais nous ont souvent obligé à coder "à l'aveugle" en attendant de pouvoir tester sur des données réelles, ce qui rallongeait les cycles de correction.
-    \item \textbf{Colonne CDPOLE absente en AZEC :} Lors de la consolidation, Python trouvait moins de polices Courtage (pôle 3) que SAS. L'analyse a montré que SAS forçait l'assignation \texttt{cdpole = "3"} via une macro dédiée. Un simple ajout dans le processor AZEC a rétabli la parité.
-    \item \textbf{Formats de dates hétérogènes (\texttt{dtechann}) :} La date d'échéance annuelle mélangeait plusieurs formats historiques (MMJJ, MMJJAA, formats complets). Plutôt que d'utiliser un type Date natif qui plantait sur les anomalies, nous avions reproduit la logique SAS en traitant la colonne comme du texte pour extraire et recombiner les caractères, couvrant ainsi 100\% des cas.
-    \item \textbf{Dates au format SAS datetime (IRD) :} Les tables IRD Risk contenaient des chaînes complexes (ex: \texttt{'14MAY1991:00:00:00'}) incomprises par PySpark, produisant des valeurs nulles silencieuses. Nous avions dû développer un helper \texttt{parse\_sas\_datetime()} pour extraire et convertir spécifiquement la partie date.
-    \item \textbf{Configurations JSON capricieuses :} Pour le filtrage des Émissions métier, nous avions organisé un JSON lisible avec descriptions et valeurs. Cependant, utiliser ce dictionnaire directement dans un \texttt{isin()} PySpark déclenchait une erreur. Nous avions dû extraire explicitement la liste des valeurs en Python pour que Spark l'accepte sans broncher.
-    \item \textbf{Harmonisation AZ vs AZEC :} Les deux canaux avaient des noms de colonnes différents (ex: \texttt{POLICE} vs \texttt{NOPOL}). Pour éviter un code rigide rempli de \texttt{withColumnRenamed}, nous avions externalisé tout le mapping dans un JSON dédié, permettant de renommer les colonnes dynamiquement avant l'union.
+    \item \textbf{L'accès aux données de test :} Les validations de sécurité pour accéder aux données Azure ont souvent imposé de coder et tester avec des données fictives en local (mocks), allongeant ainsi le temps de développement.
+    \item \textbf{Le pôle pour AZEC :} En Python, le décompte des polices pour le Courtage (Pôle 3) était inférieur à celui de SAS. L'analyse du code source a révélé que SAS forçait manuellement la valeur \texttt{cdpole = "3"} via une macro dédiée. Cette logique a été reproduite en Python pour rétablir l'équilibre.
+    \item \textbf{Les formats de dates hétérogènes :} Certaines colonnes de dates (\texttt{dtechann}) présentaient des formats historiques mélangés (MMJJ, MMJJAA). Un format Date natif dans Spark provoquant des erreurs, ces colonnes ont été traitées comme du texte (similairement à SAS) pour convertir toutes les lignes sans incident.
+    \item \textbf{Les dates SAS (\texttt{datetime}) :} Les colonnes issues d'IRD Risk au format \texttt{'14MAY1991:00:00:00'} n'étaient pas reconnues nativement par PySpark, produisant des valeurs nulles. Une fonction utilitaire (\texttt{parse\_sas\_datetime()}) a été développée pour traiter ce cas spécifique.
+    \item \textbf{L'utilisation des configurations JSON :} L'utilisation directe de filtres JSON avec une fonction \texttt{isin()} dans PySpark provoquait des erreurs d'interprétation. Il a fallu extraire explicitement les valeurs associées sous forme de liste en Python pour assurer la compatibilité avec Spark.
 \end{itemize}
 
 \section{Environnement de développement et livrables}
 
 \subsection{Environnement de développement}
 
-Le développement a été réalisé dans un environnement cloud ADP (Allianz Data platform) qui est automatiquement connecté à azure via un token, permettant de tester l'intégralité des pipelines sans nécessiter de connexion ardure à l'infrastructure cloud Azure. Cette autonomie a facilité le cycle de développement itératif, réduisant les temps de feedback entre la modification et le test. La migration vers Azure Databricks est prévue pour la phase de déploiement en production, postérieure à la période du mission.
+Le développement a été réalisé dans un environnement cloud ADP (Allianz Data Platform) qui est automatiquement connecté à Azure via un token, permettant de tester l'intégralité des pipelines sans nécessiter de connexion complexe à l'infrastructure cloud Azure. Cette autonomie a facilité le cycle de développement itératif, réduisant les temps de feedback entre la modification et le test. La migration vers Azure Databricks est prévue pour la phase de déploiement en production, postérieure à la période du projet.
 
 La gestion du code source a été assurée via Git, avec un dépôt versionné permettant de tracer l'ensemble des modifications et de revenir en cas de régression. Cette pratique, absente du système SAS source, constitue l'une des améliorations fondamentales apportées par la migration.
 
@@ -210,7 +219,7 @@ L'ensemble des travaux réalisés au cours du mission a abouti à quatre catégo
     \begin{minipage}{\textwidth}
         \vspace{0.2cm}
         \begin{center}
-            {\large \textbf{Synthèse des livrables produits lors du mission}}
+            {\large \textbf{Synthèse des livrables produits lors du projet}}
         \end{center}
         \vspace{0.4em}
 

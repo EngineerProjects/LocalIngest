@@ -9,11 +9,11 @@ déployée dans Azure Data Lake Storage selon la hiérarchie suivante :
 {conteneur_datalake}/
 |-- bronze/
 |   |-- {YYYY}/{MM}/    <- données mensuelles (ipf16.csv, capitaux, primes...)
-|   `-- ref/            <- référentiels stables (ISIC, NAF, FFB, IRD Risk, SIRET)
+|   |-- ref/            <- référentiels stables (ISIC, NAF, FFB, IRD Risk, SIRET)
 |-- silver/
-|   `-- {YYYY}/{MM}/    <- résultats intermédiaires par pipeline
-`-- gold/
-    `-- {YYYY}/{MM}/    <- Tables finales consommables par la BI
+|   |-- {YYYY}/{MM}/    <- résultats intermédiaires par pipeline
+|-- gold/
+    |-- {YYYY}/{MM}/    <- Tables finales consommables par la BI
 \end{verbatim}
 
 Le partitionnement temporel (\texttt{\{YYYY\}/\{MM\}/}) permet un traitement
@@ -78,15 +78,16 @@ est identique entre les deux systèmes :
     \centering
     \caption{Distribution du portefeuille par pôle (exemple : vision 202512)}
     \label{tab:distrib_ptf}
-    \begin{tabularx}{\textwidth}{@{}l l X X X@{}}
-        \toprule
+    \begin{tabularx}{\textwidth}{|l|l|X|X|X|}
+        \hline
         \textbf{Pôle} & \textbf{Canal} & \textbf{Python} & \textbf{SAS} & \textbf{Écart} \\
-        \midrule
+        \hline
         Pôle 1 (Agent)      & AZ          & 32 319 & 32 319 & 0,00\% \\
+        \hline
         Pôle 3 (Courtage)   & AZ + AZEC   & 54 693 & 54 693 & 0,00\% \\
-        \midrule
+        \hline
         \textbf{Total}       &             & \textbf{87 012} & \textbf{87 012} & \textbf{0,00\%} \\
-        \bottomrule
+        \hline
     \end{tabularx}
 \end{table}
 
@@ -121,16 +122,63 @@ L’ensemble des résultats détaillés est centralisé dans le fichier
 mensuelle, et documente les écarts éventuels (colonnes \texttt{ECART}) ainsi que
 les contrôles de cohérence par numéro de police.
 
-La figure suivante illustre la structure du fichier :
+Les tableaux \ref{tab:kpi_macro} et \ref{tab:kpi_micro} illustrent la structure des contrôles effectués. Le premier tableau présente le récapitulatif macroscopique garantissant qu'aucune police n'a été perdue ou dupliquée lors du traitement. Le second tableau détaille l'agrégation métier par code produit, permettant de vérifier la stricte équivalence des indicateurs au niveau granulaire.
 
-\begin{center}
-    \includegraphics[width=0.95\textwidth]{images/kpi_example.png}
-\end{center}
+\begin{table}[H]
+    \centering
+    \caption{Exemple de bilan de validation macroscopique (Cohérence des polices)}
+    \label{tab:kpi_macro}
+    \begin{tabularx}{\textwidth}{|l|l|X|X|r|}
+        \hline
+        \textbf{Indicateur} & \textbf{Canal} & \textbf{SAS} & \textbf{Python} & \textbf{Écart} \\
+        \hline
+        Nombre de polices & Agent & 32 319 & 32 319 & 0 \\
+        \hline
+        Nombre de polices & Courtage & 54 693 & 54 693 & 0 \\
+        \hline
+        Polices en différence & Total & 0 & 0 & 0 \\
+        \hline
+        Nombre de colonnes & Total & 110 & 110 & 0 \\
+        \hline
+        \textbf{Taux de différence global} & & & & \textbf{0,00\%} \\
+        \hline
+    \end{tabularx}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \caption{Exemple de validation au niveau granulaire (Nombre de polices par code produit)}
+    \label{tab:kpi_micro}
+    \begin{tabularx}{0.8\textwidth}{|X|r|r|r|}
+        \hline
+        \textbf{CDPROD} & \textbf{SAS (NBPTF)} & \textbf{Python (NBPTF)} & \textbf{Écart} \\
+        \hline
+        00023 & 14 & 14 & 0 \\
+        \hline
+        00024 & 444 & 444 & 0 \\
+        \hline
+        00526 & 12 & 12 & 0 \\
+        \hline
+        \dots & \dots & \dots & \dots \\
+        \hline
+        00559 & 147 & 147 & 0 \\
+        \hline
+        00616 & 5 & 5 & 0 \\
+        \hline
+        01054 & 1 118 & 1 118 & 0 \\
+        \hline
+    \end{tabularx}
+\end{table}
 
 Sur toutes les visions testées, les indicateurs calculés par Python sont
-\textbf{strictement identiques} à ceux obtenus par SAS : aucun écart n’est constaté,
-que ce soit sur les volumes, les distributions ou les KPI métier. Cette parité
-confirme la fidélité de l’implémentation Python par rapport au comportement SAS.
+\textbf{strictement identiques} à ceux obtenus par SAS. Au-delà de l'exemple du tableau précédent, cette équivalence parfaite a été rigoureusement confirmée pour l'ensemble des indicateurs critiques de chaque pipeline :
+\begin{itemize}
+    \item \textbf{Mouvements de portefeuille} : affaires nouvelles (\texttt{NBAFN}), résiliations (\texttt{NBRES}), polices en vigueur (\texttt{NBPTF}) et décompte des polices (\texttt{NOPOL}).
+    \item \textbf{Capitaux} : valeurs assurées (\texttt{VALUE\_INSURED}) et risques directs (\texttt{RISQUE\_DIRECT}).
+    \item \textbf{Émissions} : totaux des primes émises (\texttt{Primes\_N}, \texttt{Primes\_X}) et commissions (\texttt{MTCOM\_X}).
+\end{itemize}
+
+Aucun écart n’est constaté, que ce soit sur les volumes, les distributions ou les KPI métier. Cette parité totale confirme la fidélité de l’implémentation Python par rapport au comportement SAS.
 
 \section{Analyse qualitative du code produit}
 
@@ -182,3 +230,50 @@ code Python, ce qui améliore fortement la maintenabilité.
     \end{minipage}
 }
 \vspace{0.3cm}
+
+\subsection{Comparaison des temps d'exécution et perspectives de scalabilité}
+
+Outre l'exactitude des résultats, la migration vers PySpark a eu un impact significatif sur les performances. Pendant les tests, l'exécution complète du code Python sur l'environnement de développement (restreint à une machine virtuelle avec \textbf{8 Go de RAM} allouée) s'est achevée en \textbf{9 minutes} en moyenne. Sur le même périmètre et volume de données, l'environnement SAS mettait en moyenne \textbf{17 minutes}. Le temps de traitement a donc été divisé par près de deux, même avec des ressources matérielles contraintes.
+
+Cette réduction immédiate du temps d'exécution n'est pourtant qu'une première étape. En effet, l'objectif du groupe à l'horizon 2028 est de basculer intégralement l'exécution sur \textbf{Azure Databricks}. Cette transition permettra au code (déjà écrit en PySpark et totalement compatible) d'exploiter la \textbf{scalabilité horizontale} des clusters. Le calcul pourra ainsi être distribué sur de multiples \textit{workers} (nœuds/machines) disposant de capacités de mémoire RAM beaucoup plus importantes. Cette future architecture débloquera des temps de traitements bien plus rapides, ouvrant la voie à des visions croisées sur plusieurs années ou à des réexécutions historiques massives, des opérations inenvisageables avec l'infrastructure SAS actuelle.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=0.6cm, y=1.2cm]
+    % Couleurs
+    \definecolor{colorSAS}{RGB}{180,50,50}
+    \definecolor{colorPy}{RGB}{0,86,163}
+    \definecolor{colorDB}{RGB}{200,155,0}
+
+    % Barre SAS (17 min)
+    \fill[colorSAS, rounded corners=2pt] (0,2.0) rectangle (17,2.8);
+    \node[white, font=\bfseries] at (8.5,2.4) {SAS — 17 min};
+
+    % Barre Python/ADP (9 min)
+    \fill[colorPy, rounded corners=2pt] (0,1.0) rectangle (9,1.8);
+    \node[white, font=\bfseries] at (4.5,1.4) {Python / ADP — 9 min};
+
+    % Barre Databricks (estimé)
+    \fill[colorDB, rounded corners=2pt] (0,0.0) rectangle (4,0.8);
+    \node[black, font=\bfseries\small] at (2.0,0.4) {Databricks};
+
+    % Axe horizontal
+    \draw[->] (0,-0.2) -- (18,-0.2) node[right, font=\small] {Temps (min)};
+    \foreach \x in {0,5,10,15,17}{
+        \draw (\x,-0.2) -- (\x,-0.3) node[below, font=\footnotesize] {\x};
+    }
+
+    % Annotation gain
+    \draw[dashed, gray] (9,1.8) -- (9,2.0);
+    \node[right, font=\small, colorPy] at (9.2, 1.9) {\textbf{$-47\%$}};
+
+    % Légende (verticale centrée sous le graphe)
+    \begin{scope}[shift={(3.5,-1.2)}]
+        \node[right, font=\small] at (0,0) {\textcolor{colorSAS}{\rule{0.4cm}{0.3cm}} Environnement SAS};
+        \node[right, font=\small] at (0,-0.4) {\textcolor{colorPy}{\rule{0.4cm}{0.3cm}} Python / ADP (8 Go RAM)};
+        \node[right, font=\small] at (0,-0.8) {\textcolor{colorDB}{\rule{0.4cm}{0.3cm}} Azure Databricks (prévision)};
+    \end{scope}
+\end{tikzpicture}
+\caption{Comparaison des temps d'exécution moyens par vision mensuelle}
+\label{fig:perf_comparison}
+\end{figure}
