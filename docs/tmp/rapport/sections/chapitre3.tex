@@ -193,12 +193,13 @@ La \textbf{validation par échantillonnage} compare champ par champ un échantil
 
 Lors de la comparaison des résultats entre Python et SAS, plusieurs défis ont d\^u être relevés pour atteindre la parité parfaite :
 
-\begin{itemize}
-    \item \textbf{L'accès aux données de test :} Les validations de sécurité pour accéder aux données Azure ont souvent imposé de coder et tester avec des données fictives en local (mocks), allongeant ainsi le temps de développement.
-    \item \textbf{Le pôle pour AZEC :} En Python, le décompte des polices pour le Courtage (Pôle 3) était inférieur à celui de SAS. L'analyse du code source a révélé que SAS forçait manuellement la valeur \texttt{cdpole = "3"} via une macro dédiée. Cette logique a été reproduite en Python pour rétablir l'équilibre.
-    \item \textbf{Les formats de dates hétérogènes :} Certaines colonnes de dates (\texttt{dtechann}) présentaient des formats historiques mélangés (MMJJ, MMJJAA). Un format Date natif dans Spark provoquant des erreurs, ces colonnes ont été traitées comme du texte (similairement à SAS) pour convertir toutes les lignes sans incident.
-    \item \textbf{Les dates SAS (\texttt{datetime}) :} Les colonnes issues d'IRD Risk au format \texttt{'14MAY1991:00:00:00'} n'étaient pas reconnues nativement par PySpark, produisant des valeurs nulles. Une fonction utilitaire (\texttt{parse\_sas\_datetime()}) a été développée pour traiter ce cas spécifique.
-    \item \textbf{L'utilisation des configurations JSON :} L'utilisation directe de filtres JSON avec une fonction \texttt{isin()} dans PySpark provoquait des erreurs d'interprétation. Il a fallu extraire explicitement les valeurs associées sous forme de liste en Python pour assurer la compatibilité avec Spark.
+\begin{itemize}[label={---}]
+    \item \textbf{Disponibilité des données de test :} L'accès aux données de production sur Azure nécessitait des validations de sécurité strictes. Ces délais ont souvent imposé de coder « à l'aveugle » en attendant de pouvoir tester sur des données réelles, rallongeant ainsi les cycles de correction.
+    \item \textbf{Colonne \texttt{cdpole} absente en AZEC :} Lors de la consolidation, Python trouvait moins de polices Courtage (pôle 3) que SAS. L'analyse a montré que SAS forçait l'assignation \texttt{cdpole = "3"} via une macro dédiée. Un simple ajout dans le processor AZEC a rétabli la parité.
+    \item \textbf{Formats de dates hétérogènes (\texttt{dtechann}) :} La date d'échéance annuelle mélangeait plusieurs formats historiques (\texttt{MMJJ}, \texttt{MMJJAA}, formats complets). Plutôt que d'utiliser un type Date natif provoquant des erreurs sur les anomalies, la logique SAS a été reproduite en traitant la colonne comme du texte pour extraire et recombiner les caractères, couvrant ainsi 100\,\% des cas.
+    \item \textbf{Dates au format SAS \texttt{datetime} (IRD) :} Les tables IRD Risk contenaient des chaînes complexes (ex~: \texttt{'14MAY1991:00:00:00'}) non reconnues par PySpark, produisant des valeurs nulles silencieuses. Un helper \texttt{parse\_sas\_datetime()} a été développé pour extraire et convertir spécifiquement la partie date.
+    \item \textbf{Configurations JSON capricieuses :} Pour le filtrage des Émissions métier, le JSON avait été structuré avec descriptions et valeurs pour en faciliter la lecture. Cependant, utiliser ce dictionnaire directement dans un \texttt{isin()} PySpark déclenchait une erreur. Il a fallu extraire explicitement la liste des valeurs en Python pour assurer la compatibilité avec Spark.
+    \item \textbf{Harmonisation AZ vs AZEC :} Les deux canaux présentaient des noms de colonnes différents (ex~: \texttt{POLICE} vs \texttt{NOPOL}). Pour éviter un code rigide rempli de \texttt{withColumnRenamed}, l'ensemble du mapping a été externalisé dans un JSON dédié, permettant de renommer les colonnes dynamiquement avant l'union.
 \end{itemize}
 
 \section{Environnement de développement et livrables}
