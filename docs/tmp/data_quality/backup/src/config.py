@@ -1,11 +1,13 @@
 """
-Configuration centralisée du projet — Contrôle Qualité Proxima v2.
+Configuration centralisée du projet — Contrôle Qualité Proxima.
 
 Contient :
 - Config : chemins, colonnes, paramètres de validation
-- SupportLevel : niveaux de support par pays (COMPLET / PARTIEL / NON_SUPPORTÉ)
 - Severity : niveaux de gravité
-- AnomalyCode : définitions des anomalies
+- AnomalyCode : définitions des 16 types d'anomalies
+
+NOTE : Aucune donnée de référence n'est hardcodée ici.
+       Tout vient des fichiers dans data/references/ chargés par ReferenceData.
 """
 
 from pathlib import Path
@@ -29,27 +31,21 @@ class Config:
     # Fichier source
     INPUT_FILE = INPUT_DIR / "export_Saas_2026-03-03 1.csv"
 
-    # Fichier de référence global (fallback pour tous les pays)
-    BBOX_PAYS_GLOBAL_FILE = REFERENCE_DIR / "bbox_pays_global.json"
+    # Fichiers de référence — SOURCES (à télécharger manuellement)
+    GEOJSON_DEPT_FILE = REFERENCE_DIR / "departements_france.geojson"
+    CP_REFERENCE_FILE = REFERENCE_DIR / "codes_postaux_france.csv"
+    BBOX_PAYS_FILE = REFERENCE_DIR / "bbox_pays.json"
 
-    # Noms de fichiers attendus dans chaque dossier pays
-    # Ex : data/references/FRANCE/codes_postaux.csv
-    CP_FILENAME = "codes_postaux.csv"
-    GEOJSON_FILENAMES = [
-        "departements.geojson",
-        "provinces.geojson",
-        "regions.geojson",
-        "provincias.geojson",
-    ]
-    # Fichier de bounding boxes généré (dans le dossier du pays)
-    BBOX_REGIONS_FILENAME = "bbox_regions.json"
+    # Fichiers de référence — GÉNÉRÉS (par setup.py)
+    BBOX_DEPT_FILE = REFERENCE_DIR / "bbox_departements.json"
 
     # ----- Paramètres CSV source -----
-    CSV_SEPARATOR = None    # Auto-détection (';' ou ',')
-    CSV_ENCODING = None     # Auto-détection
+    CSV_SEPARATOR = None   # Auto-détection (';' ou ',')
+    CSV_ENCODING = None  # Auto-détection
 
     # ----- Filtre par pays (optionnel) -----
-    # None = tous les pays ; ["FRANCE"] = France uniquement
+    # None = tous les pays, ["FRANCE"] = France uniquement
+    # Permet de travailler sur un sous-ensemble pour le développement/test
     COUNTRY_FILTER: Optional[List[str]] = ["FRANCE"]
 
     # ----- Mapping des colonnes -----
@@ -101,20 +97,9 @@ class Config:
     COLS_TECHNICAL = COLS_CAPITAL + COLS_SURFACE
 
     # ----- Paramètres de validation -----
+    # Fuzzy matching seuils
     FUZZY_THRESHOLD_HIGH = 90     # Probable faute de frappe
     FUZZY_THRESHOLD_MEDIUM = 70   # Ville douteuse
-
-
-# =============================================================================
-# NIVEAUX DE SUPPORT PAR PAYS
-# =============================================================================
-
-class SupportLevel:
-    """Niveaux de support géographique par pays."""
-
-    COMPLET = "COMPLET"         # Dossier pays avec codes_postaux.csv + geojson
-    PARTIEL = "PARTIEL"         # Pas de dossier pays, mais présent dans bbox_pays_global
-    NON_SUPPORTE = "NON_SUPPORTÉ"  # Absent de bbox_pays_global aussi
 
 
 # =============================================================================
@@ -136,42 +121,43 @@ class Severity:
 class AnomalyCode:
     """Codes et définitions des anomalies."""
 
+    # Structure : code -> (libellé, gravité, catégorie)
     DEFINITIONS = {
-        # ----- Indépendants (toujours exécutés) -----
+        # ----- Toujours vérifiés (par site) -----
+        "P-01": ("Pays manquant", Severity.GRAVE, "prérequis"),
         "P-07": ("Données techniques manquantes", Severity.GRAVE, "prérequis"),
 
-        # ----- Prérequis pays -----
-        "P-01": ("Pays manquant", Severity.GRAVE, "prérequis"),
-        "R-01": ("Pays non supporté (pas de référence géographique)", Severity.INFO, "référence"),
-
-        # ----- GPS -----
+        # ----- GPS (prioritaire quand il existe) -----
         "G-01": ("GPS incomplet (une seule coordonnée)", Severity.LEGERE, "gps"),
         "G-02": ("Format longitude invalide", Severity.GRAVE, "gps"),
         "G-03": ("Format latitude invalide", Severity.GRAVE, "gps"),
-        "G-04": ("GPS hors région/département", Severity.LEGERE, "gps"),
+        "G-04": ("GPS incohérent avec le département", Severity.GRAVE, "gps"),
         "G-05": ("GPS hors du pays renseigné", Severity.GRAVE, "gps"),
         "G-06": ("Cause probable : X et Y inversés", Severity.INFO, "gps"),
         "G-07": ("Cause probable : signe erroné", Severity.INFO, "gps"),
 
-        # ----- Adresse -----
+        # ----- Adresse (fallback si GPS absent ou GPS avec anomalies) -----
         "A-01": ("Code postal manquant", Severity.GRAVE, "adresse"),
         "A-02": ("Ville manquante", Severity.GRAVE, "adresse"),
         "A-03": ("Rue manquante", Severity.LEGERE, "adresse"),
         "A-04": ("Code postal non trouvé dans la référence", Severity.GRAVE, "adresse"),
         "A-05": ("Incohérence CP / Ville", Severity.LEGERE, "adresse"),
 
-        # ----- Localisation finale -----
+        # ----- Site non localisable -----
         "L-01": ("Site non localisable (ni GPS ni adresse valide)", Severity.GRAVE, "localisation"),
     }
 
     @classmethod
     def get_label(cls, code: str) -> str:
-        return cls.DEFINITIONS.get(code, ("Inconnu", Severity.INFO, "inconnu"))[0]
+        """Retourne le libellé d'un code anomalie."""
+        return cls.DEFINITIONS.get(code, ("Inconnu", Severity.INFO, 0))[0]
 
     @classmethod
     def get_severity(cls, code: str) -> str:
-        return cls.DEFINITIONS.get(code, ("Inconnu", Severity.INFO, "inconnu"))[1]
+        """Retourne la gravité d'un code anomalie."""
+        return cls.DEFINITIONS.get(code, ("Inconnu", Severity.INFO, 0))[1]
 
     @classmethod
     def get_category(cls, code: str) -> str:
+        """Retourne la catégorie d'un code anomalie."""
         return cls.DEFINITIONS.get(code, ("Inconnu", Severity.INFO, "inconnu"))[2]
