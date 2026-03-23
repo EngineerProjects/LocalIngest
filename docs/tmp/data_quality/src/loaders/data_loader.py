@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.config import Config
-from src.utils import detect_encoding, format_number, is_not_empty
+from src.utils import detect_encoding, format_number, is_not_empty, normalize_country
 
 
 def load_source_data(file_path: Path = None) -> pd.DataFrame:
@@ -42,6 +42,11 @@ def load_source_data(file_path: Path = None) -> pd.DataFrame:
         dtype=str,
         low_memory=False,
     )
+
+    # Normaliser le pays dès le chargement pour éviter les doublons FRANCE/France.
+    if Config.COL_COUNTRY in df.columns:
+        df[Config.COL_COUNTRY] = df[Config.COL_COUNTRY].apply(normalize_country)
+        df[Config.COL_COUNTRY] = df[Config.COL_COUNTRY].replace("", pd.NA)
 
     print(f"✅ Fichier chargé : {format_number(len(df))} lignes, {len(df.columns)} colonnes")
     return df

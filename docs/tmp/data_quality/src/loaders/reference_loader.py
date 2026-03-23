@@ -25,6 +25,8 @@ from src.utils import (
     detect_encoding,
     extract_all_coordinates,
     format_number,
+    normalize_country,
+    normalize_postal_code,
     normalize_string,
     safe_str,
 )
@@ -38,6 +40,7 @@ class ReferenceLoader:
         support_levels        : dict pays_upper → SupportLevel
         cp_to_cities          : dict pays_upper → dict CP → [villes]
         countries_with_cp_ref : set de pays (upper) avec référence CP chargée
+        postal_code_widths    : dict pays_upper → largeur numérique de CP observée
         bbox_regions          : dict pays_upper → dict code_region → {"name": ..., "bbox": [...]}
         bbox_pays_global      : dict pays_upper → {"bbox": [...]}
     """
@@ -46,6 +49,7 @@ class ReferenceLoader:
         self.support_levels: Dict[str, str] = {}
         self.cp_to_cities: Dict[str, Dict[str, List[str]]] = {}
         self.countries_with_cp_ref: Set[str] = set()
+        self.postal_code_widths: Dict[str, Optional[int]] = {}
         self.bbox_regions: Dict[str, Dict[str, dict]] = {}
         self.bbox_pays_global: Dict[str, dict] = {}
         self._loaded = False
@@ -72,10 +76,14 @@ class ReferenceLoader:
         self._load_bbox_pays_global()
 
         # Étape 2 — Pour chaque pays du fichier source
-        unique_countries = [c.upper().strip() for c in source_countries if c]
+        unique_countries = sorted({
+            normalize_country(country)
+            for country in source_countries
+            if normalize_country(country)
+        })
         print(f"\n🌍 Pays détectés dans les données : {', '.join(sorted(unique_countries))}")
 
-        for country in sorted(unique_countries):
+        for country in unique_countries:
             self._load_country(country)
 
         # Résumé
@@ -103,8 +111,11 @@ class ReferenceLoader:
         with open(path, "r", encoding="utf-8") as f:
             raw = json.load(f)
 
-        # Normaliser les clés en majuscules
-        self.bbox_pays_global = {k.upper(): v for k, v in raw.items()}
+        self.bbox_pays_global = {
+            normalize_country(country): data
+            for country, data in raw.items()
+            if normalize_country(country)
+        }
         print(f"   ✅ bbox_pays_global : {len(self.bbox_pays_global)} pays")
 
     # =========================================================================
@@ -195,11 +206,15 @@ class ReferenceLoader:
         cp_col = "code_postal" if "code_postal" in df.columns else df.columns[0]
         city_col = "nom_commune" if "nom_commune" in df.columns else df.columns[1]
 
+        raw_codes = [safe_str(value) for value in df[cp_col].tolist()]
+        numeric_lengths = [len(code) for code in raw_codes if code.isdigit()]
+        self.postal_code_widths[country] = max(numeric_lengths) if numeric_lengths else None
+
         # Construire pays → CP → [villes]
         country_cp_map = self.cp_to_cities.setdefault(country, {})
         count_before = len(country_cp_map)
         for _, row in df.iterrows():
-            cp = safe_str(row[cp_col]).zfill(5)
+            cp = self.normalize_postal_code(country, row[cp_col])
             city = normalize_string(row[city_col])
             if cp and city:
                 if cp not in country_cp_map:
@@ -310,17 +325,23 @@ class ReferenceLoader:
 
     def get_support_level(self, country: str) -> str:
         """Retourne le niveau de support d'un pays."""
-        country_upper = country.upper().strip() if country else ""
+        country_upper = normalize_country(country)
         return self.support_levels.get(country_upper, SupportLevel.NON_SUPPORTE)
 
     def has_cp_reference(self, country: str) -> bool:
         """Vérifie si on a une référence CP pour ce pays."""
-        return country.upper().strip() in self.countries_with_cp_ref
+        return normalize_country(country) in self.countries_with_cp_ref
+
+    def normalize_postal_code(self, country: str, cp: str) -> str:
+        """Normalise un CP selon la largeur de référence observée pour le pays."""
+        country_upper = normalize_country(country)
+        width = self.postal_code_widths.get(country_upper)
+        return normalize_postal_code(cp, width)
 
     def get_cities_for_cp(self, country: str, cp: str) -> List[str]:
         """Retourne la liste des villes normalisées pour un CP dans un pays donné."""
-        country_upper = country.upper().strip() if country else ""
-        cp_normalized = safe_str(cp).zfill(5)
+        country_upper = normalize_country(country)
+        cp_normalized = self.normalize_postal_code(country_upper, cp)
         country_cp_map = self.cp_to_cities.get(country_upper, {})
         return country_cp_map.get(cp_normalized, [])
 
@@ -329,7 +350,7 @@ class ReferenceLoader:
         Retourne la bbox d'une région/département pour un pays donné.
         Returns [lon_min, lat_min, lon_max, lat_max] ou None.
         """
-        country_upper = country.upper().strip() if country else ""
+        country_upper = normalize_country(country)
         country_regions = self.bbox_regions.get(country_upper, {})
         entry = country_regions.get(region_code)
         if entry and "bbox" in entry:
@@ -341,7 +362,7 @@ class ReferenceLoader:
         Retourne la bbox d'un pays depuis bbox_pays_global.
         Returns [lon_min, lat_min, lon_max, lat_max] ou None.
         """
-        country_upper = country.upper().strip() if country else ""
+        country_upper = normalize_country(country)
         entry = self.bbox_pays_global.get(country_upper)
         if entry and "bbox" in entry:
             return entry["bbox"]

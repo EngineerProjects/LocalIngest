@@ -2,14 +2,15 @@
 Utilitaires géographiques.
 
 - extract_department : extraction code département depuis CP français
+- extract_region_code : dérivation du code région/département selon le pays
 - is_in_bbox : vérification point dans bounding box
 - extract_all_coordinates : extraction coords depuis GeoJSON
 - compute_bbox : calcul bounding box depuis liste de coords
 """
 
-from typing import List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
-from src.utils.string_utils import safe_str
+from src.utils.string_utils import normalize_country, safe_str
 
 
 def extract_department(cp: str) -> str:
@@ -30,6 +31,21 @@ def extract_department(cp: str) -> str:
         return "20"
     # Cas général
     return cp[:2]
+
+
+def extract_region_code(country: str, cp: str) -> str:
+    """
+    Dérive un code région/département depuis un CP quand une règle pays existe.
+
+    Retourne "" si aucune règle fiable n'est disponible pour ce pays.
+    """
+    extractors: Dict[str, Callable[[str], str]] = {
+        "FRANCE": extract_department,
+    }
+    extractor = extractors.get(normalize_country(country))
+    if extractor is None:
+        return ""
+    return extractor(cp)
 
 
 def is_in_bbox(lon: float, lat: float, bbox: List[float]) -> bool:

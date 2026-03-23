@@ -5,6 +5,8 @@ from src.utils.string_utils import (
     format_number,
     is_empty,
     is_not_empty,
+    normalize_country,
+    normalize_postal_code,
     normalize_string,
     safe_str,
 )
@@ -12,6 +14,7 @@ from src.utils.geo_utils import (
     compute_bbox,
     extract_all_coordinates,
     extract_department,
+    extract_region_code,
     is_in_bbox,
 )
 from src.utils.fuzzy_matcher import find_best_match, levenshtein_ratio
@@ -21,11 +24,14 @@ __all__ = [
     "format_number",
     "is_empty",
     "is_not_empty",
+    "normalize_country",
+    "normalize_postal_code",
     "normalize_string",
     "safe_str",
     "compute_bbox",
     "extract_all_coordinates",
     "extract_department",
+    "extract_region_code",
     "is_in_bbox",
     "find_best_match",
     "levenshtein_ratio",

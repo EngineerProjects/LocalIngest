@@ -22,6 +22,7 @@ from src.utils import (
     find_best_match,
     is_empty,
     is_not_empty,
+    normalize_country,
     normalize_string,
     safe_str,
 )
@@ -44,7 +45,7 @@ def validate_address(
 
     cp = row.get(Config.COL_POSTAL_CODE)
     city = row.get(Config.COL_CITY)
-    country = safe_str(row.get(Config.COL_COUNTRY)).upper()
+    country = normalize_country(row.get(Config.COL_COUNTRY))
 
     # A-01 : CP manquant
     if is_empty(cp):
@@ -103,7 +104,7 @@ def _check_cp_city(
     site_id, contract_id, cp, city, country, ref_loader, collector
 ) -> None:
     """Vérifie la cohérence CP / Ville (A-04, A-05)."""
-    cp_normalized = safe_str(cp).zfill(5)
+    cp_normalized = ref_loader.normalize_postal_code(country, cp)
     expected_cities = ref_loader.get_cities_for_cp(country, cp_normalized)
 
     # A-04 : CP non trouvé dans la référence

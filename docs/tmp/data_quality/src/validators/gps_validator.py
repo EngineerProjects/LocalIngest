@@ -20,7 +20,7 @@ import pandas as pd
 from src.config import Config, Severity, SupportLevel
 from src.loaders.reference_loader import ReferenceLoader
 from src.models import Anomaly, AnomalyCollector
-from src.utils import extract_department, is_in_bbox, is_not_empty, safe_str
+from src.utils import extract_region_code, is_in_bbox, is_not_empty, normalize_country, safe_str
 
 
 def validate_gps(
@@ -68,7 +68,7 @@ def validate_gps(
         return collector.count() - anomalies_before
 
     # --- Cohérence géographique ---
-    country = safe_str(row.get(Config.COL_COUNTRY)).upper()
+    country = normalize_country(row.get(Config.COL_COUNTRY))
     cp = safe_str(row.get(Config.COL_POSTAL_CODE))
 
     # G-05 : GPS vs pays (si support ≥ PARTIEL)
@@ -196,15 +196,15 @@ def _check_gps_vs_country(
 def _check_gps_vs_region(
     site_id, contract_id, lon, lat, country, cp, ref_loader, collector
 ) -> None:
-    """G-04 : vérifie que le GPS est dans le département déduit du CP."""
+    """G-04 : vérifie que le GPS est dans la région/zone déduite du CP si la règle pays existe."""
     if not cp:
         return
 
-    dept = extract_department(cp)
-    if not dept:
+    region_code = extract_region_code(country, cp)
+    if not region_code:
         return
 
-    bbox_dept = ref_loader.get_bbox_region(country, dept)
+    bbox_dept = ref_loader.get_bbox_region(country, region_code)
     if bbox_dept is None:
         return
 
@@ -215,9 +215,9 @@ def _check_gps_vs_region(
             code="G-04",
             severity=Severity.LEGERE,
             description=(
-                f"GPS ({lon}, {lat}) hors du département {dept}. "
-                f"Le CP {cp} indique ce département."
+                f"GPS ({lon}, {lat}) hors de la région/zone {region_code}. "
+                f"Le CP {cp} indique cette zone."
             ),
             fields_concerned=[Config.COL_LONGITUDE, Config.COL_LATITUDE, Config.COL_POSTAL_CODE],
-            current_value=f"Lon={lon}, Lat={lat}, Dept={dept}",
+            current_value=f"Lon={lon}, Lat={lat}, Region={region_code}",
         ))

@@ -10,7 +10,7 @@ from typing import List, Optional
 import pandas as pd
 
 from src.config import Config
-from src.utils import format_number, is_empty, safe_str
+from src.utils import format_number, is_empty, normalize_country
 
 
 def filter_active_sites(df: pd.DataFrame) -> pd.DataFrame:
@@ -81,14 +81,19 @@ def filter_by_country(
     print("=" * 60)
 
     initial_count = len(df)
-    countries_upper = [c.upper().strip() for c in countries]
+    countries_upper = {
+        normalized
+        for country in countries
+        for normalized in [normalize_country(country)]
+        if normalized
+    }
 
     mask = df[Config.COL_COUNTRY].apply(
-        lambda x: safe_str(x).upper() in countries_upper
+        lambda x: normalize_country(x) in countries_upper
     )
     df_filtered = df[mask].copy()
 
-    print(f"\n📊 Filtre pays : {', '.join(countries_upper)}")
+    print(f"\n📊 Filtre pays : {', '.join(sorted(countries_upper))}")
     print(f"   Lignes avant filtre  : {format_number(initial_count)}")
     print(f"   Lignes retenues      : {format_number(len(df_filtered))}")
     print(f"   Lignes exclues       : {format_number(initial_count - len(df_filtered))}")

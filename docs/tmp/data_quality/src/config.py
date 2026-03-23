@@ -48,9 +48,9 @@ class Config:
     CSV_SEPARATOR = None    # Auto-détection (';' ou ',')
     CSV_ENCODING = None     # Auto-détection
 
-    # ----- Filtre par pays (optionnel) -----
-    # None = tous les pays ; ["FRANCE"] = France uniquement
-    COUNTRY_FILTER: Optional[List[str]] = ["FRANCE"]
+    # ----- Filtre par pays (optionnel, surtout utile en debug) -----
+    # None = automatique, tous les pays presents dans le fichier
+    COUNTRY_FILTER: Optional[List[str]] = None
 
     # ----- Mapping des colonnes -----
     # Identification
