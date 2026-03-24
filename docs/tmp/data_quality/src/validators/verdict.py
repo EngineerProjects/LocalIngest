@@ -2,12 +2,13 @@
 Verdict de localisation — Bloc E : orchestrateur cascade GPS → Adresse.
 
 Logique pour chaque site actif :
-    1. Prérequis (P-07, P-01, R-01) — toujours
+    1. Si pays non supporté → SKIP (ignoré, pas d'anomalie)
     2. Si pays manquant → STOP, L-01
-    3. Si GPS présent → valider GPS
+    3. Prérequis (P-07, P-01) — toujours
+    4. Si GPS présent → valider GPS
          GPS valide (0 anomalie) → LOCALISÉ ✅ (mode GPS)
          GPS invalide             → basculer sur Adresse
-    4. Si GPS absent ou invalide → valider Adresse
+    5. Si GPS absent ou invalide → valider Adresse
          Adresse valide (0 anomalie) → LOCALISÉ ✅ (mode ADRESSE)
          Adresse invalide            → L-01 GRAVE (non localisable)
 
@@ -15,6 +16,8 @@ Les colonnes enrichies ajoutées au DataFrame :
     _IS_LOCALIZED, _LOCALIZATION_MODE, _HAS_ANOMALY,
     _ANOMALY_COUNT, _ANOMALY_CODES, _WORST_SEVERITY, _SUPPORT_LEVEL
 """
+
+import sys
 
 import pandas as pd
 from tqdm import tqdm
@@ -39,6 +42,7 @@ def check_localisation(
 ) -> pd.DataFrame:
     """
     Exécute le contrôle complet de localisation sur tous les sites actifs.
+    Les sites dont le pays est NON_SUPPORTÉ sont ignorés (pas d'anomalie générée).
 
     Returns:
         DataFrame enrichi avec les colonnes _IS_LOCALIZED, _LOCALIZATION_MODE, etc.
@@ -46,6 +50,7 @@ def check_localisation(
     print("\n" + "=" * 60)
     print("   ÉTAPE 3 — VALIDATION DE LOCALISATION")
     print("=" * 60)
+    sys.stdout.flush()
 
     results = []  # list de dicts de résultats par site
 
@@ -53,11 +58,31 @@ def check_localisation(
     count_gps_anomaly = 0
     count_address_ok = 0
     count_non_localisable = 0
+    count_non_supporte = 0  # sites ignorés car pays non supporté
 
-    for idx, row in tqdm(df.iterrows(), total=len(df), desc="Localisation"):
+    for idx, row in tqdm(df.iterrows(), total=len(df), desc="Localisation", file=sys.stdout):
         site_id = row.get(Config.COL_SITE_ID)
         contract_id = row.get(Config.COL_CONTRACT_ID)
         anomalies_start = collector.count()
+
+        # Récupérer le pays et vérifier le support
+        country_raw = row.get(Config.COL_COUNTRY)
+        country = safe_str(country_raw).upper() if is_not_empty(country_raw) else ""
+        support_level = ref_loader.get_support_level(country) if country else SupportLevel.NON_SUPPORTE
+
+        # === Sites ignorés : pays non supporté (pas d'anomalie générée) ===
+        if support_level == SupportLevel.NON_SUPPORTE:
+            count_non_supporte += 1
+            results.append({
+                "_IS_LOCALIZED": False,
+                "_LOCALIZATION_MODE": "IGNORÉ",
+                "_HAS_ANOMALY": False,
+                "_ANOMALY_COUNT": 0,
+                "_ANOMALY_CODES": "",
+                "_WORST_SEVERITY": "",
+                "_SUPPORT_LEVEL": SupportLevel.NON_SUPPORTE,
+            })
+            continue
 
         # === Blocs A + B : Prérequis ===
         country_ok, support_level = check_prerequisites(
@@ -84,7 +109,7 @@ def check_localisation(
                 )
 
                 if gps_anomalies == 0:
-                    # GPS valide ✅
+                    # GPS valide
                     localized = True
                     loc_mode = "GPS"
                     count_gps_ok += 1
@@ -134,14 +159,19 @@ def check_localisation(
     enriched_cols = pd.DataFrame(results, index=df.index)
     df_enriched = pd.concat([df, enriched_cols], axis=1)
 
+    # sites effectivement analysés (pays supportés)
+    count_analysed = len(df) - count_non_supporte
+
     # Résumé
+    sys.stdout.flush()
     print(f"\n📊 Résultats de localisation :")
-    print(f"   Sites analysés          : {format_number(len(df))}")
-    print(f"   ✅ GPS valide           : {format_number(count_gps_ok)}")
+    print(f"   Sites traités            : {format_number(count_analysed)}")
+    print(f"   ⛔ Pays non supporté      : {format_number(count_non_supporte)} (ignorés)")
+    print(f"   ✅ GPS valide            : {format_number(count_gps_ok)}")
     print(f"   ⚠️  GPS avec anomalies  : {format_number(count_gps_anomaly)}")
-    print(f"   ✅ Adresse valide       : {format_number(count_address_ok)}")
-    print(f"   ❌ Non localisable      : {format_number(count_non_localisable)}")
-    print(f"   🔍 Total anomalies      : {format_number(collector.count())}")
+    print(f"   ✅ Adresse valide        : {format_number(count_address_ok)}")
+    print(f"   ❌ Non localisable        : {format_number(count_non_localisable)}")
+    print(f"   🔍 Total anomalies        : {format_number(collector.count())}")
     print("\n" + "=" * 60)
 
     return df_enriched

@@ -21,7 +21,7 @@ def load_source_data(file_path: Path = None) -> pd.DataFrame:
     """
     file_path = file_path or Config.INPUT_FILE
 
-    print(f"📂 Chargement du fichier source : {file_path.name}")
+    print(f"Chargement du fichier source : {file_path.name}")
 
     # Détection de l'encodage
     encoding = Config.CSV_ENCODING or detect_encoding(file_path)
@@ -48,7 +48,7 @@ def load_source_data(file_path: Path = None) -> pd.DataFrame:
         df[Config.COL_COUNTRY] = df[Config.COL_COUNTRY].apply(normalize_country)
         df[Config.COL_COUNTRY] = df[Config.COL_COUNTRY].replace("", pd.NA)
 
-    print(f"✅ Fichier chargé : {format_number(len(df))} lignes, {len(df.columns)} colonnes")
+    print(f"Fichier chargé : {format_number(len(df))} lignes, {len(df.columns)} colonnes")
     return df
 
 
@@ -59,7 +59,18 @@ def show_initial_stats(df: pd.DataFrame) -> None:
     print("   STATISTIQUES INITIALES")
     print("=" * 60)
 
-    print(f"\n📊 Volume : {format_number(len(df))} lignes")
+    total_lignes = len(df)
+    print(f"\nVolume : {format_number(total_lignes)} lignes")
+
+    # Doublons ID_SITE
+    if Config.COL_SITE_ID in df.columns:
+        unique_sites = df[Config.COL_SITE_ID].dropna().nunique()
+        total_with_id = df[Config.COL_SITE_ID].notna().sum()
+        doublons = int(total_with_id) - unique_sites
+        print(f"ID_SITE uniques : {format_number(unique_sites)}", end="")
+        if doublons > 0:
+            print(f"  ⚠️  ({format_number(doublons)} doublons détectés)", end="")
+        print()
 
     key_cols = [
         Config.COL_SITE_ID,
@@ -71,7 +82,7 @@ def show_initial_stats(df: pd.DataFrame) -> None:
         Config.COL_STOCK,
     ]
 
-    print("\n📋 Taux de remplissage des colonnes clés :")
+    print("\nTaux de remplissage des colonnes clés :")
     print("-" * 45)
     for col in key_cols:
         if col in df.columns:
@@ -79,11 +90,11 @@ def show_initial_stats(df: pd.DataFrame) -> None:
             pct = (non_empty / len(df)) * 100
             print(f"   {col:25} : {pct:6.2f}% ({format_number(non_empty)})")
         else:
-            print(f"   {col:25} : ⚠️ COLONNE ABSENTE")
+            print(f"   {col:25} : COLONNE ABSENTE")
 
     if Config.COL_COUNTRY in df.columns:
         pays_counts = df[Config.COL_COUNTRY].value_counts().head(10)
-        print(f"\n🌍 Top 10 pays :")
+        print(f"\nTop 10 pays :")
         print("-" * 45)
         for pays, count in pays_counts.items():
             print(f"   {str(pays):25} : {format_number(count)}")

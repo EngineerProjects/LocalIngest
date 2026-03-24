@@ -6,7 +6,9 @@ Bloc A (indépendant, toujours exécuté) :
 
 Bloc B (prérequis pays, bloquant pour la localisation) :
     P-01 : Pays manquant
-    R-01 : Pays non supporté (INFO)
+
+Note : les pays NON_SUPPORTÉS sont filtrés en amont dans verdict.py.
+       On n'atteint jamais cette fonction pour un pays non supporté.
 
 Retourne :
     (country_ok, support_level)
@@ -55,24 +57,12 @@ def check_prerequisites(
         ))
         return False, SupportLevel.NON_SUPPORTE
 
-    # ----- Bloc B : R-01 -----
+    # ----- Bloc B : Récupération du niveau de support -----
     country = safe_str(country_raw).upper()
     support = ref_loader.get_support_level(country)
 
-    if support == SupportLevel.NON_SUPPORTE:
-        collector.add(Anomaly(
-            site_id=site_id,
-            contract_id=contract_id,
-            code="R-01",
-            severity=Severity.INFO,
-            description=(
-                f"Pays '{country}' non supporté : "
-                "aucune référence géographique disponible."
-            ),
-            fields_concerned=[Config.COL_COUNTRY],
-            current_value=country,
-        ))
-
+    # Note : si support == NON_SUPPORTÉ, ce site a déjà été filtré en amont
+    # On ne génère plus de R-01 ici.
     return True, support
 
 

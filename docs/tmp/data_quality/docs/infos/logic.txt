@@ -1,0 +1,175 @@
+════════════════════════════════════════════════════════════════════════════════
+                        FLUX DE VALIDATION COMPLET  
+════════════════════════════════════════════════════════════════════════════════
+
+                         ┌─────────────────────────┐
+                         │   CHARGEMENT INITIAL    │
+                         │   Lister pays uniques   │
+                         │   dans les données      │
+                         └───────────┬─────────────┘
+                                     │
+                                     ▼
+                    ┌────────────────────────────────────┐
+                    │  Pour chaque pays :                │
+                    │  Vérifier présence références      │
+                    │  → references/{PAYS}/ existe ?     │
+                    │  → Charger ou marquer "partiel"    │
+                    └────────────────┬───────────────────┘
+                                     │
+                                     ▼
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                         POUR CHAQUE SITE ACTIF                                ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+                                     │
+         ┌───────────────────────────┴───────────────────────────┐
+         │                                                       │
+         ▼                                                       ▼
+┌─────────────────────┐                              ┌─────────────────────┐
+│  PRÉREQUIS GLOBAL   │                              │  CONTRÔLE TECHNIQUE │
+│                     │                              │                     │
+│  P-01 : Pays        │                              │  P-07 : Capitaux/   │
+│  manquant ?         │                              │  Surface manquants  │
+│  → GRAVE            │                              │  → GRAVE            │
+│  → BLOQUANT         │                              │  (indépendant)      │
+└──────────┬──────────┘                              └─────────────────────┘
+           │
+           │ Pays présent ?
+     ┌─────┴─────┐
+    NON         OUI
+     │           │
+     ▼           │
+  STOP           ▼
+  Anomalie  ┌─────────────────────────────────────┐
+  P-01      │  NIVEAU DE SUPPORT DU PAYS ?        │
+            └──────────────┬──────────────────────┘
+                           │
+            ┌──────────────┼──────────────┐
+            │              │              │
+            ▼              ▼              ▼
+        COMPLET       PARTIEL         INCONNU
+     (dossier réf)  (bbox seule)    (rien trouvé)
+            │              │              │
+            │              │              ▼
+            │              │         Anomalie
+            │              │         R-01 (INFO)
+            │              │         "Pays non supporté"
+            │              │              │
+            └──────────────┴──────────────┘
+                           │
+                           ▼
+            ┌──────────────────────────────┐
+            │     GPS PRÉSENT ?            │
+            │     (X ou Y renseigné)       │
+            └──────────────┬───────────────┘
+                     ┌─────┴─────┐
+                    OUI         NON
+                     │           │
+                     ▼           │
+        ╔════════════════════╗   │
+        ║   CHEMIN GPS       ║   │
+        ╚════════════════════╝   │
+                     │           │
+                     ▼           │
+        ┌────────────────────┐   │
+        │ G-01 : Incomplet ? │   │
+        │ (un seul X ou Y)   │   │
+        └─────────┬──────────┘   │
+             ┌────┴────┐         │
+            OUI       NON        │
+             │         │         │
+             ▼         ▼         │
+         Anomalie  ┌─────────────────┐
+         G-01      │ G-02/G-03 :     │
+         LÉGÈRE    │ Format valide ? │
+         ↓         │ (numérique,     │
+         BASCULE   │ limites OK)     │
+         ADRESSE   └────────┬────────┘
+                       ┌────┴────┐
+                      NON       OUI
+                       │         │
+                       ▼         ▼
+                   Anomalie  ┌─────────────────────┐
+                   G-02/G-03 │ G-05 : GPS dans     │
+                   GRAVE     │ le bon PAYS ?       │
+                   ↓         └─────────┬───────────┘
+                   BASCULE        ┌────┴────┐
+                   ADRESSE       NON       OUI
+                                  │         │
+                                  ▼         ▼
+                          ┌─────────────┐  ┌─────────────────────┐
+                          │ DIAGNOSTICS │  │ G-04 : GPS dans     │
+                          │ G-06 : X/Y  │  │ le bon DÉPARTEMENT ?│
+                          │ inversés ?  │  │ (si réf. dispo)     │
+                          │ G-07 : signe│  └─────────┬───────────┘
+                          │ erroné ?    │       ┌────┴────┐
+                          └──────┬──────┘      NON       OUI
+                                 │              │         │
+                                 ▼              ▼         ▼
+                             Anomalie      Anomalie    ╔═══════════╗
+                             G-05 GRAVE    G-04 LÉGÈRE ║ GPS VALID ║
+                             + G-06/G-07   (localisé   ║ LOCALISÉ  ║
+                             si applicable  quand même)║ ✅        ║
+                                 │              │      ╚═══════════╝
+                                 ▼              ▼
+                             BASCULE       ╔═══════════╗
+                             ADRESSE       ║ LOCALISÉ  ║
+                                           ║ (signaler)║
+                                           ╚═══════════╝
+
+        ╔════════════════════════════════════════════════════════════╗
+        ║                    CHEMIN ADRESSE                          ║
+        ║  (si GPS absent, incomplet, invalide, ou hors pays)        ║
+        ╚════════════════════════════════════════════════════════════╝
+                                     │
+                                     ▼
+                    ┌────────────────────────────────┐
+                    │ A-01 : CP manquant ?           │──→ GRAVE
+                    │ A-02 : Ville manquante ?       │──→ GRAVE  
+                    │ A-03 : Rue manquante ?         │──→ LÉGÈRE
+                    └────────────────┬───────────────┘
+                                     │
+                                     ▼
+                    ┌────────────────────────────────┐
+                    │ A-04 : CP existe dans réf ?    │
+                    │ (si réf. pays dispo)           │
+                    └────────────────┬───────────────┘
+                                ┌────┴────┐
+                               NON       OUI
+                                │         │
+                                ▼         ▼
+                            Anomalie  ┌─────────────────────┐
+                            A-04      │ A-05 : Ville        │
+                            GRAVE     │ correspond au CP ?  │
+                                      └─────────┬───────────┘
+                                           ┌────┴────┐
+                                          NON       OUI
+                                           │         │
+                                           ▼         ▼
+                                    ┌─────────────┐  ╔═══════════╗
+                                    │ Fuzzy match │  ║ ADRESSE   ║
+                                    │ Score ?     │  ║ VALIDE    ║
+                                    └──────┬──────┘  ║ LOCALISÉ  ║
+                                           │        ╚═══════════╝
+                              ┌────────────┼────────────┐
+                              │            │            │
+                           ≥90%        70-89%        <70%
+                              │            │            │
+                              ▼            ▼            ▼
+                          Anomalie     Anomalie     Anomalie
+                          A-05         A-05         A-05
+                          LÉGÈRE       LÉGÈRE       GRAVE
+                          "Typo"       "Douteux"    "Incohérent"
+                              │            │            │
+                              ▼            ▼            ▼
+                          ╔═══════════╗ ╔═══════════╗ ┌───────────┐
+                          ║ LOCALISÉ  ║ ║ LOCALISÉ  ║ │ ADRESSE   │
+                          ║ (signaler)║ ║ (signaler)║ │ INVALIDE  │
+                          ╚═══════════╝ ╚═══════════╝ └─────┬─────┘
+                                                            │
+                                                            ▼
+                                              ┌─────────────────────────┐
+                                              │ L-01 : NON LOCALISABLE  │
+                                              │ GPS invalide/absent     │
+                                              │ ET adresse invalide     │
+                                              │ → GRAVE                 │
+                                              └─────────────────────────┘

@@ -75,10 +75,10 @@ def run_quality_control(
     print("\n" + "=" * 70)
     print("   CONTRÔLE QUALITÉ TERMINÉ")
     print("=" * 70)
-    print(f"\n⏱️  Durée totale         : {duration:.1f} secondes")
-    print(f"📊 Sites analysés        : {format_number(len(df_enriched))}")
-    print(f"🔍 Anomalies détectées   : {format_number(collector.count())}")
-    print(f"📁 Rapport               : {output_path}")
+    print(f"\nDurée totale         : {duration:.1f} secondes")
+    print(f"Sites analysés        : {format_number(len(df_enriched))}")
+    print(f"Anomalies détectées   : {format_number(collector.count())}")
+    print(f"Rapport               : {output_path}")
     print("=" * 70)
 
     return df_enriched, collector, stats

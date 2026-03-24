@@ -128,7 +128,7 @@ def _check_cp_city(
     city_normalized = normalize_string(city)
 
     if city_normalized in expected_cities:
-        return  # Correspondance exacte ✅
+        return  # Correspondance exacte 
 
     best_match, score = find_best_match(city_normalized, expected_cities)
 

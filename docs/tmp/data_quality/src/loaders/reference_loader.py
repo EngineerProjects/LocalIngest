@@ -1,15 +1,23 @@
 """
 Chargement des données de référence — Architecture multi-pays v2.
 
-Logique de support par pays :
-  COMPLET     → dossier references/{PAYS}/ avec codes_postaux.csv + geojson
-  PARTIEL     → pas de dossier pays, mais pays dans bbox_pays_global.json
-  NON_SUPPORTÉ → absent de bbox_pays_global.json
+Nouvelles règles de support par pays :
+  COMPLET      → bbox pays + codes_postaux.csv + régions
+  PARTIEL      → bbox pays + codes_postaux.csv, sans régions
+  NON_SUPPORTÉ → tout le reste
+
+Règle métier importante :
+  Un pays n'est traitable que s'il possède au minimum :
+    1. une bbox pays dans bbox_pays_global.json
+    2. une référence de codes postaux exploitable
 
 Chargement au démarrage :
-  1. Charger bbox_pays_global.json (fallback)
+  1. Charger bbox_pays_global.json
   2. Scanner les pays uniques dans les données source
-  3. Pour chaque pays : détecter le niveau de support et charger les refs dispo
+  3. Pour chaque pays :
+       - charger CP si possible
+       - charger régions si possible
+       - déterminer le niveau de support selon les nouvelles règles
   4. Générer bbox_regions.json à la volée si le geojson est présent mais pas le json
 """
 
@@ -72,29 +80,43 @@ class ReferenceLoader:
         print("   CHARGEMENT DES DONNÉES DE RÉFÉRENCE")
         print("=" * 60)
 
-        # Étape 1 — Bounding boxes pays (fallback)
+        # Étape 1 — Bounding boxes pays (obligatoire pour qu'un pays soit traitable)
         self._load_bbox_pays_global()
 
-        # Étape 2 — Pour chaque pays du fichier source
+        # Étape 2 — Pays détectés dans les données source (déduplication sur la valeur normalisée)
         unique_countries = sorted({
             normalize_country(country)
             for country in source_countries
             if normalize_country(country)
         })
-        print(f"\n🌍 Pays détectés dans les données : {', '.join(sorted(unique_countries))}")
 
+        # Étape 3 — Chargement par pays
         for country in unique_countries:
             self._load_country(country)
 
-        # Résumé
-        print("\n📋 Niveaux de support :")
+        # Résumé — séparation supportés / non supportés
+        supported = sorted(
+            c for c, lvl in self.support_levels.items()
+            if lvl in (SupportLevel.COMPLET, SupportLevel.PARTIEL)
+        )
+        unsupported = sorted(
+            c for c, lvl in self.support_levels.items()
+            if lvl == SupportLevel.NON_SUPPORTE
+        )
+
+        print(f"\nPays détectés : {len(unique_countries)} au total")
         print("-" * 45)
-        for country, level in sorted(self.support_levels.items()):
-            icon = {"COMPLET": "✅", "PARTIEL": "⚠️", "NON_SUPPORTÉ": "❌"}.get(level, "?")
-            print(f"   {icon} {country:20} : {level}")
+
+        print(f"   ✅ Pays supportés ({len(supported)}) :")
+        for country in supported:
+            level = self.support_levels[country]
+            print(f"      {country:22} : {level}")
+
+        print(f"\n   ⛔ Pays non supportés ({len(unsupported)}) — ignorés :")
+        print(f"      {', '.join(unsupported) if unsupported else '(aucun)'}")
 
         self._loaded = True
-        print("\n✅ Données de référence chargées")
+        print("\nDonnées de référence chargées")
         print("=" * 60)
 
     # =========================================================================
@@ -102,10 +124,10 @@ class ReferenceLoader:
     # =========================================================================
 
     def _load_bbox_pays_global(self) -> None:
-        """Charge bbox_pays_global.json — fallback pour tous les pays."""
+        """Charge bbox_pays_global.json — requis pour qu'un pays soit supporté."""
         path = Config.BBOX_PAYS_GLOBAL_FILE
         if not path.exists():
-            print(f"   ⚠️ bbox_pays_global.json non trouvé : {path}")
+            print(f"   bbox_pays_global.json non trouvé : {path}")
             return
 
         with open(path, "r", encoding="utf-8") as f:
@@ -116,25 +138,55 @@ class ReferenceLoader:
             for country, data in raw.items()
             if normalize_country(country)
         }
-        print(f"   ✅ bbox_pays_global : {len(self.bbox_pays_global)} pays")
+        print(f"   bbox_pays_global : {len(self.bbox_pays_global)} pays")
 
     # =========================================================================
     # CHARGEMENT PAR PAYS
     # =========================================================================
 
     def _load_country(self, country: str) -> None:
-        """Détecte le niveau de support d'un pays et charge ses références."""
+        """
+        Détecte le niveau de support d'un pays et charge ses références.
+
+        Règles :
+          - COMPLET     : bbox pays + CP + régions
+          - PARTIEL     : bbox pays + CP
+          - NON_SUPPORTÉ: tout le reste
+        """
+        has_country_bbox = country in self.bbox_pays_global
         country_dir = self._find_country_dir(country)
 
-        if country_dir is not None:
-            # Dossier pays trouvé → tenter support COMPLET
-            self._load_country_complet(country, country_dir)
-        elif country in self.bbox_pays_global:
-            # Pas de dossier mais bbox globale connue → PARTIEL
-            self.support_levels[country] = SupportLevel.PARTIEL
+        has_cp = False
+        has_regions = False
+
+        if country_dir is None:
+            if Config.REFERENCE_LOG_DETAILS:
+                print(f"\n{country}")
+                print(f"   Dossier de référence absent pour {country}")
         else:
-            # Rien → NON SUPPORTÉ
+            if Config.REFERENCE_LOG_DETAILS:
+                print(f"\n{country}")
+            has_cp = self._load_cp_file(country, country_dir)
+            has_regions = self._load_regions(country, country_dir)
+
+        # Condition minimale de traitabilité : bbox pays + CP
+        if not has_country_bbox or not has_cp:
             self.support_levels[country] = SupportLevel.NON_SUPPORTE
+
+            if Config.REFERENCE_LOG_DETAILS:
+                if not has_country_bbox:
+                    print(f"   {country} : absent de bbox_pays_global.json → non supporté")
+                if not has_cp:
+                    print(f"   {country} : codes_postaux.csv absent ou inexploitable → non supporté")
+            return
+
+        # À partir d'ici : le pays est traitable
+        if has_regions:
+            self.support_levels[country] = SupportLevel.COMPLET
+        else:
+            self.support_levels[country] = SupportLevel.PARTIEL
+            if Config.REFERENCE_LOG_DETAILS:
+                print(f"   {country} : régions / geojson absents → support partiel")
 
     def _find_country_dir(self, country: str) -> Optional[Path]:
         """
@@ -150,25 +202,6 @@ class ReferenceLoader:
                 return candidate
         return None
 
-    def _load_country_complet(self, country: str, country_dir: Path) -> None:
-        """
-        Tente de charger les refs complètes pour un pays.
-        Charge CP et regions, puis décide COMPLET ou PARTIEL.
-        """
-        has_cp = self._load_cp_file(country, country_dir)
-        has_regions = self._load_regions(country, country_dir)
-
-        if has_cp and has_regions:
-            self.support_levels[country] = SupportLevel.COMPLET
-        elif country in self.bbox_pays_global:
-            self.support_levels[country] = SupportLevel.PARTIEL
-            if not has_cp:
-                print(f"   ⚠️ {country} : codes_postaux.csv absent → support partiel")
-            if not has_regions:
-                print(f"   ⚠️ {country} : geojson absent → support partiel")
-        else:
-            self.support_levels[country] = SupportLevel.NON_SUPPORTE
-
     # =========================================================================
     # CHARGEMENT CODES POSTAUX
     # =========================================================================
@@ -176,14 +209,22 @@ class ReferenceLoader:
     def _load_cp_file(self, country: str, country_dir: Path) -> bool:
         """
         Charge le fichier codes_postaux.csv du pays.
-        Retourne True si chargé avec succès.
+        Retourne True si chargé avec succès et exploitable.
         """
         cp_file = country_dir / Config.CP_FILENAME
         if not cp_file.exists():
             return False
 
-        encoding = detect_encoding(cp_file)
-        df = pd.read_csv(cp_file, sep=";", dtype=str, encoding=encoding)
+        try:
+            encoding = detect_encoding(cp_file)
+            df = pd.read_csv(cp_file, sep=";", dtype=str, encoding=encoding)
+        except Exception as e:
+            print(f"   {country} CP : erreur de lecture du fichier {cp_file.name} ({e})")
+            return False
+
+        if df.empty or len(df.columns) < 1:
+            print(f"   {country} CP : fichier vide ou colonnes invalides")
+            return False
 
         # Nettoyer les noms de colonnes (retirer '#' artefact CSV)
         df.columns = [col.lstrip("#").strip() for col in df.columns]
@@ -194,7 +235,11 @@ class ReferenceLoader:
             col_lower = col.lower()
             if "code_postal" in col_lower or "code postal" in col_lower:
                 rename_map[col] = "code_postal"
-            elif "nom_de_la_commune" in col_lower or "nom_commune" in col_lower or "commune" in col_lower:
+            elif (
+                "nom_de_la_commune" in col_lower
+                or "nom_commune" in col_lower
+                or "commune" in col_lower
+            ):
                 rename_map[col] = "nom_commune"
             elif "acheminement" in col_lower or "libelle" in col_lower:
                 rename_map[col] = "nom_commune"
@@ -203,8 +248,18 @@ class ReferenceLoader:
             df = df.rename(columns=rename_map)
 
         # Identifier colonnes CP et Ville
-        cp_col = "code_postal" if "code_postal" in df.columns else df.columns[0]
-        city_col = "nom_commune" if "nom_commune" in df.columns else df.columns[1]
+        if "code_postal" in df.columns:
+            cp_col = "code_postal"
+        else:
+            cp_col = df.columns[0]
+
+        if "nom_commune" in df.columns:
+            city_col = "nom_commune"
+        elif len(df.columns) > 1:
+            city_col = df.columns[1]
+        else:
+            print(f"   {country} CP : colonne ville introuvable")
+            return False
 
         raw_codes = [safe_str(value) for value in df[cp_col].tolist()]
         numeric_lengths = [len(code) for code in raw_codes if code.isdigit()]
@@ -213,18 +268,29 @@ class ReferenceLoader:
         # Construire pays → CP → [villes]
         country_cp_map = self.cp_to_cities.setdefault(country, {})
         count_before = len(country_cp_map)
+        valid_rows = 0
+
         for _, row in df.iterrows():
-            cp = self.normalize_postal_code(country, row[cp_col])
-            city = normalize_string(row[city_col])
+            cp = self.normalize_postal_code(country, row.get(cp_col))
+            city = normalize_string(row.get(city_col))
+
             if cp and city:
+                valid_rows += 1
                 if cp not in country_cp_map:
                     country_cp_map[cp] = []
                 if city not in country_cp_map[cp]:
                     country_cp_map[cp].append(city)
 
+        # Si rien d'exploitable n'a été chargé, on considère que le CP n'est pas valide
+        if valid_rows == 0 or len(country_cp_map) == 0:
+            self.cp_to_cities.pop(country, None)
+            self.postal_code_widths[country] = None
+            print(f"   {country} CP : aucune donnée exploitable trouvée")
+            return False
+
         self.countries_with_cp_ref.add(country)
         added = len(country_cp_map) - count_before
-        print(f"   ✅ {country} CP : {format_number(added)} codes postaux chargés")
+        print(f"   {country} CP : {format_number(added)} codes postaux chargés")
         return True
 
     # =========================================================================
@@ -237,43 +303,55 @@ class ReferenceLoader:
         Utilise le JSON mis en cache s'il existe, sinon le génère depuis GeoJSON.
         Retourne True si des bounding boxes ont été chargées.
         """
-        # Chercher d'abord le cache JSON généré
         bbox_cache = country_dir / Config.BBOX_REGIONS_FILENAME
+
+        # 1) Cache JSON
         if bbox_cache.exists():
-            with open(bbox_cache, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            try:
+                with open(bbox_cache, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception as e:
+                print(f"   {country} régions : erreur lecture cache {bbox_cache.name} ({e})")
+                return False
+
+            if not data:
+                print(f"   {country} régions : cache vide")
+                return False
+
             self.bbox_regions[country] = data
-            print(f"   ✅ {country} régions : {len(data)} bounding boxes (cache)")
+            print(f"   {country} régions : {len(data)} bounding boxes (cache)")
             return True
 
-        # Sinon, chercher un fichier GeoJSON
+        # 2) GeoJSON
         geojson_path = self._find_geojson(country_dir)
         if geojson_path is None:
             return False
 
         data = self._generate_bbox_from_geojson(geojson_path)
         if not data:
+            print(f"   {country} régions : aucune bbox générée depuis le GeoJSON")
             return False
 
-        # Sauvegarder le cache pour les prochains runs
-        with open(bbox_cache, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        # 3) Sauvegarder le cache
+        try:
+            with open(bbox_cache, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"   {country} régions : impossible d'écrire le cache ({e})")
 
         self.bbox_regions[country] = data
-        print(f"   ✅ {country} régions : {len(data)} bounding boxes (générées depuis GeoJSON)")
+        print(f"   {country} régions : {len(data)} bounding boxes (générées depuis GeoJSON)")
         return True
 
     def _find_geojson(self, country_dir: Path) -> Optional[Path]:
-        """Cherche un fichier GeoJSON dans le dossier pays (noms connus ou premier .geojson)."""
-        # Chercher les noms standards définis dans Config
+        """Cherche un fichier GeoJSON dans le dossier pays."""
         for filename in Config.GEOJSON_FILENAMES:
             candidate = country_dir / filename
             if candidate.exists():
                 return candidate
 
-        # Fallback : premier .geojson trouvé (insensible à la casse)
         for f in country_dir.iterdir():
-            if f.suffix.lower() == ".geojson":
+            if f.is_file() and f.suffix.lower() == ".geojson":
                 return f
 
         return None
@@ -283,8 +361,11 @@ class ReferenceLoader:
         Génère un dict {code_region: {"name": ..., "bbox": [...]}} depuis un GeoJSON.
         Essaie plusieurs noms de propriétés courants pour code et nom.
         """
-        with open(geojson_path, "r", encoding="utf-8") as f:
-            geojson_data = json.load(f)
+        try:
+            with open(geojson_path, "r", encoding="utf-8") as f:
+                geojson_data = json.load(f)
+        except Exception:
+            return {}
 
         features = geojson_data.get("features", [])
         bbox_dict = {}
@@ -300,8 +381,9 @@ class ReferenceLoader:
             code = None
             for key in CODE_PROPS:
                 if key in props and props[key]:
-                    code = str(props[key])
+                    code = str(props[key]).strip()
                     break
+
             if not code:
                 continue
 
@@ -309,7 +391,7 @@ class ReferenceLoader:
             name = ""
             for key in NAME_PROPS:
                 if key in props and props[key]:
-                    name = str(props[key])
+                    name = str(props[key]).strip()
                     break
 
             coords = extract_all_coordinates(geometry)

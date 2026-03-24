@@ -42,7 +42,7 @@ def filter_active_sites(df: pd.DataFrame) -> pd.DataFrame:
     filtered_count = len(df_active)
     removed_count = initial_count - filtered_count
 
-    print(f"\n📊 Résultats du filtre :")
+    print(f"\nRésultats du filtre :")
     print(f"   Lignes initiales     : {format_number(initial_count)}")
     print(f"   Sites actifs retenus : {format_number(filtered_count)}")
     print(f"   Sites exclus         : {format_number(removed_count)}")
@@ -50,7 +50,7 @@ def filter_active_sites(df: pd.DataFrame) -> pd.DataFrame:
 
     excluded_stock = (~mask_stock).sum()
     excluded_resil = (~mask_resil).sum()
-    print(f"\n📋 Détail des exclusions :")
+    print(f"\nDétail des exclusions :")
     print(f"   STOCK ≠ 1            : {format_number(excluded_stock)}")
     print(f"   Date résiliation     : {format_number(excluded_resil)}")
 
@@ -93,7 +93,7 @@ def filter_by_country(
     )
     df_filtered = df[mask].copy()
 
-    print(f"\n📊 Filtre pays : {', '.join(sorted(countries_upper))}")
+    print(f"\nFiltre pays : {', '.join(sorted(countries_upper))}")
     print(f"   Lignes avant filtre  : {format_number(initial_count)}")
     print(f"   Lignes retenues      : {format_number(len(df_filtered))}")
     print(f"   Lignes exclues       : {format_number(initial_count - len(df_filtered))}")

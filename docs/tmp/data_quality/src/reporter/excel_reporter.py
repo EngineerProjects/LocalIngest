@@ -188,6 +188,9 @@ def generate_excel_report(
     df_anomalies = collector.to_dataframe()
 
     if not df_anomalies.empty:
+        df_anomalies = df_anomalies.copy()
+        df_anomalies = df_anomalies.where(pd.notna(df_anomalies), None)
+
         for col_idx, col_name in enumerate(df_anomalies.columns, 1):
             cell = ws2.cell(row=1, column=col_idx, value=col_name)
             cell.font = header_font
@@ -225,7 +228,8 @@ def generate_excel_report(
         "_SUPPORT_LEVEL",
     ]
     cols = [c for c in priority_cols if c in df.columns]
-    df_export = df[cols]
+    df_export = df[cols].copy()
+    df_export = df_export.where(pd.notna(df_export), None)
 
     # En-têtes
     for col_idx, col_name in enumerate(df_export.columns, 1):
@@ -233,10 +237,10 @@ def generate_excel_report(
         cell.font = header_font
         cell.fill = header_fill_blue
 
-    # Données (limité à 100k lignes pour Excel)
-    max_rows = min(len(df_export), 100_000)
+    # Données (limité à 1M lignes pour Excel)
+    max_rows = min(len(df_export), 1000_000)
     if len(df_export) > max_rows:
-        print(f"   ⚠️ Limitation à {format_number(max_rows)} lignes (onglet Données enrichies)")
+        print(f"Limitation à {format_number(max_rows)} lignes (onglet Données enrichies)")
 
     for row_idx, row_data in enumerate(df_export.head(max_rows).itertuples(index=False), 2):
         for col_idx, value in enumerate(row_data, 1):
@@ -248,9 +252,9 @@ def generate_excel_report(
     # Sauvegarder
     wb.save(output_path)
 
-    print(f"\n✅ Rapport généré : {output_path}")
-    print(f"   📊 Résumé                : statistiques globales + par pays")
-    print(f"   📋 Détail anomalies      : {format_number(len(df_anomalies))} lignes")
-    print(f"   📁 Données enrichies     : {format_number(max_rows)} lignes")
+    print(f"\nRapport généré : {output_path}")
+    print(f"   Résumé                : statistiques globales + par pays")
+    print(f"   Détail anomalies      : {format_number(len(df_anomalies))} lignes")
+    print(f"   Données enrichies     : {format_number(max_rows)} lignes")
 
     return output_path

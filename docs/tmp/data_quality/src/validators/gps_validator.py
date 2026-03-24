@@ -133,7 +133,7 @@ def _check_gps_vs_country(
         return True  # Pas de bbox connue → on ne peut pas vérifier
 
     if is_in_bbox(lon, lat, bbox_pays):
-        return True  # GPS dans le bon pays ✅
+        return True  # GPS dans le bon pays 
 
     # G-06 : Inversion X/Y ?
     if is_in_bbox(lat, lon, bbox_pays):

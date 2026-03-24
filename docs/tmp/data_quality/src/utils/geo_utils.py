@@ -81,7 +81,7 @@ def extract_all_coordinates(geometry: dict) -> List[Tuple[float, float]]:
                 for point in ring:
                     coords.append((point[0], point[1]))
     else:
-        print(f"⚠️ Type de géométrie non supporté : {geom_type}")
+        print(f"Type de géométrie non supporté : {geom_type}")
 
     return coords
 
