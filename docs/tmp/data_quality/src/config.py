@@ -52,6 +52,11 @@ class Config:
     # None = automatique, tous les pays presents dans le fichier
     COUNTRY_FILTER: Optional[List[str]] = None
 
+    # ----- Logs -----
+    # False = logs compacts (résumé global, défaut)
+    # True  = détail pays par pays pendant le chargement des références
+    REFERENCE_LOG_DETAILS: bool = False
+
     # ----- Mapping des colonnes -----
     # Identification
     COL_SITE_ID = "ID_SITE"

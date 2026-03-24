@@ -160,11 +160,11 @@ class ReferenceLoader:
         has_regions = False
 
         if country_dir is None:
-            if Config.REFERENCE_LOG_DETAILS:
+            if getattr(Config, 'REFERENCE_LOG_DETAILS', False):
                 print(f"\n{country}")
                 print(f"   Dossier de référence absent pour {country}")
         else:
-            if Config.REFERENCE_LOG_DETAILS:
+            if getattr(Config, 'REFERENCE_LOG_DETAILS', False):
                 print(f"\n{country}")
             has_cp = self._load_cp_file(country, country_dir)
             has_regions = self._load_regions(country, country_dir)
@@ -173,7 +173,7 @@ class ReferenceLoader:
         if not has_country_bbox or not has_cp:
             self.support_levels[country] = SupportLevel.NON_SUPPORTE
 
-            if Config.REFERENCE_LOG_DETAILS:
+            if getattr(Config, 'REFERENCE_LOG_DETAILS', False):
                 if not has_country_bbox:
                     print(f"   {country} : absent de bbox_pays_global.json → non supporté")
                 if not has_cp:
@@ -185,7 +185,7 @@ class ReferenceLoader:
             self.support_levels[country] = SupportLevel.COMPLET
         else:
             self.support_levels[country] = SupportLevel.PARTIEL
-            if Config.REFERENCE_LOG_DETAILS:
+            if getattr(Config, 'REFERENCE_LOG_DETAILS', False):
                 print(f"   {country} : régions / geojson absents → support partiel")
 
     def _find_country_dir(self, country: str) -> Optional[Path]:
