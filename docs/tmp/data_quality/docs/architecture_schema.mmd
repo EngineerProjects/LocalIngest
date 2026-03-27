@@ -10,15 +10,18 @@ flowchart LR
 
     %% --- NODES ---
     CSV[(Fichier Source Proxima\nDonnées Brutes)]:::source
-    FiltreActif{Filtre Sites Actifs\nContrat Actif & \nNon Résilié ?}:::decision
-    Ignore([Rejetés : Contrats\nrésiliés/inactifs]):::info
+    FiltreActif{Le contrat est-il\nactif en base ?}:::decision
+    Ignore([Rejetés : Contrats\ninactifs ou résiliés]):::info
+
+    CheckPays{Le pays est-il\nrenseigné ?}:::decision
+    ErrPays[[❌ Anomalie bloquante\nPays manquant]]:::error
 
     subgraph GPS_CHECK [1. CONTRÔLE GPS]
         direction LR
-        HasGPS{Coordonnées X,Y\nrenseignées ?}:::decision
-        InBbox{Dans BBox\ndu Pays ?}:::decision
-        CohCP{Cohérent avec\nCode Postal ?}:::decision
-        SiteOK_GPS((✅ Site OK GPS\n_CONTROL_MODE = GPS_OK)):::ok
+        HasGPS{Coordonnées GPS\nrenseignées ?}:::decision
+        InBbox{Dans les frontières\ndu pays ?}:::decision
+        CohCP{Cohérent avec le\ncode postal ?}:::decision
+        SiteOK_GPS((✅ Site Validé\nvia GPS)):::ok
     end
 
     Bascule([🔄 Bascule sur le contrôle d'Adresse]):::info
@@ -28,22 +31,25 @@ flowchart LR
         HasAddr{Adresse complète\nrenseignée ?}:::decision
         HasNum{Numéro de voie\nrenseigné ?}:::decision
         
-        SiteOK_ADDR((✅ Site OK ADRESSE\n_CONTROL_MODE = ADRESSE_OK)):::ok
+        SiteOK_ADDR((✅ Site Validé\nvia Adresse)):::ok
         
-        ErrA01[[❌ A-01 Anomalie bloquante\nAdresse manquante]]:::error
-        ErrA02[[⚠️ A-02/A-03 Anomalie\nNuméro manquant /\nRue à vérifier]]:::error
+        ErrA01[[❌ Anomalie bloquante\nAdresse manquante]]:::error
+        ErrA02[[⚠️ Anomalie mineure\nNuméro manquant /\nRue à vérifier]]:::error
     end
 
-    RefDep[(Référentiels / BBox)]:::db
+    RefDep[(Référentiel\nGéographique)]:::db
 
-    LowPrio[🔍 Contrôle Faible Priorité\nCohérence Département / Pays]:::process
+    LowPrio[🔍 Contrôle de Cohérence\nDépartement vs Pays]:::process
 
     FinalReport[/📊 Rapport Excel de Synthèse\n1 Ligne = 1 Site consolidé/]:::final
 
     %% --- EDGES ---
     CSV ==> FiltreActif
     FiltreActif -- NON --> Ignore
-    FiltreActif -- OUI --> HasGPS
+    FiltreActif -- OUI --> CheckPays
+
+    CheckPays -- NON --> ErrPays
+    CheckPays -- OUI --> HasGPS
     
     %% GPS Logic
     HasGPS -- OUI --> InBbox
@@ -68,6 +74,7 @@ flowchart LR
     HasNum -- NON --> ErrA02
     
     %% Consolidation
+    ErrPays ---> LowPrio
     SiteOK_GPS ---> LowPrio
     SiteOK_ADDR ---> LowPrio
     ErrA01 ---> LowPrio

@@ -58,6 +58,42 @@ def evaluate_site(
         extract_region_code(country, postal_code) if country and postal_code else ""
     )
 
+    # ── Étape 0 : Moteur de rejet immédiat (Bouncer pays) ────────────────────
+    if not country:
+        issue_codes.append("P-01")
+        _add_issue_detail(
+            "P-01",
+            "Pays manquant",
+            "GRAVE",
+            "pays",
+            "Le pays n'est pas renseigné. Validation bloquée.",
+            [Config.COL_COUNTRY],
+            "",
+            "Renseigner le pays.",
+            issue_details,
+            row,
+        )
+        final_codes = ordered_unique_codes(issue_codes)
+        addr_ctx = _read_address(row)
+        gps_ctx = _read_gps(row)
+        return {
+            "_SITE_KEY": site_key,
+            "_CONTROL_MODE": ValidationMode.INCOMPLETE,
+            "_CONTROL_STATUS": build_control_status(final_codes),
+            "_PRIORITY": get_worst_priority(final_codes),
+            "_ISSUE_COUNT": len(final_codes),
+            "_ISSUE_CODES": ", ".join(final_codes),
+            "_ISSUE_SUMMARY": build_issue_summary(final_codes),
+            "_ISSUE_DETAILS": issue_details,
+            "_HAS_GPS": gps_ctx["has_any"],
+            "_GPS_IN_COUNTRY": None,
+            "_GPS_MATCH_POSTAL_CODE": None,
+            "_ADDRESS_PRESENT": addr_ctx["address_present"],
+            "_STREET_NUMBER_PRESENT": addr_ctx["street_number_present"],
+            "_DEPARTMENT_CODE": department_code,
+            "_DEPARTMENT_COUNTRY_OK": None,
+        }
+
     # ── Étapes 1-3 : chemin GPS ──────────────────────────────────────────────
     gps_ctx = _read_gps(row)
     gps_result = _check_gps_path(
@@ -192,22 +228,7 @@ def _check_gps_path(
         )
         return result
 
-    # Pays requis pour aller plus loin
-    if not country:
-        issue_codes.append("P-01")
-        _add_issue_detail(
-            "P-01",
-            "Pays manquant",
-            "GRAVE",
-            "pays",
-            "Le pays n'est pas renseigné.",
-            [Config.COL_COUNTRY],
-            "",
-            "Renseigner le pays.",
-            issue_details,
-            row,
-        )
-        return result
+
 
     # Étape 2 : bbox pays
     bbox_country = ref_loader.get_bbox_pays(country)
@@ -285,45 +306,7 @@ def _check_gps_path(
     result["valid"] = True
     return result
 
-    # Étape 1 : les valeurs sont-elles numériquement valides ?
-    lon = _parse_coordinate(gps_ctx["lon_raw"], -180.0, 180.0)
-    lat = _parse_coordinate(gps_ctx["lat_raw"], -90.0, 90.0)
-    if lon is None or lat is None:
-        issue_codes.append("G-03")
-        return result
 
-    # Pays requis pour aller plus loin
-    if not country:
-        issue_codes.append("P-01")
-        return result
-
-    # Étape 2 : bbox pays
-    bbox_country = ref_loader.get_bbox_pays(country)
-    if bbox_country is None:
-        issue_codes.append("R-01")
-        return result
-
-    result["in_country"] = is_in_bbox(lon, lat, bbox_country)
-    if not result["in_country"]:
-        issue_codes.append("G-04")
-        return result
-
-    # Étape 3 : bbox code postal (si référentiel disponible)
-    if not postal_code:
-        issue_codes.append("P-02")
-        return result
-
-    if department_code:
-        bbox_region = ref_loader.get_bbox_region(country, department_code)
-        if bbox_region is not None:
-            result["matches_postal_code"] = is_in_bbox(lon, lat, bbox_region)
-            if not result["matches_postal_code"]:
-                issue_codes.append("G-05")
-                return result
-
-    # GPS valide le site (avec ou sans vérification CP si pas de référentiel)
-    result["valid"] = True
-    return result
 
 
 # ─────────────────────────────────────────────────────────────────────────────
