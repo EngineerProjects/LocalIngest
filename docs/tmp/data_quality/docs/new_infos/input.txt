@@ -53,67 +53,18 @@ DONNÉES TECHNIQUES — SURFACE
 SURFACE                     → Surface principale
 SURFACE_DPDCE               → Surface dépendance
 
-
-────────────────────────────────────────────────────────────────────────────────
-                         CONSTANTES DE CONFIGURATION
-────────────────────────────────────────────────────────────────────────────────
-
-# Colonnes pour le filtre sites actifs
-FILTER_COLS = {
-    'stock': 'STOCK',
-    'dt_resil': 'DT_EFF_RESIL_CNT'
-}
-
-# Colonnes d'identification
-ID_COLS = {
-    'site_id': 'ID_SITE',
-    'contract_id': 'NU_CNT',
-    'site_name': 'NOM_SITE',
-    'client_name': 'NOM_CLI'
-}
-
-# Colonnes d'adresse
-ADDRESS_COLS = {
-    'country': 'PAYS_SITE',
-    'postal_code': 'CP_SITE',
-    'city': 'VILLE_SITE',
-    'street_full': 'NUM_RUE_SITE',
-    'street_name': 'RUE_SITE',
-    'street_number': 'NUM_VOIE_SITE',
-    'lieu_dit': 'LIEU_DIT_SITE',
-    'full_address': 'ADRESSE_SITE'
-}
-
-# Colonnes GPS
-GPS_COLS = {
-    'longitude': 'COORD_X_SITE',
-    'latitude': 'COORD_Y_SITE',
-    'quality': 'QUALITE_GEOCODAGE'
-}
-
-# Colonnes capitaux (pour règle P-07)
-CAPITAL_COLS = [
-    'CAPITAUX_MURS_BATIMENTS',
-    'CAPITAUX_CONTENU',
-    'CAPITAUX_MATERIEL',
-    'CAPITAUX_MARCHANDISES',
-    'CAPITAUX_TT',
-    'CAPITAUX_ASS_MH_HLL_CARAV',
-    'CAPITAUX_DEPENDANCE',
-    'CAPITAUX_COMPL',
-    'CAPITAUX_DD'
-]
-
-# Colonnes surface (pour règle P-07)
-SURFACE_COLS = [
-    'SURFACE',
-    'SURFACE_DPDCE'
-]
-
-# Toutes les colonnes techniques (capitaux + surface)
-TECHNICAL_COLS = CAPITAL_COLS + SURFACE_COLS
-
-
 ────────────────────────────────────────────────────────────────────────────────
                               FIN DU MAPPING
 ────────────────────────────────────────────────────────────────────────────────
+
+
+NOTE IMPORTANTE SUR L'ÉCHANTILLON ANALYSÉ
+─────────────────────────────────────────
+
+Dans le fichier testé, `ID_SITE` seul n'est pas unique.
+La clé la plus fiable observée pour représenter un site est :
+
+    NU_CNT + ID_SITE
+
+Voir aussi :
+`docs/infos/input_analysis.txt`

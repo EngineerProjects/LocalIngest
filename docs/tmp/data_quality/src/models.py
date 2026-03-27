@@ -1,81 +1,66 @@
 """
-Modèles de données pour le contrôle qualité.
+Helpers métier pour consolider les anomalies par site.
 
-- Anomaly : représente une anomalie détectée
-- AnomalyCollector : collecteur centralisé d'anomalies
+Ici, on ne manipule plus des objets "1 anomalie = 1 ligne".
+Le pipeline travaille avec des listes de codes d'anomalies par site,
+puis construit un libellé unique et lisible.
 """
 
-from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Iterable, List
 
-import pandas as pd
-
-from src.config import AnomalyCode, Severity
+from src.config import ControlStatus, IssueCode, Priority
 
 
-# =============================================================================
-# ANOMALY
-# =============================================================================
-
-@dataclass
-class Anomaly:
-    """Représente une anomalie détectée."""
-
-    site_id: Any
-    contract_id: Any
-    code: str
-    severity: str
-    description: str
-    fields_concerned: List[str]
-    current_value: str = ""
-    suggestion: Optional[str] = None
-    similarity_score: Optional[float] = None
-
-    def to_dict(self) -> dict:
-        return {
-            "ID_SITE": self.site_id,
-            "NU_CNT": self.contract_id,
-            "CODE_ANOMALIE": self.code,
-            "LIBELLE": AnomalyCode.get_label(self.code),
-            "GRAVITE": self.severity,
-            "CATEGORIE": AnomalyCode.get_category(self.code),
-            "DESCRIPTION": self.description,
-            "CHAMPS_CONCERNES": ", ".join(self.fields_concerned),
-            "VALEUR_ACTUELLE": self.current_value,
-            "SUGGESTION": self.suggestion or "",
-            "SCORE_SIMILARITE": self.similarity_score,
-        }
+_PRIORITY_ORDER = {
+    Priority.NONE: 0,
+    Priority.LOW: 1,
+    Priority.MEDIUM: 2,
+    Priority.HIGH: 3,
+}
 
 
-# =============================================================================
-# ANOMALY COLLECTOR
-# =============================================================================
+def ordered_unique_codes(codes: Iterable[str]) -> List[str]:
+    """Déduplique les codes en conservant leur ordre d'apparition."""
+    seen = set()
+    ordered = []
+    for code in codes:
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        ordered.append(code)
+    return ordered
 
-class AnomalyCollector:
-    """Collecteur d'anomalies pour tout le traitement."""
 
-    def __init__(self):
-        self.anomalies: List[Anomaly] = []
+def build_issue_labels(codes: Iterable[str]) -> List[str]:
+    """Traduit une liste de codes en libellés métier courts."""
+    return [IssueCode.get_label(code) for code in ordered_unique_codes(codes)]
 
-    def add(self, anomaly: Anomaly):
-        self.anomalies.append(anomaly)
 
-    def to_dataframe(self) -> pd.DataFrame:
-        if not self.anomalies:
-            return pd.DataFrame()
-        return pd.DataFrame([a.to_dict() for a in self.anomalies])
+def build_issue_summary(codes: Iterable[str]) -> str:
+    """Construit le libellé consolidé affiché dans le rapport."""
+    labels = build_issue_labels(codes)
+    return " | ".join(labels)
 
-    def count(self) -> int:
-        return len(self.anomalies)
 
-    def count_by_severity(self) -> dict:
-        counts = {Severity.GRAVE: 0, Severity.LEGERE: 0, Severity.INFO: 0}
-        for a in self.anomalies:
-            counts[a.severity] = counts.get(a.severity, 0) + 1
-        return counts
+def get_worst_priority(codes: Iterable[str]) -> str:
+    """Retourne la priorité la plus haute rencontrée sur le site."""
+    ordered = ordered_unique_codes(codes)
+    if not ordered:
+        return Priority.NONE
 
-    def count_by_code(self) -> dict:
-        counts = {}
-        for a in self.anomalies:
-            counts[a.code] = counts.get(a.code, 0) + 1
-        return dict(sorted(counts.items(), key=lambda x: x[1], reverse=True))
+    return max(
+        (IssueCode.get_priority(code) for code in ordered),
+        key=lambda priority: _PRIORITY_ORDER.get(priority, 0),
+    )
+
+
+def build_control_status(codes: Iterable[str]) -> str:
+    """Construit un statut de lecture rapide à partir de la priorité max."""
+    priority = get_worst_priority(codes)
+    if priority == Priority.NONE:
+        return ControlStatus.OK
+    if priority == Priority.HIGH:
+        return ControlStatus.TO_FIX
+    if priority == Priority.MEDIUM:
+        return ControlStatus.TO_COMPLETE
+    return ControlStatus.TO_REVIEW

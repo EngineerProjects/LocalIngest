@@ -1,0 +1,76 @@
+flowchart LR
+    classDef source fill:#f8fafc,stroke:#cbd5e1,stroke-width:2px,stroke-dasharray: 5 5,color:#334155
+    classDef process fill:#eff6ff,stroke:#60a5fa,stroke-width:2px,color:#1e3a8a,font-weight:bold
+    classDef db fill:#fdf4ff,stroke:#c084fc,stroke-width:2px,color:#581c87
+    classDef decision fill:#fff7ed,stroke:#fb923c,stroke-width:2px,color:#9a3412
+    classDef ok fill:#f0fdf4,stroke:#4ade80,stroke-width:2px,color:#166534
+    classDef error fill:#fef2f2,stroke:#f87171,stroke-width:2px,color:#991b1b
+    classDef info fill:#f3f4f6,stroke:#9ca3af,stroke-width:1px,color:#374151
+    classDef final fill:#ecfdf5,stroke:#10b981,stroke-width:3px,color:#065f46
+
+    %% --- NODES ---
+    CSV[(Fichier Source Proxima\nDonnées Brutes)]:::source
+    FiltreActif{Filtre Sites Actifs\nContrat Actif & \nNon Résilié ?}:::decision
+    Ignore([Rejetés : Contrats\nrésiliés/inactifs]):::info
+
+    subgraph GPS_CHECK [1. CONTRÔLE GPS]
+        direction LR
+        HasGPS{Coordonnées X,Y\nrenseignées ?}:::decision
+        InBbox{Dans BBox\ndu Pays ?}:::decision
+        CohCP{Cohérent avec\nCode Postal ?}:::decision
+        SiteOK_GPS((✅ Site OK GPS\n_CONTROL_MODE = GPS_OK)):::ok
+    end
+
+    Bascule([🔄 Bascule sur le contrôle d'Adresse]):::info
+
+    subgraph ADDR_CHECK [2. CONTRÔLE ADRESSE]
+        direction LR
+        HasAddr{Adresse complète\nrenseignée ?}:::decision
+        HasNum{Numéro de voie\nrenseigné ?}:::decision
+        
+        SiteOK_ADDR((✅ Site OK ADRESSE\n_CONTROL_MODE = ADRESSE_OK)):::ok
+        
+        ErrA01[[❌ A-01 Anomalie bloquante\nAdresse manquante]]:::error
+        ErrA02[[⚠️ A-02/A-03 Anomalie\nNuméro manquant /\nRue à vérifier]]:::error
+    end
+
+    RefDep[(Référentiels / BBox)]:::db
+
+    LowPrio[🔍 Contrôle Faible Priorité\nCohérence Département / Pays]:::process
+
+    FinalReport[/📊 Rapport Excel de Synthèse\n1 Ligne = 1 Site consolidé/]:::final
+
+    %% --- EDGES ---
+    CSV ==> FiltreActif
+    FiltreActif -- NON --> Ignore
+    FiltreActif -- OUI --> HasGPS
+    
+    %% GPS Logic
+    HasGPS -- OUI --> InBbox
+    HasGPS -- NON --> Bascule
+    
+    RefDep -.-> InBbox
+    RefDep -.-> CohCP
+    
+    InBbox -- OUI --> CohCP
+    InBbox -- NON --> Bascule
+    
+    CohCP -- OUI --> SiteOK_GPS
+    CohCP -- NON --> Bascule
+    
+    Bascule ==> HasAddr
+    
+    %% Address Logic
+    HasAddr -- OUI --> HasNum
+    HasAddr -- NON --> ErrA01
+    
+    HasNum -- OUI --> SiteOK_ADDR
+    HasNum -- NON --> ErrA02
+    
+    %% Consolidation
+    SiteOK_GPS ---> LowPrio
+    SiteOK_ADDR ---> LowPrio
+    ErrA01 ---> LowPrio
+    ErrA02 ---> LowPrio
+    
+    LowPrio ==> FinalReport

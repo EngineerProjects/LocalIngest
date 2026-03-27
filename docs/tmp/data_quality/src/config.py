@@ -1,23 +1,21 @@
 """
-Configuration centralisée du projet — Contrôle Qualité Proxima v2.
+Configuration centralisée du projet — version simplifiée.
 
-Contient :
-- Config : chemins, colonnes, paramètres de validation
-- SupportLevel : niveaux de support par pays (COMPLET / PARTIEL / NON_SUPPORTÉ)
-- Severity : niveaux de gravité
-- AnomalyCode : définitions des anomalies
+La logique métier est volontairement limitée à quelques contrôles lisibles :
+- présence du GPS ;
+- cohérence GPS / pays ;
+- cohérence GPS / code postal quand le référentiel existe ;
+- présence de l'adresse ;
+- présence du numéro de voie ;
+- contrôles faibles priorité sur la rue et le département.
 """
 
 from pathlib import Path
 from typing import List, Optional
 
 
-# =============================================================================
-# CONFIGURATION GLOBALE
-# =============================================================================
-
 class Config:
-    """Configuration centralisée du projet."""
+    """Configuration globale du pipeline."""
 
     # ----- Chemins -----
     BASE_DIR = Path(__file__).resolve().parent.parent
@@ -29,11 +27,8 @@ class Config:
     # Fichier source
     INPUT_FILE = INPUT_DIR / "export_Saas_2026-03-03 1.csv"
 
-    # Fichier de référence global (fallback pour tous les pays)
+    # Références
     BBOX_PAYS_GLOBAL_FILE = REFERENCE_DIR / "bbox_pays_global.json"
-
-    # Noms de fichiers attendus dans chaque dossier pays
-    # Ex : data/references/FRANCE/codes_postaux.csv
     CP_FILENAME = "codes_postaux.csv"
     GEOJSON_FILENAMES = [
         "departements.geojson",
@@ -41,20 +36,16 @@ class Config:
         "regions.geojson",
         "provincias.geojson",
     ]
-    # Fichier de bounding boxes généré (dans le dossier du pays)
     BBOX_REGIONS_FILENAME = "bbox_regions.json"
 
     # ----- Paramètres CSV source -----
-    CSV_SEPARATOR = None    # Auto-détection (';' ou ',')
-    CSV_ENCODING = None     # Auto-détection
+    CSV_SEPARATOR = None
+    CSV_ENCODING = None
 
-    # ----- Filtre par pays (optionnel, surtout utile en debug) -----
-    # None = automatique, tous les pays presents dans le fichier
+    # ----- Filtre pays optionnel -----
     COUNTRY_FILTER: Optional[List[str]] = None
 
     # ----- Logs -----
-    # False = logs compacts (résumé global, défaut)
-    # True  = détail pays par pays pendant le chargement des références
     REFERENCE_LOG_DETAILS: bool = False
 
     # ----- Mapping des colonnes -----
@@ -83,100 +74,111 @@ class Config:
     COL_LATITUDE = "COORD_Y_SITE"
     COL_GEO_QUALITY = "QUALITE_GEOCODAGE"
 
-    # Colonnes techniques (capitaux)
-    COLS_CAPITAL = [
-        "CAPITAUX_MURS_BATIMENTS",
-        "CAPITAUX_CONTENU",
-        "CAPITAUX_MATERIEL",
-        "CAPITAUX_MARCHANDISES",
-        "CAPITAUX_TT",
-        "CAPITAUX_ASS_MH_HLL_CARAV",
-        "CAPITAUX_DEPENDANCE",
-        "CAPITAUX_COMPL",
-        "CAPITAUX_DD",
+    # Colonnes export métier
+    BUSINESS_EXPORT_COLUMNS = [
+        COL_CONTRACT_ID,
+        COL_SITE_ID,
+        COL_CLIENT_NAME,
+        COL_SITE_NAME,
+        COL_COUNTRY,
+        COL_POSTAL_CODE,
+        COL_CITY,
+        COL_STREET_NUMBER,
+        COL_STREET_NAME,
+        COL_STREET_FULL,
+        COL_FULL_ADDRESS,
+        COL_LONGITUDE,
+        COL_LATITUDE,
+        "_CONTROL_MODE",
+        "_CONTROL_STATUS",
+        "_PRIORITY",
+        "_ISSUE_COUNT",
+        "_ISSUE_CODES",
+        "_ISSUE_SUMMARY",
     ]
 
-    # Colonnes techniques (surface)
-    COLS_SURFACE = [
-        "SURFACE",
-        "SURFACE_DPDCE",
+    ENRICHED_EXPORT_COLUMNS = BUSINESS_EXPORT_COLUMNS + [
+        "_SITE_KEY",
+        "_HAS_GPS",
+        "_GPS_IN_COUNTRY",
+        "_GPS_MATCH_POSTAL_CODE",
+        "_ADDRESS_PRESENT",
+        "_STREET_NUMBER_PRESENT",
+        "_DEPARTMENT_CODE",
+        "_DEPARTMENT_COUNTRY_OK",
     ]
 
-    # Toutes les colonnes techniques
-    COLS_TECHNICAL = COLS_CAPITAL + COLS_SURFACE
+    DETAIL_ANOMALY_COLUMNS = [
+        COL_SITE_ID,
+        COL_CONTRACT_ID,
+        "CODE_ANOMALIE",
+        "LIBELLE",
+        "GRAVITE",
+        "CATEGORIE",
+        "DESCRIPTION",
+        "CHAMPS_CONCERNES",
+        "VALEUR_ACTUELLE",
+        "SUGGESTION",
+        "SCORE_SIMILARITE",
+    ]
 
-    # ----- Paramètres de validation -----
-    FUZZY_THRESHOLD_HIGH = 90     # Probable faute de frappe
-    FUZZY_THRESHOLD_MEDIUM = 70   # Ville douteuse
-
-
-# =============================================================================
-# NIVEAUX DE SUPPORT PAR PAYS
-# =============================================================================
 
 class SupportLevel:
-    """Niveaux de support géographique par pays."""
+    """Niveau de couverture des références."""
 
-    COMPLET = "COMPLET"         # Dossier pays avec codes_postaux.csv + geojson
-    PARTIEL = "PARTIEL"         # Pas de dossier pays, mais présent dans bbox_pays_global
-    NON_SUPPORTE = "NON_SUPPORTÉ"  # Absent de bbox_pays_global aussi
-
-
-# =============================================================================
-# NIVEAUX DE GRAVITÉ
-# =============================================================================
-
-class Severity:
-    """Niveaux de gravité des anomalies."""
-
-    GRAVE = "GRAVE"
-    LEGERE = "LÉGÈRE"
-    INFO = "INFO"
+    COMPLET = "COMPLET"
+    PARTIEL = "PARTIEL"
+    NON_SUPPORTE = "NON_SUPPORTÉ"
 
 
-# =============================================================================
-# CODES ET DÉFINITIONS DES ANOMALIES
-# =============================================================================
+class Priority:
+    """Niveau de priorité métier pour la correction."""
 
-class AnomalyCode:
-    """Codes et définitions des anomalies."""
+    HIGH = "HAUTE"
+    MEDIUM = "MOYENNE"
+    LOW = "FAIBLE"
+    NONE = "OK"
+
+
+class ControlStatus:
+    """Statut de lecture rapide dans le rapport."""
+
+    OK = "OK"
+    TO_FIX = "A_CORRIGER"
+    TO_COMPLETE = "A_COMPLETER"
+    TO_REVIEW = "A_VERIFIER"
+
+
+class ValidationMode:
+    """Chemin de validation retenu pour le site."""
+
+    GPS = "GPS_OK"
+    ADDRESS = "ADRESSE_OK"
+    INCOMPLETE = "INCOMPLET"
+
+
+class IssueCode:
+    """Catalogue simplifié des anomalies par site."""
 
     DEFINITIONS = {
-        # ----- Indépendants (toujours exécutés) -----
-        "P-07": ("Données techniques manquantes", Severity.GRAVE, "prérequis"),
-
-        # ----- Prérequis pays -----
-        "P-01": ("Pays manquant", Severity.GRAVE, "prérequis"),
-        "R-01": ("Pays non supporté (pas de référence géographique)", Severity.INFO, "référence"),
-
-        # ----- GPS -----
-        "G-01": ("GPS incomplet (une seule coordonnée)", Severity.LEGERE, "gps"),
-        "G-02": ("Format longitude invalide", Severity.GRAVE, "gps"),
-        "G-03": ("Format latitude invalide", Severity.GRAVE, "gps"),
-        "G-04": ("GPS hors région/département", Severity.LEGERE, "gps"),
-        "G-05": ("GPS hors du pays renseigné", Severity.GRAVE, "gps"),
-        "G-06": ("Cause probable : X et Y inversés", Severity.INFO, "gps"),
-        "G-07": ("Cause probable : signe erroné", Severity.INFO, "gps"),
-
-        # ----- Adresse -----
-        "A-01": ("Code postal manquant", Severity.GRAVE, "adresse"),
-        "A-02": ("Ville manquante", Severity.GRAVE, "adresse"),
-        "A-03": ("Rue manquante", Severity.LEGERE, "adresse"),
-        "A-04": ("Code postal non trouvé dans la référence", Severity.GRAVE, "adresse"),
-        "A-05": ("Incohérence CP / Ville", Severity.LEGERE, "adresse"),
-
-        # ----- Localisation finale -----
-        "L-01": ("Site non localisable (ni GPS ni adresse valide)", Severity.GRAVE, "localisation"),
+        "P-01": ("Pays manquant", Priority.HIGH),
+        "P-02": ("Code postal manquant", Priority.MEDIUM),
+        "R-01": ("Pays non couvert", Priority.LOW),
+        "G-01": ("GPS manquant", Priority.MEDIUM),
+        "G-02": ("GPS incomplet", Priority.MEDIUM),
+        "G-03": ("GPS invalide", Priority.HIGH),
+        "G-04": ("GPS hors pays", Priority.HIGH),
+        "G-05": ("GPS incohérent avec le code postal", Priority.HIGH),
+        "A-01": ("Adresse manquante", Priority.HIGH),
+        "A-02": ("Numéro de voie manquant", Priority.MEDIUM),
+        "A-03": ("Rue à vérifier manuellement", Priority.LOW),
+        "D-01": ("Département / pays à vérifier", Priority.LOW),
     }
 
     @classmethod
     def get_label(cls, code: str) -> str:
-        return cls.DEFINITIONS.get(code, ("Inconnu", Severity.INFO, "inconnu"))[0]
+        return cls.DEFINITIONS.get(code, ("Code inconnu", Priority.LOW))[0]
 
     @classmethod
-    def get_severity(cls, code: str) -> str:
-        return cls.DEFINITIONS.get(code, ("Inconnu", Severity.INFO, "inconnu"))[1]
-
-    @classmethod
-    def get_category(cls, code: str) -> str:
-        return cls.DEFINITIONS.get(code, ("Inconnu", Severity.INFO, "inconnu"))[2]
+    def get_priority(cls, code: str) -> str:
+        return cls.DEFINITIONS.get(code, ("Code inconnu", Priority.LOW))[1]

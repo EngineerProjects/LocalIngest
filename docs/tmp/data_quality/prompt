@@ -1,0 +1,67 @@
+Mon tuteur trouve ma sortie trop compliquée. L’objectif est de simplifier fortement la logique et les résultats produits.
+
+Aujourd’hui, mes contrôles ressemblent à du géocodage complet, alors que ce n’est pas ce qu’on veut. Voici ce que le système doit réellement faire, de manière simple et lisible, d’après mon tuteur :
+
+1. Vérifier si la longitude et la latitude sont renseignées.
+2. Si oui, vérifier si elles sont dans la plage des coordonnées du pays (bornes min/max par pays).
+3. Si oui, vérifier si le couple XY correspond au code postal (j’ai déjà le référentiel).
+4. Si non, vérifier si l’adresse est renseignée.
+5. Si oui, vérifier si le numéro de rue est renseigné.
+6. Si non, vérifier la cohérence du nom de rue avec le code département (faible priorité).
+7. Vérifier la cohérence du code département avec le pays (faible priorité).
+
+Problème actuel :
+- Mes sorties sont trop complexes.
+- Pour ~300 000 sites analysés, j’obtiens ~700 000 anomalies, ce qui est illisible.
+- Mon tuteur veut : une ligne par site, avec toutes les anomalies regroupées dans un seul libellé clair.
+- Les colonnes sont validées, mais les libellés doivent être simplifiés et compréhensibles.
+
+Ce que je dois produire maintenant :
+- Une architecture claire (schéma) avec de bonnes couleurs, idéalement via Excalidraw ou Draw.io. Comme tu n’y as pas accès, on utilisera un format simple que tu peux manipuler.
+- Une simplification des règles, des sorties et des libellés.
+- Une consolidation des anomalies par site (pas une ligne par anomalie).
+- Une meilleure lisibilité globale.
+
+Structure actuelle sur mon ordinateur :
+
+Documentation :
+- docs/tmp/data_quality/docs/description.md
+- docs/tmp/data_quality/docs/old_infos/output.txt
+- docs/tmp/data_quality/docs/old_infos/input.txt
+- docs/tmp/data_quality/docs/old_infos/architecture.txt
+- docs/tmp/data_quality/docs/new_infos/ (nouvelle version de la doc)
+
+Données :
+- data/outputs/rapport_anomalies_20260327_052613.xlsx (ancienne version)
+- data/inputs/export_Saas_2026-03-03 1.csv
+- data/references/FRANCE/departements.geojson
+- data/references/FRANCE/codes_postaux.csv
+- data/references/bbox_pays_global.json
+
+Code :
+- src/
+- main.py
+- requirements.txt
+
+Ancienne version :
+- backup/20260327_060745/ (ancienne version complète du code et des sorties)
+
+Objectifs :
+1. Vérifier si la nouvelle documentation dans docs/new_infos correspond bien à ce que mon tuteur veut (logique, simplification, lisibilité).
+2. Comparer l’ancienne version du code (backup/20260327_060745) et la nouvelle version (src/) pour identifier tout ce qui ne va pas dans la nouvelle version (complexité, logique, sorties, libellés).
+3. Avant toute modification, analyser sérieusement l’input pour bien comprendre la donnée d’entrée. L’échantillon fourni doit servir de base de réflexion, en supposant que la logique sera ensuite applicable à un grand volume.
+
+Format cible des anomalies (exemple de structure) :
+- ID_SITE
+- NU_CNT
+- CODE_ANOMALIE
+- LIBELLE
+- GRAVITE
+- CATEGORIE
+- DESCRIPTION
+- CHAMPS_CONCERNES
+- VALEUR_ACTUELLE
+- SUGGESTION
+- SCORE_SIMILARITE
+
+Ne fais aucune modification dans le code sans mon autorisation stp

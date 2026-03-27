@@ -1,0 +1,157 @@
+================================================================================
+                 NOUVELLE LOGIQUE MÉTIER — VERSION SIMPLIFIÉE
+================================================================================
+
+POURQUOI CETTE NOUVELLE LOGIQUE ?
+--------------------------------
+
+L'ancienne logique ressemblait trop à un géocodage complet :
+
+- trop de contrôles techniques ;
+- trop de détails ;
+- trop d'anomalies produites ;
+- lecture difficile pour les métiers.
+
+Le nouvel objectif est beaucoup plus simple :
+
+- contrôler rapidement si les données de localisation sont cohérentes ;
+- produire une sortie lisible ;
+- avoir 1 ligne par site ;
+- regrouper tous les problèmes du site dans un seul libellé clair.
+
+
+IDÉE GÉNÉRALE
+-------------
+
+On ne cherche plus à faire une localisation experte.
+On suit seulement une suite courte de vérifications métier.
+
+Le système se pose les questions suivantes, dans cet ordre :
+
+1. Est-ce que le GPS est renseigné ?
+2. Si oui, est-ce qu'il est dans le bon pays ?
+3. Si oui, est-ce qu'il est cohérent avec le code postal ?
+4. Si le GPS ne valide pas le site, est-ce que l'adresse est renseignée ?
+5. Si oui, est-ce que le numéro de voie est renseigné ?
+6. Si non, la rue doit-elle être revue manuellement ? (faible priorité)
+7. Le code département est-il cohérent avec le pays ? (faible priorité)
+
+
+NOUVELLE LOGIQUE PAS À PAS
+--------------------------
+
+ÉTAPE 1 — FILTRER LES SITES ACTIFS
+On ne contrôle que les sites actifs :
+
+- `STOCK = 1`
+- `DT_EFF_RESIL_CNT` vide
+
+
+ÉTAPE 2 — CONTRÔLER LE GPS
+Si longitude et latitude sont présentes :
+
+- on vérifie qu'elles sont bien exploitables ;
+- on vérifie qu'elles sont dans la bbox du pays ;
+- on vérifie ensuite si elles sont cohérentes avec le code postal
+  quand on a le référentiel départemental.
+
+Si le GPS passe ces contrôles, le site est considéré comme validé par GPS.
+
+
+ÉTAPE 3 — BASCULER SUR L'ADRESSE SI LE GPS NE SUFFIT PAS
+Si le GPS est absent, incomplet, invalide ou incohérent :
+
+- on regarde si une adresse est renseignée ;
+- si oui, on vérifie si le numéro de voie est présent.
+
+Si l'adresse existe et que le numéro de voie est présent,
+le site est considéré comme validé par adresse.
+
+
+ÉTAPE 4 — CONTRÔLES FAIBLE PRIORITÉ
+Même si le contrôle principal est terminé, on peut ajouter des alertes légères :
+
+- rue à vérifier manuellement ;
+- code département à vérifier avec le pays.
+
+Ces alertes servent surtout à signaler un doute, pas à faire échouer tout le site.
+
+
+CE QUI CHANGE PAR RAPPORT À AVANT
+---------------------------------
+
+AVANT :
+
+- 1 ligne = 1 anomalie ;
+- plusieurs codes et diagnostics très détaillés ;
+- logique proche d'un moteur de géocodage ;
+- rapport difficile à lire.
+
+MAINTENANT :
+
+- 1 ligne = 1 site ;
+- anomalies regroupées ;
+- libellé final court ;
+- priorité simple ;
+- statut simple ;
+- logique métier beaucoup plus facile à expliquer.
+
+
+RÈGLES RETENUES DANS LE RAPPORT
+-------------------------------
+
+Codes principaux :
+
+- `G-01` → GPS manquant
+- `G-02` → GPS incomplet
+- `G-03` → GPS invalide
+- `G-04` → GPS hors pays
+- `G-05` → GPS incohérent avec le code postal
+
+- `A-01` → Adresse manquante
+- `A-02` → Numéro de voie manquant
+- `A-03` → Rue à vérifier manuellement
+
+- `P-01` → Pays manquant
+- `P-02` → Code postal manquant
+- `R-01` → Pays non couvert par le référentiel GPS
+- `D-01` → Code département à vérifier avec le pays
+
+
+FORMAT DE SORTIE ATTENDU
+------------------------
+
+Le rapport final doit être lisible immédiatement :
+
+- 1 ligne = 1 site ;
+- `_ISSUE_CODES` = liste des codes du site ;
+- `_ISSUE_SUMMARY` = phrase consolidée ;
+- `_PRIORITY` = niveau de priorité ;
+- `_CONTROL_STATUS` = statut métier.
+
+
+EXEMPLES DE LIBELLÉS FINAUX
+---------------------------
+
+Exemple 1 :
+`GPS manquant | Adresse manquante`
+
+Exemple 2 :
+`GPS hors pays | Numéro de voie manquant | Rue à vérifier manuellement`
+
+Exemple 3 :
+`GPS incohérent avec le code postal`
+
+
+POINT IMPORTANT SUR LA CLÉ DU SITE
+----------------------------------
+
+Dans l'échantillon analysé, `ID_SITE` seul n'est pas unique.
+
+La clé la plus fiable observée est :
+
+    `NU_CNT + ID_SITE`
+
+C'est cette logique qu'il faut garder pour la consolidation :
+
+    1 ligne rapport = 1 couple `NU_CNT + ID_SITE`

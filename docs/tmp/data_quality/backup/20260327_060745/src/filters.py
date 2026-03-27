@@ -1,8 +1,8 @@
 """
-Filtres de données — Étape 0.
+Filtres de données — Étape 1.
 
 - filter_active_sites : STOCK=1, pas de date de résiliation
-- filter_by_country : filtre optionnel par pays (configurable)
+- filter_by_country   : filtre optionnel par pays (configurable dans Config)
 """
 
 from typing import List, Optional
@@ -10,22 +10,22 @@ from typing import List, Optional
 import pandas as pd
 
 from src.config import Config
-from src.utils import format_number, is_empty, safe_str
+from src.utils import format_number, is_empty, normalize_country
 
 
 def filter_active_sites(df: pd.DataFrame) -> pd.DataFrame:
     """
     Filtre les sites actifs.
 
-    Critères retenus :
-    - STOCK = 1
-    - DT_EFF_RESIL_CNT est vide (pas de date de résiliation)
+    Critères :
+        - STOCK = 1
+        - DT_EFF_RESIL_CNT est vide (pas de date de résiliation)
 
     Returns:
         DataFrame filtré contenant uniquement les sites actifs.
     """
     print("\n" + "=" * 60)
-    print("   ÉTAPE 0 — FILTRE SITES ACTIFS")
+    print("   ÉTAPE 1 — FILTRE SITES ACTIFS")
     print("=" * 60)
 
     initial_count = len(df)
@@ -36,31 +36,25 @@ def filter_active_sites(df: pd.DataFrame) -> pd.DataFrame:
     # Condition 2 : DT_EFF_RESIL_CNT est vide
     mask_resil = df[Config.COL_DT_RESIL].apply(is_empty)
 
-    # Combinaison des conditions
     mask_active = mask_stock & mask_resil
-
     df_active = df[mask_active].copy()
 
-    # Statistiques
     filtered_count = len(df_active)
     removed_count = initial_count - filtered_count
 
-    print(f"\n📊 Résultats du filtre :")
+    print(f"\nRésultats du filtre :")
     print(f"   Lignes initiales     : {format_number(initial_count)}")
     print(f"   Sites actifs retenus : {format_number(filtered_count)}")
     print(f"   Sites exclus         : {format_number(removed_count)}")
     print(f"   Taux de rétention    : {(filtered_count / initial_count) * 100:.2f}%")
 
-    # Détail des exclusions
     excluded_stock = (~mask_stock).sum()
     excluded_resil = (~mask_resil).sum()
-
-    print(f"\n📋 Détail des exclusions :")
+    print(f"\nDétail des exclusions :")
     print(f"   STOCK ≠ 1            : {format_number(excluded_stock)}")
     print(f"   Date résiliation     : {format_number(excluded_resil)}")
 
     print("\n" + "=" * 60)
-
     return df_active
 
 
@@ -77,7 +71,7 @@ def filter_by_country(
                    Si None, renvoie le DataFrame tel quel.
 
     Returns:
-        DataFrame filtré
+        DataFrame filtré.
     """
     if countries is None:
         return df
@@ -87,25 +81,22 @@ def filter_by_country(
     print("=" * 60)
 
     initial_count = len(df)
+    countries_upper = {
+        normalized
+        for country in countries
+        for normalized in [normalize_country(country)]
+        if normalized
+    }
 
-    # Normaliser les pays du filtre
-    countries_upper = [c.upper().strip() for c in countries]
-
-    # Normaliser la colonne pays pour la comparaison
     mask = df[Config.COL_COUNTRY].apply(
-        lambda x: safe_str(x).upper() in countries_upper
+        lambda x: normalize_country(x) in countries_upper
     )
-
     df_filtered = df[mask].copy()
 
-    filtered_count = len(df_filtered)
-    removed_count = initial_count - filtered_count
-
-    print(f"\n📊 Filtre pays : {', '.join(countries_upper)}")
+    print(f"\nFiltre pays : {', '.join(sorted(countries_upper))}")
     print(f"   Lignes avant filtre  : {format_number(initial_count)}")
-    print(f"   Lignes retenues      : {format_number(filtered_count)}")
-    print(f"   Lignes exclues       : {format_number(removed_count)}")
+    print(f"   Lignes retenues      : {format_number(len(df_filtered))}")
+    print(f"   Lignes exclues       : {format_number(initial_count - len(df_filtered))}")
 
     print("\n" + "=" * 60)
-
     return df_filtered

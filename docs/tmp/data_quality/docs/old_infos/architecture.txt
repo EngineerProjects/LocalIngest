@@ -1,0 +1,423 @@
+══════════════════════════════════════════════════════════════════════════════════════
+                    PROJET CONTRÔLE QUALITÉ — DONNÉES DE LOCALISATION PROXIMA
+══════════════════════════════════════════════════════════════════════════════════════
+
+
+1. PRÉSENTATION GÉNÉRALE DU PROJET
+──────────────────────────────────────────────────────────────────────────────────────
+
+L’objectif de ce projet est de contrôler et fiabiliser la qualité des données de
+localisation des sites présents dans les données Proxima.
+
+L’idée est simple : pour chaque site, on cherche à déterminer s’il peut être localisé
+de manière exploitable à partir des informations disponibles. Cette localisation peut
+reposer soit sur les coordonnées GPS, soit sur l’adresse du site lorsque le GPS n’est
+pas utilisable.
+
+Le système doit permettre de :
+
+- vérifier qu’un site peut être localisé correctement ;
+- détecter les incohérences entre les différentes informations disponibles ;
+- identifier les erreurs bloquantes ou mineures ;
+- expliquer clairement les anomalies rencontrées ;
+- produire un rapport lisible pour faciliter les corrections.
+
+Un site est considéré comme correctement localisé dans les cas suivants :
+
+- les coordonnées GPS sont présentes et jugées fiables ;
+- à défaut, l’adresse du site est suffisamment valide
+  (notamment via le code postal et la ville).
+
+Si ni le GPS ni l’adresse ne permettent une localisation fiable, le site est alors
+considéré comme non localisable.
+
+
+2. PRINCIPE GÉNÉRAL DE FONCTIONNEMENT
+──────────────────────────────────────────────────────────────────────────────────────
+
+Le moteur de contrôle applique une logique de validation hiérarchisée :
+
+1. Le GPS est toujours prioritaire.
+2. Si le GPS est absent, incomplet ou invalide, le système bascule sur l’adresse.
+3. Si l’adresse n’est pas exploitable non plus, le site est classé comme non localisable.
+
+Cette approche permet de maximiser le nombre de sites localisés tout en conservant un
+niveau de fiabilité cohérent.
+
+
+3. ÉLÉMENTS CONTRÔLÉS
+──────────────────────────────────────────────────────────────────────────────────────
+
+A. Contrôles généraux
+---------------------
+Certains contrôles sont réalisés indépendamment du mode de localisation :
+
+- présence du pays (obligatoire) ;
+- présence de certaines données techniques métier
+  (par exemple : surface, capitaux).
+
+B. Vérification du GPS
+----------------------
+Lorsque des coordonnées sont disponibles, le système vérifie notamment :
+
+- si les coordonnées sont complètes ;
+- si leur format est valide ;
+- si elles se situent bien dans le bon pays ;
+- si elles sont cohérentes avec la région ou le département attendu
+  lorsque ce niveau de contrôle est disponible.
+
+Le système peut également détecter certaines erreurs fréquentes, par exemple :
+
+- coordonnées inversées (X / Y) ;
+- signe erroné sur une coordonnée ;
+- coordonnées plausibles mais situées hors du territoire attendu.
+
+C. Vérification de l’adresse
+----------------------------
+Lorsque le GPS ne peut pas être exploité, la validation repose sur l’adresse.
+
+Les éléments suivants sont alors contrôlés :
+
+- présence du code postal ;
+- présence de la ville ;
+- validité du code postal ;
+- cohérence entre le code postal et la ville.
+
+Le système peut tolérer certaines petites erreurs, notamment des fautes de frappe
+mineures sur la ville, mais les incohérences importantes sont signalées.
+
+
+4. RÉSULTAT ATTENDU POUR CHAQUE SITE
+──────────────────────────────────────────────────────────────────────────────────────
+
+À l’issue des contrôles, chaque site est classé dans l’une des catégories suivantes :
+
+- Localisé via GPS
+- Localisé via adresse
+- Non localisable
+
+Cette classification constitue le résultat principal du contrôle qualité.
+
+
+5. NIVEAUX D’ANOMALIES
+──────────────────────────────────────────────────────────────────────────────────────
+
+Les anomalies détectées sont classées selon trois niveaux de gravité :
+
+- GRAVE   : anomalie bloquante ou fortement pénalisante ;
+- LÉGÈRE  : anomalie mineure, n’empêchant pas toujours la localisation ;
+- INFO    : information utile ou suspicion à examiner.
+
+Exemples :
+
+- pays manquant                           → GRAVE
+- GPS hors pays                           → GRAVE
+- incohérence régionale non bloquante     → LÉGÈRE
+- suspicion d’inversion X / Y             → INFO
+
+
+6. LIVRABLE ATTENDU
+──────────────────────────────────────────────────────────────────────────────────────
+
+Le système doit produire un fichier Excel structuré permettant :
+
+- d’obtenir une vision globale du niveau de qualité ;
+- d’identifier précisément les anomalies par site ;
+- d’exploiter un fichier enrichi avec les résultats du contrôle ;
+- de fournir une vue métier directement utilisable pour correction.
+
+Le rapport est composé de plusieurs onglets :
+
+1. Résumé global
+2. Détail des anomalies
+3. Données enrichies
+4. Sites avec anomalies (vue métier)
+
+
+7. VALEUR AJOUTÉE DU PROJET
+──────────────────────────────────────────────────────────────────────────────────────
+
+Ce projet permet de :
+
+- améliorer la qualité globale des données de localisation ;
+- détecter rapidement les erreurs critiques ;
+- orienter efficacement les corrections ;
+- fiabiliser les usages métier et analytiques reposant sur la géolocalisation.
+
+
+8. POINTS RESTANT À CONFIRMER
+──────────────────────────────────────────────────────────────────────────────────────
+
+Certains paramètres doivent encore être validés :
+
+- le seuil exact de tolérance pour les erreurs sur les noms de ville ;
+- la liste des pays à traiter en priorité ;
+- certaines règles métier spécifiques ;
+- la liste définitive des données techniques obligatoires.
+
+
+
+══════════════════════════════════════════════════════════════════════════════════════
+                              2. ARCHITECTURE DES RÉFÉRENCES
+══════════════════════════════════════════════════════════════════════════════════════
+
+
+STRUCTURE DES DOSSIERS
+──────────────────────────────────────────────────────────────────────────────────────
+
+data/
+├── references/
+│   ├── FRANCE/
+│   │   ├── codes_postaux.csv         # CP → liste des communes
+│   │   └── departements.geojson      # Contours / bounding boxes
+│   │
+│   ├── BELGIQUE/
+│   │   ├── codes_postaux.csv
+│   │   └── provinces.geojson
+│   │
+│   ├── ESPAGNE/
+│   │   ├── codes_postaux.csv
+│   │   └── provincias.geojson
+│   │
+│   ├── {PAYS}/
+│   │   ├── codes_postaux.csv         # Obligatoire pour validation CP / Ville
+│   │   └── regions.geojson           # Obligatoire pour validation GPS / Région
+│   │
+│   └── bbox_pays_global.json         # Bounding boxes globales de tous les pays
+│                                     # Utilisé en fallback si le dossier pays
+│                                     # n’existe pas ou est incomplet
+│
+├── inputs/
+│   └── proxima_datamart.csv          # Fichier source à analyser
+│
+└── outputs/
+    └── rapport_anomalies.xlsx        # Rapport généré
+
+
+NIVEAUX DE SUPPORT PAR PAYS
+──────────────────────────────────────────────────────────────────────────────────────
+
+Le niveau de support d’un pays dépend de la disponibilité des référentiels.
+
+- COMPLET
+  Le pays dispose de :
+  - sa bounding box ;
+  - son référentiel code postal / ville ;
+  - son référentiel géographique régional.
+
+- PARTIEL
+  Le pays dispose de :
+  - sa bounding box ;
+  - son référentiel code postal / ville ;
+  - mais pas du référentiel régional.
+
+- NON_SUPPORTÉ
+  Le pays ne dispose pas de suffisamment de données de référence
+  pour effectuer une validation fiable.
+
+
+
+══════════════════════════════════════════════════════════════════════════════════════
+                              FLUX DE VALIDATION COMPLET
+══════════════════════════════════════════════════════════════════════════════════════
+
+
+                                   ┌─────────────────────────┐
+                                   │   CHARGEMENT INITIAL    │
+                                   │                         │
+                                   │ - Lister les pays       │
+                                   │ - Charger références    │
+                                   └───────────┬─────────────┘
+                                               │
+                                               ▼
+                          ┌────────────────────────────────────────────┐
+                          │ Déterminer le niveau de support du pays    │
+                          │                                            │
+                          │ COMPLET      → bbox + CP + régions         │
+                          │ PARTIEL      → bbox + CP (sans régions)    │
+                          │ NON_SUPPORTÉ → données insuffisantes       │
+                          └────────────────────┬───────────────────────┘
+                                               │
+                                               ▼
+    ╔════════════════════════════════════════════════════════════════════════════════════╗
+    ║                           TRAITEMENT DE CHAQUE SITE ACTIF                          ║
+    ╚════════════════════════════════════════════════════════════════════════════════════╝
+                                               │
+                 ┌─────────────────────────────┴─────────────────────────────┐
+                 │                                                           │
+                 ▼                                                           ▼
+
+        ┌─────────────────────────┐                           ┌─────────────────────────┐
+        │ PRÉREQUIS GLOBAUX       │                           │ CONTRÔLE TECHNIQUE      │
+        │                         │                           │ (indépendant)           │
+        │ P-01 : Pays manquant ?  │                           │                         │
+        │ → GRAVE                 │                           │ P-07 : Capitaux /       │
+        │ → BLOQUANT              │                           │        Surface manquants│
+        └──────────┬──────────────┘                           │ → GRAVE                 │
+                   │                                          │ (n’empêche pas la       │
+                   │ Pays présent ?                           │  localisation)          │
+             ┌─────┴─────┐                                    └─────────────────────────┘
+            NON         OUI
+             │           │
+             ▼           ▼
+         STOP        ┌──────────────────────────────────────┐
+       Anomalie      │ Niveau de support du pays ?          │
+         P-01        └──────────────┬───────────────────────┘
+                                    │
+                     ┌──────────────┼──────────────┐
+                     │              │              │
+                     ▼              ▼              ▼
+                 COMPLET        PARTIEL      NON_SUPPORTÉ
+                     │              │              │
+                     │              │              ▼
+                     │              │      Anomalie INFO R-01
+                     │              │      "Pays non supporté"
+                     │              │
+                     └──────────────┴──────────────┘
+                                    │
+                                    ▼
+                      ┌──────────────────────────────┐
+                      │ GPS présent ?                │
+                      │ (au moins X ou Y renseigné)  │
+                      └──────────────┬───────────────┘
+                               ┌─────┴─────┐
+                              OUI         NON
+                               │           │
+                               ▼           ▼
+
+                     ╔══════════════════╗   ╔══════════════════╗
+                     ║   CHEMIN GPS     ║   ║ CHEMIN ADRESSE   ║
+                     ║   prioritaire    ║   ║   (fallback)     ║
+                     ╚══════════════════╝   ╚══════════════════╝
+
+
+A. CHEMIN GPS
+──────────────────────────────────────────────────────────────────────────────────────
+
+       ┌──────────────────────────┐
+       │ G-01 : GPS incomplet ?   │
+       │ (un seul X ou Y)         │
+       └──────────┬───────────────┘
+                  │
+            ┌─────┴─────┐
+           OUI         NON
+            │           │
+            ▼           ▼
+     Anomalie G-01   ┌─────────────────────────────┐
+     LÉGÈRE          │ G-02 / G-03 : Format valide │
+     ↓               │ des coordonnées ?           │
+     BASCULE         └──────────────┬──────────────┘
+     ADRESSE                       ┌─┴──┐
+                                  NON  OUI
+                                   │    │
+                                   ▼    ▼
+                        Anomalie G-02/03 │
+                        GRAVE            │
+                        ↓                ▼
+                        BASCULE   ┌──────────────────────────┐
+                        ADRESSE   │ G-05 : GPS dans le bon   │
+                                  │ pays ?                   │
+                                  └──────────┬───────────────┘
+                                             │
+                                       ┌─────┴─────┐
+                                      NON         OUI
+                                       │           │
+                                       ▼           ▼
+                             ┌────────────────┐   ┌────────────────────────────┐
+                             │ DIAGNOSTICS    │   │ G-04 : GPS dans la bonne   │
+                             │ G-06 : X/Y     │   │ région / département ?     │
+                             │ inversés ?     │   │ (si support COMPLET)       │
+                             │ G-07 : signe   │   └─────────────┬──────────────┘
+                             │ erroné ?       │                 │
+                             └──────┬─────────┘           ┌─────┴─────┐
+                                    │                    NON         OUI
+                                    ▼                     │           │
+                         Anomalie G-05 GRAVE              ▼           ▼
+                         + diagnostic               Anomalie G-04    ╔══════════════╗
+                         ↓                           LÉGÈRE          ║ GPS VALIDE   ║
+                         BASCULE                     (GPS encore     ║ LOCALISÉ     ║
+                         ADRESSE                     exploitable)    ║ via GPS      ║
+                                                                     ╚══════════════╝
+
+                                                     ou
+
+                                                   ╔══════════════════════════╗
+                                                   ║ LOCALISÉ via GPS         ║
+                                                   ║ avec anomalie mineure    ║
+                                                   ╚══════════════════════════╝
+
+
+B. CHEMIN ADRESSE (si GPS absent ou invalide)
+──────────────────────────────────────────────────────────────────────────────────────
+
+                                    │
+                                    ▼
+                 ┌────────────────────────────────────────────┐
+                 │ A-01 : Code postal manquant ?              │ → GRAVE
+                 │ A-02 : Ville manquante ?                   │ → GRAVE
+                 │ A-03 : Rue manquante ?                     │ → LÉGÈRE
+                 └──────────────────────┬─────────────────────┘
+                                        │
+                                        ▼
+                 ┌────────────────────────────────────────────┐
+                 │ A-04 : Code postal valide ?                │
+                 │ (si support COMPLET ou PARTIEL)            │
+                 └──────────────────────┬─────────────────────┘
+                                   ┌────┴────┐
+                                  NON       OUI
+                                   │         │
+                                   ▼         ▼
+                            Anomalie A-04   ┌────────────────────────────┐
+                            GRAVE           │ A-05 : Ville cohérente avec│
+                                            │ le code postal ?           │
+                                            └────────────┬───────────────┘
+                                                         │
+                                                   ┌─────┴─────┐
+                                                  NON         OUI
+                                                   │           │
+                                                   ▼           ▼
+                                           ┌────────────────┐  ╔══════════════╗
+                                           │ Fuzzy matching │  ║ ADRESSE      ║
+                                           │ sur la ville   │  ║ VALIDE       ║
+                                           └───────┬────────┘  ║ LOCALISÉ     ║
+                                                   │           ╚══════════════╝
+                         ┌─────────────────────────┼─────────────────────────┐
+                         │                         │                         │
+                         ▼                         ▼                         ▼
+                      ≥ 90 %                    70 à 89 %                 < 70 %
+                         │                         │                         │
+                         ▼                         ▼                         ▼
+                 Anomalie A-05             Anomalie A-05              Anomalie A-05
+                 LÉGÈRE                    LÉGÈRE                     GRAVE
+                         │                         │                         │
+                         ▼                         ▼                         ▼
+                 ╔══════════════╗          ╔══════════════╗         ┌─────────────────┐
+                 ║ LOCALISÉ     ║          ║ LOCALISÉ     ║         │ ADRESSE         │
+                 ║ (signalé)    ║          ║ (signalé)    ║         │ INVALIDE        │
+                 ╚══════════════╝          ╚══════════════╝         └────────┬────────┘
+                                                                              │
+                                                                              ▼
+                                                               ┌────────────────────────┐
+                                                               │ L-01 : NON LOCALISABLE │
+                                                               │ → GRAVE                │
+                                                               └────────────────────────┘
+
+
+DÉCISION FINALE
+──────────────────────────────────────────────────────────────────────────────────────
+
+✔ Si le GPS est valide         → le site est LOCALISÉ via GPS
+✔ Sinon si l’adresse est valide → le site est LOCALISÉ via ADRESSE
+✘ Sinon                        → le site est NON LOCALISABLE
+
+
+RÈGLES MÉTIER CLÉS
+──────────────────────────────────────────────────────────────────────────────────────
+
+- Le GPS reste toujours prioritaire.
+- L’adresse sert de solution de secours.
+- La validation régionale n’est possible que pour les pays en support COMPLET.
+- La validation code postal / ville n’est possible que pour les pays en support
+  COMPLET ou PARTIEL.
+- L’objectif principal est de localiser un maximum de sites, sans masquer
+  les incohérences détectées.
