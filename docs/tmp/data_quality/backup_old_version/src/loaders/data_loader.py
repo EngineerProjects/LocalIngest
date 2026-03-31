@@ -72,6 +72,15 @@ def show_initial_stats(df: pd.DataFrame) -> None:
             print(f"  ⚠️  ({format_number(doublons)} doublons détectés)", end="")
         print()
 
+    if {Config.COL_CONTRACT_ID, Config.COL_SITE_ID}.issubset(df.columns):
+        site_keys = (
+            df[[Config.COL_CONTRACT_ID, Config.COL_SITE_ID]]
+            .dropna()
+            .astype(str)
+            .drop_duplicates()
+        )
+        print(f"Couples NU_CNT + ID_SITE uniques : {format_number(len(site_keys))}")
+
     key_cols = [
         Config.COL_SITE_ID,
         Config.COL_COUNTRY,

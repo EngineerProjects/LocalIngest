@@ -1,43 +1,19 @@
-"""
-Évaluation d'un site — logique métier en 7 étapes.
-
-`evaluate_site` est le point d'entrée.
-Chaque étape est isolée dans une sous-fonction pour faciliter la lecture et le debug.
-
-Étape 1 : GPS renseigné et valide ?
-Étape 2 : GPS dans la bbox pays ?
-Étape 3 : GPS cohérent avec le code postal ?
-      → Si l'une de ces étapes échoue : bascule sur adresse
-Étape 4 : Adresse renseignée ?
-Étape 5 : Numéro de voie présent ?
-Étape 6 : Rue à vérifier manuellement ? (faible priorité)
-Étape 7 : Cohérence département / pays ? (faible priorité)
-"""
-
 from typing import Dict, List, Optional
 
 import pandas as pd
 
-from src.config import Config, IssueCode, ValidationMode
+from src.config import IssueCode, ValidationMode
 from src.loaders.reference_loader import ReferenceLoader
-from src.models import (
-    build_control_status,
-    build_issue_summary,
-    get_worst_priority,
-    ordered_unique_codes,
-)
 from src.utils import (
+    extract_postal_code,
     extract_region_code,
+    extract_street_number,
     is_in_bbox,
     is_not_empty,
     normalize_country,
+    parse_coordinate,
     safe_str,
 )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Point d'entrée public
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 def evaluate_site(
@@ -46,114 +22,98 @@ def evaluate_site(
     site_key: str,
 ) -> Dict:
     """
-    Évalue un site selon la logique métier en 7 étapes.
-    Retourne un dictionnaire prêt à être ajouté au DataFrame enrichi.
+    Évalue un site selon la logique métier.
+
+    Ordre obligatoire (chaque étape peut provoquer un STOP) :
+        A) Pays          → P-01 (pays vide), R-01 (pays inconnu du référentiel)
+        B) GPS           → G-02, G-03, G-06, G-04, P-02, G-05
+        C) Adresse       → A-01, A-02  (uniquement si GPS non valide)
     """
     issue_codes: List[str] = []
     issue_details: List[Dict] = []
 
-    country = normalize_country(row.get(Config.COL_COUNTRY))
-    postal_code = safe_str(row.get(Config.COL_POSTAL_CODE))
-    department_code = (
-        extract_region_code(country, postal_code) if country and postal_code else ""
-    )
+    country = normalize_country(row.get("PAYS_SITE"))
+    postal_code = safe_str(row.get("CP_SITE"))
+    full_address = safe_str(row.get("ADRESSE_SITE"))
 
-    # ── Étape 0 : Moteur de rejet immédiat (Bouncer pays) ────────────────────
+    # =========================================================================
+    # A. Contrôle Pays
+    # =========================================================================
+
+    # A.1 — Pays vide
+    # (En pratique handle_country_filter a déjà remplacé les vides par FRANCE,
+    #  mais on garde ce garde-fou au cas où.)
     if not country:
         issue_codes.append("P-01")
         _add_issue_detail(
             "P-01",
-            "Pays manquant",
-            "GRAVE",
+            IssueCode.get_label("P-01"),
             "pays",
-            "Le pays n'est pas renseigné. Validation bloquée.",
-            [Config.COL_COUNTRY],
+            "Le pays n'est pas renseigné.",
+            ["PAYS_SITE"],
             "",
             "Renseigner le pays.",
             issue_details,
-            row,
         )
-        final_codes = ordered_unique_codes(issue_codes)
-        addr_ctx = _read_address(row)
-        gps_ctx = _read_gps(row)
-        return {
-            "_SITE_KEY": site_key,
-            "_CONTROL_MODE": ValidationMode.INCOMPLETE,
-            "_CONTROL_STATUS": build_control_status(final_codes),
-            "_PRIORITY": get_worst_priority(final_codes),
-            "_ISSUE_COUNT": len(final_codes),
-            "_ISSUE_CODES": ", ".join(final_codes),
-            "_ISSUE_SUMMARY": build_issue_summary(final_codes),
-            "_ISSUE_DETAILS": issue_details,
-            "_HAS_GPS": gps_ctx["has_any"],
-            "_GPS_IN_COUNTRY": None,
-            "_GPS_MATCH_POSTAL_CODE": None,
-            "_ADDRESS_PRESENT": addr_ctx["address_present"],
-            "_STREET_NUMBER_PRESENT": addr_ctx["street_number_present"],
-            "_DEPARTMENT_CODE": department_code,
-            "_DEPARTMENT_COUNTRY_OK": None,
-        }
+        return _build_result(site_key, ValidationMode.INCOMPLETE, issue_codes, issue_details)
 
-    # ── Étapes 1-3 : chemin GPS ──────────────────────────────────────────────
+    # A.2 — Pays inconnu du référentiel
+    bbox_country = ref_loader.get_bbox_pays(country)
+    if bbox_country is None:
+        issue_codes.append("R-01")
+        _add_issue_detail(
+            "R-01",
+            IssueCode.get_label("R-01"),
+            "pays",
+            f"Le pays '{country}' n'est pas présent dans le référentiel.",
+            ["PAYS_SITE"],
+            f"Pays={country}",
+            "",
+            issue_details,
+        )
+        return _build_result(site_key, ValidationMode.INCOMPLETE, issue_codes, issue_details)
+
+    # =========================================================================
+    # Extraction des champs dérivés (CP, numéro de rue, département)
+    # =========================================================================
+
+    # CP : priorité CP_SITE, sinon extraction regex depuis ADRESSE_SITE
+    extracted_cp = extract_postal_code(full_address)
+    if not postal_code and extracted_cp:
+        postal_code = extracted_cp
+
+    extracted_num = extract_street_number(full_address)
+    dept_code = extract_region_code(country, postal_code) if postal_code else ""
+
+    # =========================================================================
+    # B. Contrôle GPS
+    # =========================================================================
     gps_ctx = _read_gps(row)
     gps_result = _check_gps_path(
-        gps_ctx,
-        country,
-        postal_code,
-        department_code,
-        ref_loader,
-        issue_codes,
-        issue_details,
-        row,
+        gps_ctx, country, postal_code, dept_code, bbox_country, ref_loader,
+        issue_codes, issue_details,
     )
-    gps_path_valid = gps_result["valid"]
 
-    # ── Étapes 4-6 : chemin adresse (si GPS n'a pas validé) ─────────────────
-    addr_ctx = _read_address(row)
-    if not gps_path_valid:
-        control_mode = _check_address_path(
-            row, addr_ctx, postal_code, issue_codes, issue_details
-        )
-    else:
+    # =========================================================================
+    # C. Contrôle Adresse (uniquement si le GPS n'a pas validé le site)
+    # =========================================================================
+    if gps_result["valid"]:
         control_mode = ValidationMode.GPS
+    else:
+        addr_ctx = _read_address(row, extracted_num)
+        control_mode = _check_address_path(addr_ctx, issue_codes, issue_details)
 
-    # ── Étape 7 : cohérence département / pays (faible priorité) ────────────
-    dept_ok = _check_department(
-        country, postal_code, department_code, ref_loader, issue_codes, issue_details
-    )
-
-    # ── Consolidation ────────────────────────────────────────────────────────
-    final_codes = ordered_unique_codes(issue_codes)
-
-    return {
-        "_SITE_KEY": site_key,
-        "_CONTROL_MODE": control_mode,
-        "_CONTROL_STATUS": build_control_status(final_codes),
-        "_PRIORITY": get_worst_priority(final_codes),
-        "_ISSUE_COUNT": len(final_codes),
-        "_ISSUE_CODES": ", ".join(final_codes),
-        "_ISSUE_SUMMARY": build_issue_summary(final_codes),
-        "_ISSUE_DETAILS": issue_details,
-        # Diagnostics détaillés (utiles pour le debug et les données enrichies)
-        "_HAS_GPS": gps_ctx["has_any"],
-        "_GPS_IN_COUNTRY": gps_result["in_country"],
-        "_GPS_MATCH_POSTAL_CODE": gps_result["matches_postal_code"],
-        "_ADDRESS_PRESENT": addr_ctx["address_present"],
-        "_STREET_NUMBER_PRESENT": addr_ctx["street_number_present"],
-        "_DEPARTMENT_CODE": department_code,
-        "_DEPARTMENT_COUNTRY_OK": dept_ok,
-    }
+    return _build_result(site_key, control_mode, issue_codes, issue_details)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Étape 1 — Lecture des coordonnées GPS
-# ─────────────────────────────────────────────────────────────────────────────
-
+# =============================================================================
+# GPS
+# =============================================================================
 
 def _read_gps(row: pd.Series) -> Dict:
-    """Lit et pré-analyse les coordonnées GPS brutes de la ligne."""
-    lon_raw = row.get(Config.COL_LONGITUDE)
-    lat_raw = row.get(Config.COL_LATITUDE)
+    """Lit les coordonnées GPS brutes."""
+    lon_raw = row.get("COORD_X_SITE")
+    lat_raw = row.get("COORD_Y_SITE")
     has_lon = is_not_empty(lon_raw)
     has_lat = is_not_empty(lat_raw)
     return {
@@ -166,330 +126,246 @@ def _read_gps(row: pd.Series) -> Dict:
     }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Étapes 2-3 — Contrôles GPS (bbox pays puis bbox code postal)
-# ─────────────────────────────────────────────────────────────────────────────
-
-
 def _check_gps_path(
     gps_ctx: Dict,
     country: str,
     postal_code: str,
-    department_code: str,
+    dept_code: str,
+    bbox_country: list,
     ref_loader: ReferenceLoader,
     issue_codes: List[str],
     issue_details: List[Dict],
-    row: pd.Series,
 ) -> Dict:
     """
-    Tente de valider le site via le GPS.
+    Vérifie le GPS selon la logique métier.
 
-    Retourne un dict avec :
-      valid               → True si le GPS valide le site
-      in_country          → True/False/None
-      matches_postal_code → True/False/None
+    Précondition : bbox_country est déjà résolu (R-01 a déjà été géré en amont).
+
+    B.1 — GPS incomplet (une seule coord)  → G-02 → STOP
+    B.2 — GPS non numérique / hors plage   → G-03 → STOP
+    B.3 — GPS hors pays                    → G-06 (inversé) ou G-04 → STOP
+    B.4 — GPS OK mais CP absent            → P-02 → STOP
+    B.5 — GPS incohérent avec département  → G-05 → STOP
+    OK  → valid=True
     """
-    result = {"valid": False, "in_country": None, "matches_postal_code": None}
+    result = {"valid": False}
 
-    # Pas de GPS du tout → on laisse issue_codes vide (on bascule adresse silencieusement)
+    # B.1 — GPS incomplet
     if not gps_ctx["complete"]:
         if gps_ctx["has_any"]:
+            # Une seule coordonnée renseignée sur deux
             issue_codes.append("G-02")
             _add_issue_detail(
                 "G-02",
-                "GPS incomplet",
-                "LEGERE",
-                "adresse",
-                f"Une seule coordonnée GPS renseignée (X ou Y manquant).",
-                [Config.COL_LONGITUDE, Config.COL_LATITUDE],
-                f"Lon={gps_ctx['lon_raw']}, Lat={gps_ctx['lat_raw']}",
+                IssueCode.get_label("G-02"),
+                "gps",
+                "Une seule coordonnée GPS renseignée (X ou Y manquant).",
+                ["COORD_X_SITE", "COORD_Y_SITE"],
+                f"X={gps_ctx['lon_raw']}, Y={gps_ctx['lat_raw']}",
                 "Compléter la coordonnée manquante.",
                 issue_details,
-                row,
             )
+        # GPS totalement absent → pas d'erreur GPS, on passe à l'adresse
         return result
 
-    # Étape 1 : les valeurs sont-elles numériquement valides ?
-    lon = _parse_coordinate(gps_ctx["lon_raw"], -180.0, 180.0)
-    lat = _parse_coordinate(gps_ctx["lat_raw"], -90.0, 90.0)
+    # B.2 — GPS non numérique ou hors plage [-180,180] / [-90,90]
+    lon = parse_coordinate(gps_ctx["lon_raw"], -180.0, 180.0)
+    lat = parse_coordinate(gps_ctx["lat_raw"], -90.0, 90.0)
+
     if lon is None or lat is None:
         issue_codes.append("G-03")
         _add_issue_detail(
             "G-03",
-            "GPS invalide",
-            "GRAVE",
+            IssueCode.get_label("G-03"),
             "gps",
-            f"Coordonnée GPS non numérique ou hors limites.",
-            [Config.COL_LONGITUDE, Config.COL_LATITUDE],
-            f"Lon={gps_ctx['lon_raw']}, Lat={gps_ctx['lat_raw']}",
-            "Vérifier les coordonnées GPS.",
+            "Les coordonnées GPS ne sont pas valides (non numériques ou hors limites).",
+            ["COORD_X_SITE", "COORD_Y_SITE"],
+            f"X={gps_ctx['lon_raw']}, Y={gps_ctx['lat_raw']}",
+            "Vérifier et corriger les coordonnées GPS.",
             issue_details,
-            row,
         )
         return result
 
-
-
-    # Étape 2 : bbox pays
-    bbox_country = ref_loader.get_bbox_pays(country)
-    if bbox_country is None:
-        issue_codes.append("R-01")
-        _add_issue_detail(
-            "R-01",
-            "Pays non couvert",
-            "FAIBLE",
-            "pays",
-            f"Pays '{country}' non couvert par le référentiel.",
-            [Config.COL_COUNTRY],
-            f"Pays={country}",
-            "",
-            issue_details,
-            row,
-        )
+    # B.3 — GPS dans le pays ?
+    if not is_in_bbox(lon, lat, bbox_country):
+        # Hors pays → tester si (Y, X) est valide (inversion possible)
+        lon_inv, lat_inv = lat, lon
+        if is_in_bbox(lon_inv, lat_inv, bbox_country):
+            issue_codes.append("G-06")
+            _add_issue_detail(
+                "G-06",
+                IssueCode.get_label("G-06"),
+                "gps",
+                f"GPS ({lon}, {lat}) hors {country}, mais ({lon_inv}, {lat_inv}) y est — coordonnées probablement inversées.",
+                ["COORD_X_SITE", "COORD_Y_SITE"],
+                f"X={lon}, Y={lat}",
+                "Inverser X et Y.",
+                issue_details,
+            )
+        else:
+            issue_codes.append("G-04")
+            _add_issue_detail(
+                "G-04",
+                IssueCode.get_label("G-04"),
+                "gps",
+                f"GPS ({lon}, {lat}) situé hors de {country}.",
+                ["COORD_X_SITE", "COORD_Y_SITE", "PAYS_SITE"],
+                f"X={lon}, Y={lat}, Pays={country}",
+                "Vérifier les coordonnées GPS.",
+                issue_details,
+            )
         return result
 
-    result["in_country"] = is_in_bbox(lon, lat, bbox_country)
-    if not result["in_country"]:
-        issue_codes.append("G-04")
-        _add_issue_detail(
-            "G-04",
-            "GPS hors pays",
-            "GRAVE",
-            "gps",
-            f"GPS ({lon}, {lat}) situé hors de {country}.",
-            [Config.COL_LONGITUDE, Config.COL_LATITUDE, Config.COL_COUNTRY],
-            f"Lon={lon}, Lat={lat}, Pays={country}",
-            "Vérifier les coordonnées GPS.",
-            issue_details,
-            row,
-        )
-        return result
-
-    # Étape 3 : bbox code postal (si référentiel disponible)
+    # B.4 — GPS dans le pays : CP requis pour aller plus loin
     if not postal_code:
         issue_codes.append("P-02")
         _add_issue_detail(
             "P-02",
-            "Code postal manquant",
-            "MOYENNE",
+            IssueCode.get_label("P-02"),
             "adresse",
-            "Le code postal n'est pas renseigné.",
-            [Config.COL_POSTAL_CODE],
+            "Le GPS est dans le pays mais le code postal est absent.",
+            ["CP_SITE"],
             "",
             "Renseigner le code postal.",
             issue_details,
-            row,
         )
         return result
 
-    if department_code:
-        bbox_region = ref_loader.get_bbox_region(country, department_code)
-        if bbox_region is not None:
-            result["matches_postal_code"] = is_in_bbox(lon, lat, bbox_region)
-            if not result["matches_postal_code"]:
-                issue_codes.append("G-05")
-                _add_issue_detail(
-                    "G-05",
-                    "GPS incohérent avec le code postal",
-                    "HAUTE",
-                    "gps",
-                    f"GPS ({lon}, {lat}) ne correspond pas au code postal {postal_code}.",
-                    [Config.COL_LONGITUDE, Config.COL_LATITUDE, Config.COL_POSTAL_CODE],
-                    f"Lon={lon}, Lat={lat}, CP={postal_code}, Dept={department_code}",
-                    "Vérifier la cohérence GPS / code postal.",
-                    issue_details,
-                    row,
-                )
-                return result
+    # B.5 — Cohérence GPS / département (si bbox département disponible)
+    if dept_code:
+        bbox_region = ref_loader.get_bbox_region(country, dept_code)
+        if bbox_region is not None and not is_in_bbox(lon, lat, bbox_region):
+            issue_codes.append("G-05")
+            _add_issue_detail(
+                "G-05",
+                IssueCode.get_label("G-05"),
+                "gps",
+                f"GPS ({lon}, {lat}) incohérent avec le code postal {postal_code} (département {dept_code}).",
+                ["COORD_X_SITE", "COORD_Y_SITE", "CP_SITE"],
+                f"X={lon}, Y={lat}, CP={postal_code}",
+                "Vérifier la cohérence entre GPS et code postal.",
+                issue_details,
+            )
+            return result
 
-    # GPS valide le site (avec ou sans vérification CP si pas de référentiel)
+    # GPS entièrement valide
     result["valid"] = True
     return result
 
 
+# =============================================================================
+# Adresse
+# =============================================================================
 
+def _read_address(row: pd.Series, extracted_num: str) -> Dict:
+    """
+    Lit les champs adresse et détermine :
+    - si au moins un champ d'adresse est renseigné
+    - si un numéro de rue est disponible
+    """
+    street_number = safe_str(row.get("NUM_VOIE_SITE"))
+    street_name   = safe_str(row.get("RUE_SITE"))
+    street_full   = safe_str(row.get("NUM_RUE_SITE"))
+    full_address  = safe_str(row.get("ADRESSE_SITE"))
+    lieu_dit      = safe_str(row.get("LIEU_DIT_SITE"))
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Étape 1 bis — Lecture des champs adresse
-# ─────────────────────────────────────────────────────────────────────────────
+    address_present = any([
+        is_not_empty(street_number),
+        is_not_empty(street_name),
+        is_not_empty(street_full),
+        is_not_empty(full_address),
+        is_not_empty(lieu_dit),
+    ])
 
+    # Numéro de rue : colonne dédiée OU extraction regex
+    street_number_present = is_not_empty(street_number) or is_not_empty(extracted_num)
 
-def _read_address(row: pd.Series) -> Dict:
-    """Lit et pré-analyse les champs adresse de la ligne."""
-    address_present = any(
-        is_not_empty(row.get(col))
-        for col in [
-            Config.COL_STREET_FULL,
-            Config.COL_STREET_NAME,
-            Config.COL_FULL_ADDRESS,
-            Config.COL_LIEU_DIT,
-        ]
-    )
-    street_number_present = is_not_empty(row.get(Config.COL_STREET_NUMBER))
-    street_text_present = any(
-        is_not_empty(row.get(col))
-        for col in [
-            Config.COL_STREET_FULL,
-            Config.COL_STREET_NAME,
-            Config.COL_FULL_ADDRESS,
-        ]
-    )
     return {
         "address_present": address_present,
         "street_number_present": street_number_present,
-        "street_text_present": street_text_present,
     }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Étapes 4-6 — Contrôles adresse
-# ─────────────────────────────────────────────────────────────────────────────
-
-
 def _check_address_path(
-    row: pd.Series,
     addr_ctx: Dict,
-    postal_code: str,
     issue_codes: List[str],
     issue_details: List[Dict],
 ) -> str:
     """
-    Contrôle le chemin adresse si le GPS n'a pas validé le site.
+    Contrôle adresse (déclenché uniquement si GPS non valide).
 
-    Retourne le ValidationMode correspondant.
+    A.1 — Aucune info adresse → A-01 → INCOMPLET
+    A.2 — Adresse présente, no numéro → A-02 → INCOMPLET
+    OK  → ADRESSE_OK
     """
-    # Étape 4 : adresse présente ?
     if not addr_ctx["address_present"]:
         issue_codes.append("A-01")
         _add_issue_detail(
             "A-01",
-            "Adresse manquante",
-            "GRAVE",
+            IssueCode.get_label("A-01"),
             "adresse",
             "Aucune information d'adresse renseignée.",
-            [
-                Config.COL_STREET_FULL,
-                Config.COL_STREET_NAME,
-                Config.COL_FULL_ADDRESS,
-                Config.COL_LIEU_DIT,
-            ],
+            ["NUM_VOIE_SITE", "RUE_SITE", "NUM_RUE_SITE", "ADRESSE_SITE", "LIEU_DIT_SITE"],
             "",
-            "Rencher l'adresse.",
+            "Renseigner l'adresse du site.",
             issue_details,
-            row,
         )
         return ValidationMode.INCOMPLETE
 
-    # Étape 5 : numéro de voie présent ?
-    if addr_ctx["street_number_present"]:
-        return ValidationMode.ADDRESS
-
-    # Étape 6 : numéro manquant → alertes faible priorité
-    issue_codes.append("A-02")
-    _add_issue_detail(
-        "A-02",
-        "Numéro de voie manquant",
-        "MOYENNE",
-        "adresse",
-        "L'adresse est renseignée mais le numéro de voie est absent.",
-        [Config.COL_STREET_NUMBER],
-        f"Numéro=, Rue={row.get(Config.COL_STREET_NAME, '')}",
-        "Compléter le numéro de rue si l'information existe.",
-        issue_details,
-        row,
-    )
-    if addr_ctx["street_text_present"]:
-        issue_codes.append("A-03")
+    if not addr_ctx["street_number_present"]:
+        issue_codes.append("A-02")
         _add_issue_detail(
-            "A-03",
-            "Rue à vérifier manuellement",
-            "FAIBLE",
+            "A-02",
+            IssueCode.get_label("A-02"),
             "adresse",
-            "Le numéro de rue manque : la cohérence du nom de rue avec le département doit être vérifiée manuellement.",
-            [Config.COL_STREET_NAME, Config.COL_STREET_FULL, Config.COL_POSTAL_CODE],
-            f"Rue={row.get(Config.COL_STREET_NAME, '')}, CP={postal_code}",
-            "Contrôler le nom de rue avec la source métier du département.",
+            "L'adresse est renseignée mais le numéro de rue est absent.",
+            ["NUM_VOIE_SITE", "ADRESSE_SITE"],
+            "",
+            "Ajouter le numéro de rue.",
             issue_details,
-            row,
         )
-    return ValidationMode.INCOMPLETE
+        return ValidationMode.INCOMPLETE
+
+    return ValidationMode.ADDRESS
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Étape 7 — Cohérence département / pays (faible priorité)
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
+# Helpers internes
+# =============================================================================
 
-
-def _check_department(
-    country: str,
-    postal_code: str,
-    department_code: str,
-    ref_loader: ReferenceLoader,
+def _build_result(
+    site_key: str,
+    control_mode: str,
     issue_codes: List[str],
     issue_details: List[Dict],
-) -> Optional[bool]:
-    """
-    Vérifie que le code département (déduit du CP) correspond au pays.
-    Actif uniquement pour la France.
-    Retourne True/False/None.
-    """
-    if not country or not postal_code or country != "FRANCE":
-        return None
-
-    if not department_code:
-        issue_codes.append("D-01")
-        _add_issue_detail(
-            "D-01",
-            "Code département à vérifier",
-            "FAIBLE",
-            "pays",
-            "Le code département ne peut pas être extrait du code postal.",
-            [Config.COL_POSTAL_CODE],
-            f"CP={postal_code}",
-            "Vérifier le code postal.",
-            issue_details,
-            None,
-        )
-        return False
-
-    bbox_region = ref_loader.get_bbox_region(country, department_code)
-    if bbox_region is None:
-        issue_codes.append("D-01")
-        _add_issue_detail(
-            "D-01",
-            "Code département à vérifier",
-            "FAIBLE",
-            "pays",
-            f"Le département '{department_code}' n'existe pas dans le référentiel.",
-            [Config.COL_POSTAL_CODE],
-            f"CP={postal_code}, Dept={department_code}",
-            "Vérifier le code département.",
-            issue_details,
-            None,
-        )
-        return False
-
-    return True
+) -> Dict:
+    """Construit le dictionnaire résultat d'un site."""
+    final_codes = _ordered_unique_codes(issue_codes)
+    return {
+        "_SITE_KEY": site_key,
+        "_CONTROL_MODE": control_mode,
+        "_ISSUE_COUNT": len(final_codes),
+        "_ISSUE_CODES": ", ".join(final_codes),
+        "_ISSUE_SUMMARY": _build_issue_summary(final_codes),
+        "_ISSUE_DETAILS": issue_details,
+    }
 
 
 def _add_issue_detail(
     code: str,
     libelle: str,
-    gravite: str,
     categorie: str,
     description: str,
     champs: List[str],
     valeur: str,
     suggestion: str,
     issue_details: List[Dict],
-    row: pd.Series,
 ) -> None:
     """Ajoute un détail d'anomalie à la liste."""
     issue_details.append(
         {
             "CODE_ANOMALIE": code,
             "LIBELLE": libelle,
-            "GRAVITE": gravite,
             "CATEGORIE": categorie,
             "DESCRIPTION": description,
             "CHAMPS_CONCERNES": ", ".join(champs),
@@ -499,15 +375,17 @@ def _add_issue_detail(
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Utilitaire interne
-# ─────────────────────────────────────────────────────────────────────────────
+def _ordered_unique_codes(codes: List[str]) -> List[str]:
+    """Déduplique les codes en conservant l'ordre d'apparition."""
+    seen = set()
+    ordered = []
+    for code in codes:
+        if code and code not in seen:
+            seen.add(code)
+            ordered.append(code)
+    return ordered
 
 
-def _parse_coordinate(raw_value, minimum: float, maximum: float) -> Optional[float]:
-    """Parse une coordonnée GPS en acceptant la virgule comme séparateur décimal."""
-    try:
-        value = float(str(raw_value).replace(",", "."))
-    except (TypeError, ValueError):
-        return None
-    return value if minimum <= value <= maximum else None
+def _build_issue_summary(codes: List[str]) -> str:
+    """Construit le libellé consolidé de l'anomalie (séparateur ' | ')."""
+    return " | ".join(IssueCode.get_label(c) for c in codes)

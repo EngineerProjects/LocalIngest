@@ -1,0 +1,41 @@
+Je travail sur un projet qui consite à Développer un outil capable d'analyser, valider et détecter automatiquement les anomalies présentes
+dans les données clients récupérées via Proxima. L'enjeu est d'assurer la cohérence, la complétude
+et l'exploitabilité des informations avant leur utilisation dans les processus métiers.
+
+Tu peux voir les détails dans docs/description.md (ici c'est le projet en général).
+J'avais fais ceci : backup_old_version, et j'ai disucter avec mon tuteur et celui qui voulais le projet, on a discuter de beaucoups de choses à revoir, cetains dont je n'ai même pas noter. voici ma note : /home/amiche/Projects/LocalIngest/docs/tmp/data_quality/docs/discussions.txt
+
+de ma note, j'ai sortie disons une nouvelle architecture : /home/amiche/Projects/LocalIngest/docs/tmp/data_quality/docs/infos que je tente de reproduire ici :
+/home/amiche/Projects/LocalIngest/docs/tmp/data_quality/src
+/home/amiche/Projects/LocalIngest/docs/tmp/data_quality/main.py
+
+Bon, les données de références ont ce format : 
+
+```text
+data/
+└── references/
+    ├── bbox_pays_global.json
+    ├── FRANCE/
+    │   ├── departements.geojson
+    │   └── codes_postaux.csv
+    ├── BELGIQUE/
+    │   ├── departements.geojson
+    │   └── codes_postaux.csv
+    ├── ESPAGNE/
+    │   ├── departements.geojson
+    │   └── codes_postaux.csv
+    ├── ALLEMAGNE/
+    │   ├── departements.geojson
+    │   └── codes_postaux.csv
+    └── ITALIE/
+        ├── departements.geojson
+        └── codes_postaux.csv
+```
+
+mais pour le moment il n'y a que la france vu que mon travail se focalise plus sur la france.
+Bien sûr les données ne sont pas ici sur mon pc, mais sur mon ordi de travail windows, donc je ne peux pas avoir les données. Mais backup_old_version marchais sur mon l'ordi de travail, et ce soir aussi j'avais tester ce notebook qui marchait très bien, tu verras le code qui marchait bien ici : /home/amiche/Projects/LocalIngest/docs/tmp/data_quality/prompt.md
+
+J'ai voulu vraiment reprendre correctement les chose maintenant ici :
+/home/amiche/Projects/LocalIngest/docs/tmp/data_quality/src
+/home/amiche/Projects/LocalIngest/docs/tmp/data_quality/main.py
+en optimisant, en suivant les règles de nos discussions et en rendant clean le code, et enlever les suringenierie que j'avais fait. Mais je me suis totalement embrouillé, et je veux que tu lise l'emsemble, tu comprenne pour bien m'aider.

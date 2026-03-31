@@ -1,0 +1,47 @@
+Roméo : 
+
+- comparer avec le datamart Promidcorp pour voir si le contract est actif
+- situation du contrat et le point de gestion pgst privilegier le datamart
+- 
+
+- si le pays n'est pas renseigné mettre en France et le site continue dans la boucle
+- si pays n'est pas renseigné on met pays etranger et nous le traitons pas pour l'instant
+- verifie que le code du departement
+
+- pouvoir regarder le nom de la rue et l'adresse complette
+- pouvoir regarder le code postal avec la colonne ville
+
+- gerer quand ils inversent les long et latitude
+
+______________________________________________________________________________________________________
+
+COLONNES :
+datamart Promidcorp
+- ptgst (point de gestion)
+- cdsitp(code situation de la police) 
+lorsque cdsiptp == 1, alors le contrat est actif, c'est tout.
+
+D'abord, faire le filtre du datamart pour prendre les contrats actif du datamart Promidcord, en récupérant uniquement les colonnes nécessaires, puis faire la jointure avec les données de proxima, en gardant les colonnes dont j'ai besoin des deux cotés et comme ça il ne va rester que les contrats actifs, et on peut faire le reste des opérations.
+
+PAYS :
+au départ, après le contrôle des contrats actifs, on vérifi si les pays sont renseignés (si ce n'est pas renseigné, on le remplace par la France par défaut), et pour le cas actuelle on ne gère que de la France.
+
+ADRESS & CODE POSTAL :
+Contrôle de rue et de code postale dans adresse postale :
+ - On peut utiliser du regex, pour récupérer le numéro de rue et le code postale. ("92 rue de pologne, 59800 Lille" si cinq chiffres se suivent sans espace, alors c'est le code postal, si ça débute par 2 ou 3 chiffre avant l'espace on peut le considérer le numéro de rue)
+
+GPS X, Y:
+On teste aussi l'inverse de x,y dans le cas x, y est hors limites, peut être que ça a été inversé par erreurs.
+
+Tableau de sortie :
+Id_site, nu_cnt, libelle (on doit avoir qu'une seule anomalie gps, si le gps est présent, on ne doit rien vérifier d'autres au niveau de l'adresse. IMPORTYANT : il n'y qu'une et une seule anomalie dans le libeler), description (ici, aussi, une description aussi pour faciliter la lecture. La description doit être explicative et compréhensible).
+
+VUE GLOBALE :
+préciser 
+- le nombre de site totale dans le fichier, 
+- le nombre de site inactif, 
+- le nombre de site actif analysé
+ et le reste. mais bien séparé par les espaces.
+
+Section B:
+- suprimer la colone Code, et ajouter le pourcentage.

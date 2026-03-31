@@ -1,24 +1,12 @@
 """
-Chargement des données de référence — Architecture multi-pays v2.
+Chargement des données de référence.
 
-Nouvelles règles de support par pays :
-  COMPLET      → bbox pays + codes_postaux.csv + régions
-  PARTIEL      → bbox pays + codes_postaux.csv, sans régions
-  NON_SUPPORTÉ → tout le reste
+Version simplifiée :
+- une bbox pays suffit pour contrôler "GPS dans le pays ?"
+- une bbox région/département permet en plus le contrôle "GPS cohérent avec le CP ?"
+- les autres références restent optionnelles
 
-Règle métier importante :
-  Un pays n'est traitable que s'il possède au minimum :
-    1. une bbox pays dans bbox_pays_global.json
-    2. une référence de codes postaux exploitable
-
-Chargement au démarrage :
-  1. Charger bbox_pays_global.json
-  2. Scanner les pays uniques dans les données source
-  3. Pour chaque pays :
-       - charger CP si possible
-       - charger régions si possible
-       - déterminer le niveau de support selon les nouvelles règles
-  4. Générer bbox_regions.json à la volée si le geojson est présent mais pas le json
+On ne "skip" plus un pays uniquement parce qu'il manque un référentiel annexe.
 """
 
 import json
@@ -112,7 +100,7 @@ class ReferenceLoader:
             level = self.support_levels[country]
             print(f"      {country:22} : {level}")
 
-        print(f"\n   ⛔ Pays non supportés ({len(unsupported)}) — ignorés :")
+        print(f"\n   ⛔ Pays sans bbox pays ({len(unsupported)}) :")
         print(f"      {', '.join(unsupported) if unsupported else '(aucun)'}")
 
         self._loaded = True
@@ -148,10 +136,10 @@ class ReferenceLoader:
         """
         Détecte le niveau de support d'un pays et charge ses références.
 
-        Règles :
-          - COMPLET     : bbox pays + CP + régions
-          - PARTIEL     : bbox pays + CP
-          - NON_SUPPORTÉ: tout le reste
+        Règles simplifiées :
+          - COMPLET     : bbox pays + régions
+          - PARTIEL     : bbox pays seule
+          - NON_SUPPORTÉ: aucune bbox pays
         """
         has_country_bbox = country in self.bbox_pays_global
         country_dir = self._find_country_dir(country)
@@ -169,24 +157,18 @@ class ReferenceLoader:
             has_cp = self._load_cp_file(country, country_dir)
             has_regions = self._load_regions(country, country_dir)
 
-        # Condition minimale de traitabilité : bbox pays + CP
-        if not has_country_bbox or not has_cp:
+        if not has_country_bbox:
             self.support_levels[country] = SupportLevel.NON_SUPPORTE
-
             if getattr(Config, 'REFERENCE_LOG_DETAILS', False):
-                if not has_country_bbox:
-                    print(f"   {country} : absent de bbox_pays_global.json → non supporté")
-                if not has_cp:
-                    print(f"   {country} : codes_postaux.csv absent ou inexploitable → non supporté")
+                print(f"   {country} : absent de bbox_pays_global.json → non supporté")
             return
 
-        # À partir d'ici : le pays est traitable
         if has_regions:
             self.support_levels[country] = SupportLevel.COMPLET
         else:
             self.support_levels[country] = SupportLevel.PARTIEL
             if getattr(Config, 'REFERENCE_LOG_DETAILS', False):
-                print(f"   {country} : régions / geojson absents → support partiel")
+                print(f"   {country} : bbox pays disponible, sans détail régional")
 
     def _find_country_dir(self, country: str) -> Optional[Path]:
         """
@@ -229,37 +211,33 @@ class ReferenceLoader:
         # Nettoyer les noms de colonnes (retirer '#' artefact CSV)
         df.columns = [col.lstrip("#").strip() for col in df.columns]
 
-        # Mapping flexible des colonnes CP / Ville
-        rename_map = {}
+        cp_col = None
+        city_col = None
+
         for col in df.columns:
             col_lower = col.lower()
-            if "code_postal" in col_lower or "code postal" in col_lower:
-                rename_map[col] = "code_postal"
-            elif (
+            if cp_col is None and ("code_postal" in col_lower or "code postal" in col_lower):
+                cp_col = col
+            if city_col is None and (
                 "nom_de_la_commune" in col_lower
+                or "nom de la commune" in col_lower
                 or "nom_commune" in col_lower
-                or "commune" in col_lower
+                or col_lower == "commune"
+                or "acheminement" in col_lower
+                or "libellé" in col_lower
+                or "libelle" in col_lower
             ):
-                rename_map[col] = "nom_commune"
-            elif "acheminement" in col_lower or "libelle" in col_lower:
-                rename_map[col] = "nom_commune"
+                city_col = col
 
-        if rename_map:
-            df = df.rename(columns=rename_map)
-
-        # Identifier colonnes CP et Ville
-        if "code_postal" in df.columns:
-            cp_col = "code_postal"
-        else:
+        if cp_col is None:
             cp_col = df.columns[0]
 
-        if "nom_commune" in df.columns:
-            city_col = "nom_commune"
-        elif len(df.columns) > 1:
-            city_col = df.columns[1]
-        else:
-            print(f"   {country} CP : colonne ville introuvable")
-            return False
+        if city_col is None:
+            if len(df.columns) > 1:
+                city_col = df.columns[1]
+            else:
+                print(f"   {country} CP : colonne ville introuvable")
+                return False
 
         raw_codes = [safe_str(value) for value in df[cp_col].tolist()]
         numeric_lengths = [len(code) for code in raw_codes if code.isdigit()]
@@ -449,6 +427,15 @@ class ReferenceLoader:
         if entry and "bbox" in entry:
             return entry["bbox"]
         return None
+
+    def has_country_bbox(self, country: str) -> bool:
+        """Indique si une bbox pays est disponible."""
+        return self.get_bbox_pays(country) is not None
+
+    def has_region_reference(self, country: str) -> bool:
+        """Indique si un référentiel régional est disponible pour ce pays."""
+        country_upper = normalize_country(country)
+        return country_upper in self.bbox_regions and bool(self.bbox_regions[country_upper])
 
     def is_loaded(self) -> bool:
         return self._loaded

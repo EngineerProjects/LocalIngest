@@ -1,0 +1,219 @@
+================================================================================
+                   ARCHITECTURE — CONTRÔLE QUALITÉ DES DONNÉES
+================================================================================
+
+OBJECTIF
+--------
+Contrôler la qualité des données de localisation (adresse, GPS) pour permettre
+la correction métier. Chaque site produit au maximum une anomalie consolidée.
+
+
+================================================================================
+                              FLUX PRINCIPAL
+================================================================================
+
+  1. CHARGEMENT DES DONNÉES
+     - Source Proxima  : données contrats
+     - Source PTF      : datamart
+
+  2. FILTRE CONTRATS
+     - Ne garder que les contrats avec CDSITP = 1
+     - Jointure sur NU_CNT
+     - Ajout du champ PTGST
+
+  3. FILTRE PAYS
+     - Ne garder que les pays supportés
+     - Si pays vide → considérer France par défaut
+
+  4. CONTRÔLE PAR SITE  (dans cet ordre)
+     a) Pays
+     b) GPS
+     c) Adresse  ← uniquement si le GPS n'a pas validé le site
+
+  5. GÉNÉRATION DU FICHIER EXCEL
+     - Onglet "Résumé"
+     - Onglet "Détail anomalies"
+     - Onglet "Données enrichies"
+
+
+================================================================================
+                           CONTRÔLE PAYS
+================================================================================
+
+  ┌─ Pays renseigné ?
+  │
+  ├── NON  →  Erreur P-01 (Pays manquant)             → STOP
+  │
+  └── OUI
+       │
+       └─ Pays présent dans le référentiel ?
+            │
+            ├── NON  →  Erreur R-01 (Pays non trouvé)  → STOP
+            │
+            └── OUI  →  Contrôle pays OK  →  passer au GPS
+
+
+================================================================================
+                           CONTRÔLE GPS
+================================================================================
+
+RÈGLE FONDAMENTALE
+------------------
+Un GPS avec des coordonnées inversées n'est JAMAIS considéré comme valide.
+L'inversion est une anomalie grave (G-06) qui arrête immédiatement le contrôle.
+On ne teste l'inversion (Y,X) QUE SI (X,Y) est hors de la bbox pays.
+
+──────────────────────────────────────────────────────────────────────────────
+
+ÉTAPE 1 — Présence des coordonnées
+------------------------------------
+
+  ┌─ COORD_X_SITE ET COORD_Y_SITE sont-elles toutes les deux renseignées ?
+  │
+  ├── NON  →  Erreur G-02 (Une seule coordonnée GPS renseignée)  → STOP
+  │
+  └── OUI  →  passer à l'étape 2
+
+
+ÉTAPE 2 — Validité des valeurs
+--------------------------------
+
+  ┌─ Les coordonnées sont-elles dans les plages valides ?
+  │    X : [-180 ; 180]
+  │    Y : [-90  ;  90]
+  │
+  ├── NON  →  Erreur G-03 (Coordonnées GPS non valides)          → STOP
+  │
+  └── OUI  →  passer à l'étape 3
+
+
+ÉTAPE 3 — Cohérence avec le pays
+----------------------------------
+
+  ┌─ Le pays figure-t-il dans bbox_pays_global.json ?
+  │
+  ├── NON  →  Erreur R-01 (Pays non trouvé dans le référentiel)  → STOP
+  │
+  └── OUI
+       │
+       └─ (X, Y) est-il dans la bbox du pays ?
+            │
+            ├── OUI  →  GPS OK  →  passer au contrôle adresse
+            │
+            └── NON  →  Tester l'inversion : (Y, X) est-il dans la bbox ?
+                          │
+                          ├── OUI  →  Erreur G-06 (Coordonnées GPS inversées) → STOP
+                          │
+                          └── NON  →  Erreur G-04 (Coordonnées GPS hors pays)  → STOP
+
+
+ÉTAPE 4 — Cohérence avec le code postal  (uniquement si GPS OK)
+-----------------------------------------------------------------
+
+  ┌─ Code postal disponible ? (cf. logique d'extraction CP ci-dessous)
+  │
+  ├── NON  →  Erreur P-02 (Code postal manquant)                 → STOP
+  │
+  └── OUI  →  Extraire le département depuis le CP (ex: 75, 83…)
+               │
+               └─ Une bbox département existe-t-elle pour ce département ?
+                    │
+                    ├── NON  →  GPS OK  (pas de vérification possible)
+                    │
+                    └── OUI
+                          │
+                          └─ (X, Y) est-il dans la bbox du département ?
+                               │
+                               ├── OUI  →  GPS OK
+                               │
+                               └── NON  →  Erreur G-05 (GPS incohérent avec CP)  → STOP
+
+
+================================================================================
+                           CONTRÔLE ADRESSE
+================================================================================
+
+RÈGLE
+-----
+Le contrôle adresse n'est déclenché QUE SI le GPS n'a pas validé le site.
+
+──────────────────────────────────────────────────────────────────────────────
+
+  ┌─ Au moins un champ d'adresse est-il renseigné ?
+  │    Champs vérifiés : NUM_VOIE_SITE, RUE_SITE, NUM_RUE_SITE,
+  │                      ADRESSE_SITE, LIEU_DIT_SITE
+  │
+  ├── NON  →  Erreur A-01 (Adresse manquante)                    → STOP
+  │
+  └── OUI
+       │
+       └─ Un numéro de rue est-il disponible ?
+            Sources : NUM_VOIE_SITE  OU  extraction regex depuis ADRESSE_SITE
+            Regex   : ^(\d{1,4})\s
+            │
+            ├── OUI  →  Adresse validée                          → STOP
+            │
+            └── NON  →  Erreur A-02 (Numéro de rue manquant)     → STOP
+
+
+================================================================================
+                        LOGIQUE D'EXTRACTION DES DONNÉES
+================================================================================
+
+EXTRACTION DU CODE POSTAL
+--------------------------
+Priorité 1 : CP_SITE            (colonne dédiée)
+Priorité 2 : ADRESSE_SITE       (regex : \b(\d{5})\b)
+Si aucune source → Erreur P-02
+
+
+EXTRACTION DU NUMÉRO DE RUE
+----------------------------
+Priorité 1 : NUM_VOIE_SITE      (colonne dédiée)
+Priorité 2 : ADRESSE_SITE       (regex : ^(\d{1,4})\s)
+Si aucune source → possible Erreur A-02 (selon contexte)
+
+
+================================================================================
+                             CODES ANOMALIES
+================================================================================
+
+  Code   Libellé                                         Catégorie
+  ─────  ──────────────────────────────────────────────  ─────────
+  P-01   Pays manquant                                   Pays
+  P-02   Code postal manquant                            Adresse
+  R-01   Pays non trouvé dans le référentiel             Pays
+  G-02   Une seule coordonnée GPS (X ou Y) renseignée    GPS
+  G-03   Coordonnées GPS (X,Y) non valides               GPS
+  G-04   Coordonnées GPS (X,Y) hors pays                 GPS
+  G-05   GPS (X,Y) incohérent avec le code postal        GPS
+  G-06   Coordonnées GPS (X,Y) potentiellement inversées GPS
+  A-01   Adresse manquante                               Adresse
+  A-02   Numéro de rue manquant                          Adresse
+
+
+================================================================================
+                          STRUCTURE DU FICHIER EXCEL
+================================================================================
+
+ONGLET "Résumé"
+  Section A — Vue globale
+    - Nombre de sites total
+    - Nombre de sites actifs
+    - Nombre de sites avec anomalie
+
+  Section B — Répartition par anomalie
+    - Code anomalie
+    - Libellé
+    - Nombre d'occurrences
+    - Pourcentage
+
+ONGLET "Détail anomalies"
+  Une ligne par site.
+  Colonnes : ID_SITE | NU_CNT | LIBELLE | DESCRIPTION
+
+ONGLET "Données enrichies"
+  Données sources complètes avec résultats des contrôles.
+
+
+================================================================================
